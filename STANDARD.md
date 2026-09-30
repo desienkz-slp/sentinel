@@ -79,6 +79,48 @@ sehingga hasil bisa diaudit.
 
 ---
 
+## 2b. Gaya bahasa (anti-template)
+
+Masalah nyata yang ditemukan di lapangan: balasan selalu dibuka *"Halo, ada yang bisa kami
+bantu?"* dan selalu meminta ID pelanggan — walaupun percakapan sudah berjalan dan nomor
+pengirim sudah kita ketahui. Terasa seperti template, bukan obrolan.
+
+Aturan yang ditambahkan ke standar:
+
+- **"Halo" hanya untuk pesan pertama.** Pesan kedua dan seterusnya langsung ke isi.
+- **Jangan minta data yang sudah kita punya** — nomor pengirim sudah diketahui.
+- Hindari basa-basi kaku: *"Mohon informasikan"*, *"Silakan jelaskan"*,
+  *"agar dapat kami bantu periksa"*.
+- Balas **1–3 kalimat** untuk obrolan biasa.
+- **Tanggapi isi pesannya**; kalau tidak paham, tanya **satu hal** saja.
+- Balasan buruk vs baik:
+
+| Pengirim | Buruk (kaku) | Baik (manusiawi) |
+|---|---|---|
+| "masi les" | "Halo, ada yang bisa kami bantu terkait layanan internet Anda? Silakan informasikan kendala atau ID pelanggan Anda." | "Oke, santai aja. Nanti kalau sudah sempat kabari lagi ya." |
+| "gantii" | "Halo, ada yang bisa kami bantu? Mohon informasikan lebih jelas apa yang ingin Anda ganti…" | "Ganti apa nih? Password wifi, paket, atau perangkat?" |
+| "ayah" | "Halo, mohon maaf, pesan yang Anda kirimkan kurang jelas…" | "Maaf, saya kurang paham. Maksudnya gimana ya?" |
+
+Selain standar, agen juga menyuntikkan penanda konteks ke prompt setiap permintaan:
+
+- Pesan pertama → *"(Ini pesan pertama dari pengirim ini. Balas singkat dan ramah.)"*
+- Pesan lanjutan → *"(Percakapan ini sudah berjalan. JANGAN ulangi sapaan, jangan perkenalan
+  ulang, dan jangan minta nomor/ID pelanggan.)"*
+
+Penanda ini yang membuat model tidak mengulang sapaan, terlepas dari model apa pun yang dipakai.
+
+### Hasil uji
+
+```
+kamu : ayahhhh     bot : Halo! Maaf, maksudnya gimana ya? Ada kendala dengan internetnya?
+kamu : ayah        bot : Maaf, saya masih kurang paham nih. Maksudnya gimana ya?
+kamu : gantii      bot : Ganti apa nih? Password wifi, paket, atau perangkat?
+kamu : masi les    bot : Oke, santai aja. Nanti kalau sudah sempat kabari lagi ya.
+kamu : ganti jam 8 bot : Oke, nanti jam 8 ya. Yang mau diganti apa nih?
+```
+
+---
+
 ## 3. Sesi percakapan per nomor
 
 Setiap pengirim punya konteksnya sendiri (`internal/session/session.go`).

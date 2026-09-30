@@ -101,6 +101,10 @@ Pesan masuk
 
 Balasan menyesuaikan jenis pesan:
 
+Balasan menyesuaikan jenis pesan **dan** menyesuaikan apakah percakapan baru atau lanjutan —
+"Halo" hanya di pesan pertama, dan bot tidak meminta ID pelanggan karena nomor pengirim
+sudah diketahui.
+
 | Pesan | Yang dilakukan | Yang diterima pengirim |
 |---|---|---|
 | "halo" | tidak ada pengecekan | obrolan biasa, tanpa header laporan |

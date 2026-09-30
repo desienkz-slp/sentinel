@@ -211,6 +211,15 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	if lastTarget := e.Sesi.LastTarget(klas.Key); lastTarget != "" && target == "" {
 		user += "\n\nKonteks: percakapan sebelumnya dengan pengirim ini memeriksa " + lastTarget + "."
 	}
+	// Peringatkan model saat ini BUKAN pesan pertama, supaya ia tidak mengulang
+	// sapaan dan tidak meminta data yang sudah kita punya (nomor pengirim).
+	if klas.Lanjutan {
+		user += "\n\n(Percakapan ini sudah berjalan. JANGAN ulangi sapaan seperti \"Halo\", " +
+			"jangan perkenalan ulang, dan jangan minta nomor/ID pelanggan — kita sudah tahu " +
+			"nomornya. Tanggapi langsung isi pesan terakhir.)"
+	} else {
+		user += "\n\n(Ini pesan pertama dari pengirim ini. Balas singkat dan ramah.)"
+	}
 	msgs = append(msgs, llm.Message{Role: "user", Content: user})
 
 	usedTools := map[string]int{}
