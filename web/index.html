@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NOC Sentinel — AI NOC Console</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121922; --panel2:#0f151d; --line:#1f2a37;
+    --txt:#dbe4ee; --dim:#8296ab; --acc:#22d3ee; --ok:#22c55e; --warn:#f59e0b;
+    --bad:#ef4444; --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#111a24,#0d141c);position:sticky;top:0;z-index:10;flex-wrap:wrap}
+  .logo{font-weight:700;letter-spacing:.5px;font-size:17px}
+  .logo span{color:var(--acc)}
+  .pill{font:12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line);border-radius:99px;color:var(--dim);
+    display:inline-flex;align-items:center;gap:6px;background:var(--panel2)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .dot.off{background:var(--bad)}
+  .spacer{flex:1}
+  main{display:grid;grid-template-columns:minmax(340px,1.1fr) minmax(380px,1.5fr);gap:16px;padding:16px 20px 40px;max-width:1560px;margin:0 auto}
+  @media(max-width:1080px){main{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .card h2{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:600}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  input,select,textarea,button{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:9px 11px;width:100%}
+  textarea{min-height:88px;resize:vertical;font-family:var(--mono);font-size:13px}
+  button{cursor:pointer;background:#16323d;border-color:#1e4a58;color:#c9f5ff;font-weight:600}
+  button:hover{background:#1b3d4a}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.ghost{background:transparent;border-color:var(--line);color:var(--dim);font-weight:500}
+  button.ghost:hover{color:var(--txt);border-color:#33465c}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .btns button{width:auto;flex:0 0 auto;padding:9px 16px}
+  #steps{list-style:none;margin:0;padding:0;max-height:520px;overflow:auto}
+  #steps li{border-left:2px solid var(--line);padding:8px 0 8px 12px;margin-left:4px}
+  #steps li.thought{border-color:var(--acc)}
+  #steps li.tool{border-color:var(--warn)}
+  #steps li.answer{border-color:var(--ok)}
+  #steps li.error{border-color:var(--bad)}
+  #steps li.escalate{border-color:#a855f7}
+  .tag{font:11px/1 var(--mono);text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
+  pre{margin:6px 0 0;font:12px/1.45 var(--mono);white-space:pre-wrap;word-break:break-word;color:#b9c8d8;
+    background:#0a0f15;border:1px solid #172230;border-radius:8px;padding:8px}
+  .verdict{border-radius:12px;padding:14px;border:1px solid var(--line);background:var(--panel2);margin-bottom:12px}
+  .verdict .v{font:700 20px/1.2 var(--mono)}
+  .v.SEHAT{color:var(--ok)} .v.DEGRADASI{color:var(--warn)} .v.GANGGUAN{color:var(--bad)} .v\.TIDAK{color:var(--dim)}
+  .meta{font:12px/1.6 var(--mono);color:var(--dim);margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .grid-tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .grid-tools button{width:auto;padding:6px 10px;font:12px var(--mono);background:var(--panel2);color:var(--dim);
+    border-color:var(--line);font-weight:500}
+  .grid-tools button:hover{color:var(--acc);border-color:#27536b}
+  .answer{white-space:pre-wrap;font-size:13.5px}
+  .hidden{display:none}
+  .hint{font-size:12px;color:var(--dim);margin-top:8px}
+  details summary{cursor:pointer;color:var(--dim);font-size:12px;margin-top:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">NOC <span>Sentinel</span></div>
+  <div class="pill"><span class="dot" id="dotLLM"></span><span id="txtLLM">LLM belum dites</span></div>
+  <div class="pill"><span class="dot" id="dotCodex"></span><span id="txtCodex">Codex…</span></div>
+  <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WhatsApp…</span></div>
+  <div class="spacer"></div>
+  <div class="pill" id="pillModel">model: —</div>
+  <button class="ghost" style="width:auto" onclick="toggleSettings()">⚙ Pengaturan</button>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <h2>Diagnosis Gangguan</h2>
+      <label for="q">Pertanyaan operator</label>
+      <textarea id="q" placeholder="Contoh: pelanggan di Jl. Melati internet lambat sejak pagi, cek dulu ke 8.8.8.8"></textarea>
+      <div class="row">
+        <div>
+          <label for="tgt">Target (opsional)</label>
+          <input id="tgt" placeholder="8.8.8.8 / pelanggan.net / 10.10.10.1:1812">
+        </div>
+        <div>
+          <label for="mdl">Model analisis</label>
+          <select id="mdl"></select>
+        </div>
+      </div>
+      <div class="btns">
+        <button id="run" onclick="runDiag()">▶ Jalankan Diagnosis</button>
+        <button class="ghost" onclick="loadModels()">Muat daftar model</button>
+        <button class="ghost" onclick="document.getElementById('steps').innerHTML=''">Bersihkan</button>
+      </div>
+      <div class="hint">Agen akan memilih tool diagnostik sendiri (ping → DNS → TCP/HTTP → traceroute → radius), lalu menyimpulkan VERDICT + rekomendasi. Bila keyakinan rendah, analisis dieskalasi otomatis ke Codex CLI.</div>
+
+      <details>
+        <summary>Probe manual cepat</summary>
+        <div class="grid-tools" id="toolBtns"></div>
+        <div class="row" style="margin-top:8px">
+          <input id="probeTarget" placeholder="target untuk probe manual">
+          <button class="ghost" onclick="runProbe()">Jalankan probe</button>
+        </div>
+      </details>
+
+      <div id="settings" class="hidden" style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+        <h2>Pengaturan Runtime</h2>
+        <div class="row">
+          <div><label for="sBase">Base URL (OpenAI-compatible)</label><input id="sBase"></div>
+          <div><label for="sKey">API Key (kosongkan bila sudah tersimpan)</label><input id="sKey" type="password" placeholder="•••• (tidak ditampilkan)"></div>
+        </div>
+        <div class="row">
+          <div><label for="sModel">Model default</label><input id="sModel"></div>
+          <div><label for="sSteps">Maks langkah per sesi</label><input id="sSteps" type="number" min="1" max="20"></div>
+        </div>
+        <div class="row">
+          <div><label for="sCodex">Model Codex (eskalasi)</label><input id="sCodex"></div>
+          <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan</button></div>
+        </div>
+        <div class="btns">
+          <button class="ghost" onclick="pingLLM()">Tes koneksi LLM (completion nyata)</button>
+          <button class="ghost" onclick="codexSelftest()">Tes Codex CLI</button>
+        </div>
+        <div class="hint" id="setMsg"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>WhatsApp Gateway <span id="waEmbedTag" class="pill" style="font-size:11px;padding:3px 8px">embedded</span></h2>
+      <div class="btns" style="margin-top:0">
+        <button id="btnWaStart" onclick="waCtl('start')">▶ Mulai Gateway</button>
+        <button class="ghost" onclick="waCtl('stop')">■ Hentikan</button>
+        <button class="ghost" onclick="waCtl('restart')">↻ Restart</button>
+        <button class="ghost" onclick="waGateway()">Cek proses</button>
+        <a href="/whatsapp" target="_blank" style="text-decoration:none"><button class="ghost" type="button">Buka UI Gateway ↗</button></a>
+      </div>
+      <div class="hint" id="waGwOut">memeriksa proses…</div>
+      <pre id="waGwLog" class="hidden" style="max-height:150px;overflow:auto"></pre>
+
+      <div class="row" style="margin-top:14px">
+        <div><label for="sWA">Base URL gateway</label><input id="sWA" placeholder="http://127.0.0.1:3001"></div>
+        <div><label for="sWAList">Allowlist nomor (pisah koma; kosong = semua)</label><input id="sWAList" placeholder="628123456789,628999888777"></div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="sWAGroup">Pesan dari grup WhatsApp</label>
+          <select id="sWAGroup">
+            <option value="false">Abaikan — hanya balas chat pribadi</option>
+            <option value="true">Proses juga (mis. grup NOC internal)</option>
+          </select>
+        </div>
+        <div>
+          <label for="sWAAsync">Mode pengiriman</label>
+          <select id="sWAAsync">
+            <option value="false">Sinkron (balas langsung, tunggu 10–60 dtk)</option>
+            <option value="true">Async (balas "diterima", hasil menyusul)</option>
+          </select>
+        </div>
+      </div>
+      <div class="btns">
+        <button onclick="saveWASettings()">Simpan pengaturan WA</button>
+        <button class="ghost" onclick="waStatus()">Cek status sesi</button>
+        <button class="ghost" onclick="waQR()">Tampilkan QR pairing</button>
+        <button class="ghost" onclick="waSend()">Kirim tes</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input id="waTo" placeholder="nomor tujuan, mis. 628123456789">
+        <input id="waMsg" placeholder="pesan tes (kosong = laporan contoh)">
+      </div>
+      <div class="hint" id="waMsgOut">Webhook masuk: <code>POST /api/wa/webhook</code> — arahkan <code>N8N_WEBHOOK_URL</code> gateway ke alamat ini.</div>
+      <div id="waQRBox" class="hidden" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Riwayat Insiden</h2>
+      <table>
+        <thead><tr><th>Waktu</th><th>Target</th><th>Verdict</th><th>Engine</th><th>ms</th></tr></thead>
+        <tbody id="hist"><tr><td colspan="5" style="color:var(--dim)">Belum ada insiden.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Hasil</h2>
+      <div id="verdict" class="verdict">
+        <div class="v" id="vText">—</div>
+        <div class="meta" id="vMeta">Belum ada diagnosis dijalankan.</div>
+      </div>
+      <div class="answer" id="answer"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Jejak Langkah (live)</h2>
+      <ul id="steps"><li style="border-color:var(--line);color:var(--dim)">Menunggu permintaan…</li></ul>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let tools = [];
+
+async function api(path, opts={}) {
+  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts));
+  const ct = r.headers.get('content-type')||'';
+  const body = ct.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(typeof body === 'string' ? body : (body.error||JSON.stringify(body)));
+  return body;
+}
+
+async function boot() {
+  try {
+    const st = await api('/api/status');
+    const c = st.config;
+    $('sBase').value = c.llm_base_url; $('sModel').value = c.llm_model;
+    $('sSteps').value = c.max_steps; $('sCodex').value = c.codex_model;
+    $('pillModel').textContent = 'model: ' + c.llm_model;
+    setDot('Codex', st.codex_ready, st.codex_ready ? 'Codex siap ('+c.codex_model+')' : 'Codex tidak ditemukan');
+    if (!c.llm_key_set) setDot('LLM', false, 'API key belum ada');
+    $('sWA').value = c.wa_base_url || '';
+    $('sWAList').value = (c.wa_allowlist||[]).join(',');
+    $('sWAGroup').value = String(!!c.wa_group);
+    $('sWAAsync').value = String(!!c.wa_async);
+  } catch (e) { console.error(e); }
+  tools = await api('/api/tools').catch(()=>[]);
+  $('toolBtns').innerHTML = tools.map(t => `<button title="${esc(t.description)}" onclick="pickTool('${t.name}')">${t.name}</button>`).join('');
+  await loadModels();
+  waGateway();
+  waStatus();
+  refreshHistory();
+  setInterval(waGateway, 10000);
+}
+
+// ---------- WhatsApp ----------
+
+const WA_STATE_ID = {
+  running:'✅ berjalan', starting:'⏳ memulai', installing:'📦 npm install (sekali, ±30 dtk)',
+  stopped:'⛔ berhenti', unhealthy:'⚠️ tidak sehat', failed:'🔴 gagal', disabled:'— tidak ada folder wa-gateway'
+};
+
+async function waGateway() {
+  try {
+    const d = await api('/api/wa/gateway');
+    const label = WA_STATE_ID[d.state] || d.state;
+    $('waGwOut').textContent = `Proses: ${label} · PID ${d.pid||'—'} · port ${d.port} · restart ${d.restarts||0}` +
+      (d.node_version?` · node ${d.node_version}`:'') +
+      (d.installed?'':' · dependensi BELUM terpasang') +
+      (d.credentials_linked?' · ✅ sesi WA tertaut':' · ⚠ belum ada sesi WA (perlu scan QR)') +
+      (d.last_error?` · error: ${d.last_error}`:'');
+    $('waEmbedTag').textContent = d.state === 'disabled' ? 'eksternal' : 'embedded';
+    const log = $('waGwLog');
+    if (d.log_tail && d.log_tail.length) { log.classList.remove('hidden'); log.textContent = d.log_tail.join('\n'); log.scrollTop = log.scrollHeight; }
+    return d;
+  } catch(e) { $('waGwOut').textContent = 'Gagal cek proses: ' + e.message; return null; }
+}
+
+async function waCtl(action) {
+  const btn = $('btnWaStart');
+  // Sesi WhatsApp yang sudah tertaut jangan dimatikan tanpa peringatan.
+  if (action === 'stop' || action === 'restart') {
+    const d = await waGateway();
+    if (d && d.credentials_linked) {
+      const pesan = action === 'stop'
+        ? 'Hentikan gateway? Sesi WhatsApp yang sudah tertaut akan terputus (QR tidak perlu discan ulang, sesi tersimpan).'
+        : 'Restart gateway? Sesi WhatsApp akan terputus sebentar.';
+      if (!confirm(pesan)) return;
+    }
+  }
+  btn.disabled = true;
+  $('waGwOut').textContent = (action==='start'?'memulai':action==='stop'?'menghentikan':'me-restart') + ' gateway… (npm install bisa makan ±30 dtk)';
+  try {
+    const d = await api('/api/wa/'+action, {method:'POST', body:'{}'});
+    $('waGwOut').textContent = 'OK: ' + action + ' → ' + (WA_STATE_ID[d.status?.state] || d.status?.state) + (d.hasil?` (${d.hasil})`:'');
+  } catch(e) { $('waGwOut').textContent = '⚠ ' + e.message; }
+  btn.disabled = false;
+  await waGateway();
+  await waStatus();
+}
+
+async function saveWASettings() {
+  try {
+    const d = await api('/api/config', {method:'POST', body: JSON.stringify({
+      wa_base_url: $('sWA').value.trim(),
+      wa_allowlist: $('sWAList').value.split(',').map(s=>s.trim()).filter(Boolean),
+      wa_group: $('sWAGroup').value === 'true',
+      wa_async: $('sWAAsync').value === 'true'
+    })});
+    setWAMsg('Tersimpan. Gateway: ' + (d.config.wa_base_url || '—') + ' · allowlist: ' + (d.config.wa_allowlist||[]).length + ' entri');
+    waStatus();
+  } catch(e) { setWAMsg('Gagal: ' + e.message); }
+}
+
+function setWAMsg(t) { $('waMsgOut').textContent = t; }
+
+async function waStatus() {
+  setDot('WA', false, 'WhatsApp: cek…');
+  try {
+    const d = await api('/api/wa/status');
+    if (!d.enabled) { setDot('WA', false, 'WA: gateway belum diset'); setWAMsg('Gateway belum dikonfigurasi. Jalankan whatsapp gateway lalu isi Base URL.'); return; }
+    setDot('WA', !!d.connected, d.connected ? 'WhatsApp tersambung' : 'WA: belum login (scan QR)');
+    const s = d.gateway || {};
+    setWAMsg('Status: ' + (s.status||s.state||'—') + (d.error ? ' · error: '+d.error : ''));
+  } catch(e) { setDot('WA', false, 'WA: error'); setWAMsg('Gagal cek status: ' + e.message); }
+}
+
+async function waQR() {
+  const box = $('waQRBox');
+  box.classList.remove('hidden');
+  box.innerHTML = '<span class="hint">mengambil QR…</span>';
+  try {
+    const d = await api('/api/wa/qr');
+    const qr = d.qr || d.qr_code || d.qrcode || d.data_url || '';
+    if (!qr) { box.innerHTML = '<span class="hint">QR belum tersedia (status: '+esc(d.status||'—')+'). Pastikan gateway berjalan dan belum login.</span>'; return; }
+    const src = qr.startsWith('data:') ? qr : (qr.length > 400 ? 'data:image/png;base64,'+qr : 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(qr));
+    box.innerHTML = `<div class="tag">Scan dengan WhatsApp → Perangkat Tertaut</div><img src="${src}" style="width:220px;height:220px;background:#fff;border-radius:8px;margin-top:8px">`;
+  } catch(e) { box.innerHTML = '<span class="hint">Gagal ambil QR: '+esc(e.message)+'</span>'; }
+}
+
+async function waSend() {
+  const to = $('waTo').value.trim();
+  if (!to) { $('waTo').focus(); return; }
+  const msg = $('waMsg').value.trim() || sampleReport();
+  setWAMsg('mengirim…');
+  try {
+    const d = await api('/api/wa/send', {method:'POST', body: JSON.stringify({to, message: msg})});
+    setWAMsg(d.ok ? 'Terkirim ke ' + to : 'Gagal: ' + JSON.stringify(d.gateway||d));
+  } catch(e) { setWAMsg('Gagal kirim: ' + e.message); }
+}
+
+function sampleReport() {
+  return "*🛰️ NOC Sentinel — Laporan Diagnosis*\n\n*Target:* 8.8.8.8\n*Status:* ⚠️ DEGRADASI\n*Keyakinan:* 78%\n*Mesin:* llm (34.2s)\n\n*AKAR_MASALAH:* packet loss di uplink\n*REKOMENDASI:* cek uplink ke IX";
+}
+
+function esc(s){return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+function setDot(which, ok, text) {
+  $('dot'+which).className = 'dot ' + (ok ? 'on' : 'off');
+  $('txt'+which).textContent = text;
+}
+
+async function loadModels() {
+  try {
+    const d = await api('/api/models');
+    const cur = $('mdl').value || $('sModel').value;
+    const nice = ['ag/gemini','cx/gpt','grip/gpt','grip/deepseek','grip/glm','grip/qwen'];
+    const sorted = d.models.slice().sort((a,b)=>{
+      const ra = nice.findIndex(p=>a.startsWith(p)), rb = nice.findIndex(p=>b.startsWith(p));
+      return (ra<0?99:ra)-(rb<0?99:rb) || a.localeCompare(b);
+    });
+    $('mdl').innerHTML = sorted.map(m=>`<option${m===cur?' selected':''}>${m}</option>`).join('');
+  } catch(e) { $('mdl').innerHTML = '<option>'+esc($('sModel').value)+'</option>'; }
+}
+
+function toggleSettings(){ $('settings').classList.toggle('hidden'); }
+
+async function saveSettings() {
+  try {
+    const d = await api('/api/config', {method:'POST', body: JSON.stringify({
+      llm_base_url: $('sBase').value, llm_api_key: $('sKey').value || undefined,
+      llm_model: $('sModel').value, max_steps: parseInt($('sSteps').value,10)||undefined,
+      codex_model: $('sCodex').value
+    })});
+    $('setMsg').textContent = 'Tersimpan. Model aktif: ' + d.config.llm_model;
+    $('pillModel').textContent = 'model: ' + d.config.llm_model;
+    $('sKey').value = '';
+    await loadModels();
+  } catch(e){ $('setMsg').textContent = 'Gagal: ' + e.message; }
+}
+
+async function pingLLM() {
+  setDot('LLM', false, 'menguji…');
+  try {
+    const d = await api('/api/llm/ping');
+    setDot('LLM', true, `LLM OK (${d.latency_ms}ms · ${d.model})`);
+  } catch(e) { setDot('LLM', false, 'LLM gagal: ' + e.message.slice(0,80)); }
+}
+
+async function codexSelftest() {
+  setDot('Codex', false, 'Codex: menguji…');
+  try {
+    const d = await api('/api/codex', {method:'POST', body: JSON.stringify({task:'Balas persis: CODEX_OK'})});
+    setDot('Codex', d.ok, d.ok ? `Codex OK (${d.elapsed_ms}ms)` : 'Codex gagal: ' + (d.err||'').slice(0,60));
+    if (d.ok) addStep({kind:'answer', text:'Codex: ' + d.output});
+  } catch(e) { setDot('Codex', false, 'Codex error'); }
+}
+
+function addStep(s) {
+  const ul = $('steps');
+  if (ul.children.length===1 && /Menunggu/.test(ul.children[0].textContent)) ul.innerHTML='';
+  const li = document.createElement('li');
+  li.className = s.kind;
+  let head = s.kind.toUpperCase();
+  if (s.kind==='tool') head = `TOOL · ${esc(s.tool)} ${esc(s.target||'')} ${s.ok?'✔':'✘'} ${s.duration_ms||0}ms`;
+  if (s.kind==='escalate') head = 'ESKALASI KE CODEX';
+  li.innerHTML = `<div class="tag">${head}</div>`;
+  const txt = s.text || s.output || '';
+  if (txt) li.innerHTML += `<pre>${esc(txt)}</pre>`;
+  ul.appendChild(li);
+  ul.scrollTop = ul.scrollHeight;
+}
+
+function pickTool(name){ $('probeTarget').focus(); window._tool = name; }
+
+async function runProbe() {
+  const tool = window._tool || (tools[0] && tools[0].name) || 'ping';
+  const target = $('probeTarget').value.trim() || $('tgt').value.trim();
+  addStep({kind:'thought', text:`probe manual: ${tool} ${target}`});
+  try {
+    const r = await api('/api/diag', {method:'POST', body: JSON.stringify({tool, target})});
+    addStep({kind:'tool', tool:r.tool, target:r.target, output:r.output||r.err, ok:r.ok, duration_ms:r.duration_ms});
+  } catch(e) { addStep({kind:'error', text:e.message}); }
+}
+
+async function runDiag() {
+  const query = $('q').value.trim();
+  if (!query) { $('q').focus(); return; }
+  $('run').disabled = true;
+  $('steps').innerHTML = '';
+  $('answer').textContent = '';
+  $('vText').textContent = '…';
+  $('vMeta').textContent = 'sedang berjalan';
+  try {
+    const resp = await fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({query, target: $('tgt').value.trim(), stream:true})});
+    if (!resp.ok || !resp.body) throw new Error('HTTP '+resp.status);
+    const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = '';
+    while (true) {
+      const {value, done} = await reader.read(); if (done) break;
+      buf += dec.decode(value, {stream:true});
+      const parts = buf.split('\n\n'); buf = parts.pop();
+      for (const p of parts) {
+        const ev = (p.match(/^event: (.+)$/m)||[])[1];
+        const data = (p.match(/^data: ([\s\S]*)$/m)||[])[1];
+        if (!ev || !data) continue;
+        const obj = JSON.parse(data);
+        if (ev==='step') addStep(obj);
+        if (ev==='report') showReport(obj);
+      }
+    }
+  } catch(e) { addStep({kind:'error', text:e.message}); }
+  $('run').disabled = false;
+  refreshHistory();
+}
+
+function showReport(r) {
+  const v = $('vText');
+  v.textContent = r.verdict || 'TIDAK DIKETAHUI';
+  v.className = 'v ' + (r.verdict||'').replace(/ /g,'.');
+  const conf = r.confidence ? `${Math.round(r.confidence)}%` : '—';
+  $('vMeta').innerHTML = `target: <b>${esc(r.target||'—')}</b> · keyakinan: <b>${conf}</b> · engine: <b>${esc(r.engine)}</b>` +
+    (r.escalated?' · <span style="color:#a855f7">dieskalasi ke Codex</span>':'') + ` · ${r.elapsed_ms}ms` + (r.error?` · <span style="color:var(--bad)">${esc(r.error)}</span>`:'');
+  $('answer').textContent = r.answer || r.escalation || '';
+  $('pillModel').textContent = 'model: ' + $('sModel').value;
+}
+
+async function refreshHistory() {
+  try {
+    const rs = await api('/api/reports');
+    if (!rs.length) return;
+    $('hist').innerHTML = rs.slice(0,15).map(r=>`<tr>
+      <td>${new Date(r.started_at).toLocaleTimeString('id-ID')}</td>
+      <td>${esc(r.target||'—')}</td>
+      <td style="color:${r.verdict==='SEHAT'?'var(--ok)':r.verdict==='GANGGUAN'?'var(--bad)':'var(--warn)'}">${esc(r.verdict)}</td>
+      <td>${esc(r.engine)}</td><td>${r.elapsed_ms}</td></tr>`).join('');
+  } catch(e) {}
+}
+
+boot();
+setInterval(refreshHistory, 15000);
+</script>
+</body>
+</html>

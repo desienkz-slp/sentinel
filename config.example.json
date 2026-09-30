@@ -1,0 +1,21 @@
+{
+  "addr": ":8090",
+  "llm_base_url": "http://127.0.0.1:20128/v1",
+  "llm_model": "ag/gemini-3.8-flash-high",
+  "llm_timeout_sec": 120,
+  "max_steps": 8,
+  "codex_path": "codex",
+  "codex_model": "cx/gpt-5.6-terra",
+  "codex_sandbox": "danger-full-access",
+  "diag_timeout_sec": 30,
+  "org": "NetLayer",
+
+  "wa_base_url": "http://127.0.0.1:3001",
+  "wa_timeout_sec": 45,
+  "wa_allowlist": [],
+  "wa_auto_reply": true,
+  "wa_async": false,
+  "wa_autostart": true,
+  "wa_group": false,
+  "max_steps_note": "naikkan max_steps = naikkan juga timeout di wa-gateway/app/webhook.js"
+}

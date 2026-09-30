@@ -1,0 +1,17 @@
+# node_modules dibuat otomatis saat pertama kali dijalankan (npm install)
+wa-gateway/node_modules/
+
+# Kredensial sesi WhatsApp (JANGAN pernah di-commit — ini setara login akun Anda)
+data/
+wa-gateway/data/
+
+# Log runtime
+*.log
+server.log
+gateway.log
+
+# Binary hasil build
+bin/
+
+# Konfigurasi lokal
+config.json

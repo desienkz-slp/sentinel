@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI-NOC — WhatsApp Gateway Management</title>
+  <meta name="description" content="AI-NOC Sentinel Enterprise WhatsApp Gateway & Diagnostic Management Console">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Top Global Header -->
+  <header class="top-header">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-title">AI-NOC</span>
+        <span class="brand-subtitle">SENTINEL ORCHESTRATOR</span>
+      </div>
+    </div>
+
+    <!-- Navigation Hub -->
+    <nav class="nav-hub">
+      <a href="http://172.18.20.139:3000" target="_blank" class="nav-item">Overview</a>
+      <a href="/whatsapp" class="nav-item">Network</a>
+      <a href="/whatsapp" class="nav-item">Diagnostics</a>
+      <a href="/whatsapp" class="nav-item">Hermes</a>
+      <a href="/whatsapp" class="nav-item active">WhatsApp</a>
+      <a href="/whatsapp" class="nav-item">Android</a>
+      <a href="/whatsapp" class="nav-item">Baseline</a>
+      <a href="/whatsapp" class="nav-item">Learning</a>
+      <a href="http://172.18.20.139:5678" target="_blank" class="nav-item">n8n Engine</a>
+      <a href="http://172.18.20.139:9090" target="_blank" class="nav-item">System Health</a>
+    </nav>
+
+    <!-- Header Meta Info -->
+    <div class="header-meta">
+      <div class="server-badge">
+        <span class="badge-dot"></span>
+        <span>ai-noc-139</span>
+        <span class="ip-tag">172.18.20.139</span>
+      </div>
+      <div class="clock" id="live-clock">--:--:-- WIB</div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- Page Title & Top Action Bar -->
+    <div class="section-header">
+      <div>
+        <h1 class="page-title">WhatsApp Gateway Management</h1>
+        <p class="page-desc">Enterprise Multi-Device Gateway • Baileys Engine • n8n Webhook • Hermes Intent Bridge</p>
+      </div>
+      <div class="action-buttons">
+        <button id="btn-reconnect" class="btn btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Reconnect
+        </button>
+        <button id="btn-logout" class="btn btn-danger">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          Logout
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Grid Dashboard -->
+    <div class="dashboard-grid">
+
+      <!-- Column 1: Connection & QR Login -->
+      <div class="col-stack">
+        
+        <!-- Connection Status Card -->
+        <div class="card card-connection">
+          <div class="card-header">
+            <span class="card-label">GATEWAY CONNECTION</span>
+            <span id="badge-status" class="status-badge badge-connecting">
+              <span class="badge-pulse"></span>
+              <span id="text-status">CONNECTING...</span>
+            </span>
+          </div>
+
+          <div class="card-body">
+            <div class="session-hero">
+              <div class="phone-number" id="display-phone">Waiting for session...</div>
+              <div class="session-name" id="display-name">AI-NOC Sentinel</div>
+            </div>
+
+            <div class="session-meta-grid">
+              <div class="meta-item">
+                <span class="meta-label">Engine</span>
+                <span class="meta-value">Baileys Multi-Device v6.7</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Session ID</span>
+                <span class="meta-value" id="display-session">ai-noc</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Connected Since</span>
+                <span class="meta-value" id="display-connected-at">Not connected</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Uptime</span>
+                <span class="meta-value" id="display-uptime">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- QR Code Login Card (Dynamically shown when disconnected / auth required) -->
+        <div class="card card-qr" id="qr-container">
+          <div class="card-header">
+            <span class="card-label">WHATSAPP LOGIN (SCAN QR)</span>
+            <span class="qr-timer-badge" id="qr-timer-text">Refresh in --s</span>
+          </div>
+
+          <div class="card-body qr-body">
+            <div class="qr-wrapper">
+              <div id="qr-loading" class="qr-overlay">
+                <div class="spinner"></div>
+                <span>Generating WhatsApp QR...</span>
+              </div>
+              <img id="qr-image" class="qr-img" src="" alt="WhatsApp QR Code">
+            </div>
+
+            <div class="qr-progress-bar">
+              <div class="qr-progress-fill" id="qr-progress-fill"></div>
+            </div>
+
+            <div class="qr-instructions">
+              <ol>
+                <li>Buka WhatsApp di Smartphone Anda</li>
+                <li>Pilih <strong>Menu (⋮)</strong> atau <strong>Pengaturan</strong> &gt; <strong>Linked Devices (Perangkat Tertaut)</strong></li>
+                <li>Ketuk <strong>Tautkan Perangkat (Link a Device)</strong></li>
+                <li>Arahkan kamera smartphone ke kode QR di atas</li>
+              </ol>
+            </div>
+
+            <button id="btn-refresh-qr" class="btn btn-outline btn-block">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Refresh QR Code
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Column 2: Webhook, Messages & Diagnostics -->
+      <div class="col-stack">
+        
+        <!-- Webhook & Telemetry Status -->
+        <div class="card card-telemetry">
+          <div class="card-header">
+            <span class="card-label">INTEGRATION STATUS</span>
+            <span class="card-sublabel">n8n &amp; Hermes Pipeline</span>
+          </div>
+
+          <div class="telemetry-grid">
+            <div class="telemetry-box">
+              <span class="tel-label">n8n Webhook</span>
+              <div class="tel-status-row">
+                <span class="status-indicator-dot" id="dot-webhook"></span>
+                <span class="tel-value" id="val-webhook">Checking...</span>
+              </div>
+              <span class="tel-hint" id="val-webhook-url">http://127.0.0.1:5678/webhook/...</span>
+            </div>
+
+            <div class="telemetry-box">
+              <span class="tel-label">Hermes Intent Engine</span>
+              <div class="tel-status-row">
+                <span class="status-indicator-dot green"></span>
+                <span class="tel-value">ACTIVE (Port 8000)</span>
+              </div>
+              <span class="tel-hint">11 Intent Profiles Ready</span>
+            </div>
+
+            <div class="telemetry-box">
+              <span class="tel-label">PostgreSQL &amp; pgvector</span>
+              <div class="tel-status-row">
+                <span class="status-indicator-dot green"></span>
+                <span class="tel-value">CONNECTED (Port 5432)</span>
+              </div>
+              <span class="tel-hint">noc_sentinel database</span>
+            </div>
+
+            <div class="telemetry-box">
+              <span class="tel-label">Diagnostic Tools</span>
+              <div class="tel-status-row">
+                <span class="status-indicator-dot green"></span>
+                <span class="tel-value">OPERATIONAL</span>
+              </div>
+              <span class="tel-hint">Ping, DNS, TCP, HTTP, MTR</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent WhatsApp Messages Card -->
+        <div class="card card-messages">
+          <div class="card-header">
+            <span class="card-label">TRAFFIC STREAM</span>
+            <span class="card-sublabel">Inbound &amp; Outbound</span>
+          </div>
+
+          <div class="message-boxes">
+            <!-- Last Inbound -->
+            <div class="msg-box inbound">
+              <div class="msg-header">
+                <span class="msg-type-tag in-tag">LAST INCOMING MESSAGE</span>
+                <span class="msg-time" id="last-in-time">--</span>
+              </div>
+              <div class="msg-sender" id="last-in-sender">From: --</div>
+              <div class="msg-body" id="last-in-body">Belum ada pesan masuk.</div>
+            </div>
+
+            <!-- Last Outbound -->
+            <div class="msg-box outbound">
+              <div class="msg-header">
+                <span class="msg-type-tag out-tag">LAST OUTGOING REPORT</span>
+                <span class="msg-time" id="last-out-time">--</span>
+              </div>
+              <div class="msg-sender" id="last-out-to">To: --</div>
+              <div class="msg-body code-body" id="last-out-body">Belum ada pesan keluar.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive AI-NOC WhatsApp Command Tester -->
+        <div class="card card-tester">
+          <div class="card-header">
+            <span class="card-label">INTERACTIVE COMMAND SIMULATOR</span>
+            <span class="card-sublabel">Test Hermes &amp; Diagnostic Pipeline</span>
+          </div>
+
+          <div class="card-body">
+            <p class="tester-intro">
+              Kirim simulasi pesan WhatsApp operator langsung ke pipeline AI-NOC untuk memverifikasi eksekusi diagnosis real-time:
+            </p>
+
+            <div class="quick-tags">
+              <button class="quick-btn" data-query="Cek internet">Cek internet</button>
+              <button class="quick-btn" data-query="Internet saya lambat">Internet saya lambat</button>
+              <button class="quick-btn" data-query="Tes DNS">Tes DNS</button>
+              <button class="quick-btn" data-query="Tes ping">Tes ping</button>
+              <button class="quick-btn" data-query="Full test internet">Full test internet</button>
+              <button class="quick-btn" data-query="Bandingkan dengan kemarin">Bandingkan dengan kemarin</button>
+            </div>
+
+            <div class="sim-input-row">
+              <input type="text" id="sim-query-input" placeholder="Ketik perintah WhatsApp (contoh: Cek internet)..." value="Cek internet">
+              <button id="btn-run-sim" class="btn btn-primary">
+                <span id="btn-sim-text">Kirim &amp; Diagnosa</span>
+                <div class="spinner-small hide" id="sim-spinner"></div>
+              </button>
+            </div>
+
+            <!-- Simulation Result Box -->
+            <div class="sim-result-box hide" id="sim-result-container">
+              <div class="sim-result-header">
+                <span id="sim-result-title">HASIL LAPORAN DIAGNOSIS</span>
+                <span id="sim-result-intent" class="intent-badge">INTENT: --</span>
+              </div>
+              <pre class="sim-result-content" id="sim-result-text"></pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Security & Live Audit Logs -->
+    <div class="card card-logs">
+      <div class="card-header">
+        <span class="card-label">SECURITY &amp; AUDIT LOGS</span>
+        <span class="card-sublabel">Sanitized • Zero Plaintext Credentials</span>
+      </div>
+      <div class="logs-terminal" id="logs-terminal">
+        <div class="log-line text-muted">[System] Initializing WhatsApp audit log stream...</div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div>AI-NOC Sentinel — Enterprise Network Operations Center AI Automation System</div>
+    <div>Strict Evidence-Based Diagnostics • Baileys Multi-Device Integration</div>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

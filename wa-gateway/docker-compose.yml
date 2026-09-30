@@ -1,0 +1,35 @@
+services:
+  noc-whatsapp:
+    build: .
+    container_name: noc-whatsapp
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+      - "80:3001"
+    environment:
+      - PORT=3001
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=noc_sentinel
+      - DB_USER=noc_admin
+      - DB_PASS=noc_sentinel_secret_2026
+      - N8N_WEBHOOK_URL=http://noc-n8n:5678/webhook/whatsapp-inbound
+      - ORCHESTRATOR_URL=http://172.18.20.139:8000/pipeline/whatsapp
+      - AUTH_DIR=/app/data/auth
+    volumes:
+      - ./app:/app/app
+      - ./public:/app/public
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - noc_internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3001/api/whatsapp/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  noc_internal:
+    external: true
