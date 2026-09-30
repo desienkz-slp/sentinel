@@ -129,7 +129,7 @@ func TestKredensialLengkap(t *testing.T) {
 		isi     string
 		harusOK bool
 	}{
-		{"tertaut (registered false)", `{"registered":false,"me":{"id":"6281333678765:79@s.whatsapp.net"}}`, true},
+		{"tertaut (registered false)", `{"registered":false,"me":{"id":"628000000000:79@s.whatsapp.net"}}`, true},
 		{"tertaut dengan registered true", `{"registered":true,"me":{"id":"628@s.whatsapp.net"}}`, true},
 		{"belum tertaut", `{"registered":false,"me":null}`, false},
 		{"me tanpa id", `{"me":{"id":""}}`, false},
@@ -161,7 +161,7 @@ func TestStatusReportsCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(authDir, "creds.json"),
-		[]byte(`{"me":{"id":"6281333678765:79@s.whatsapp.net"}}`), 0o644); err != nil {
+		[]byte(`{"me":{"id":"628000000000:79@s.whatsapp.net"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if st := m.Status(context.Background()); !st.Kredensial {

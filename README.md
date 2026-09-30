@@ -248,7 +248,7 @@ bukan di gateway, supaya bisa diubah tanpa restart.
 Pesan grup yang diabaikan tetap dicatat di log:
 
 ```
-[WA] diabaikan (pesan grup): 120363427487304722@g.us
+[WA] diabaikan (pesan grup): 120363000000000000@g.us
 ```
 
 Kalau ingin grup internal tertentu ikut diproses (mis. grup NOC tempat operator

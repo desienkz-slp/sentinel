@@ -71,8 +71,8 @@ func TestIdentityPrefersChatID(t *testing.T) {
 // grup hanya karena kebetulan mengandung "g" atau "us".
 func TestIsGroup(t *testing.T) {
 	grup := [][2]string{
-		{"120363427487304722@g.us", "221109916045399"},
-		{"120363427487304722@g.us", "221109916045399@g.us"},
+		{"120363000000000000@g.us", "628111222333"},
+		{"120363000000000000@g.us", "628111222333@g.us"},
 		{"123@g.us", ""},
 		{"", "123@g.us"},
 	}
