@@ -30,6 +30,16 @@ func TestParseVerdict(t *testing.T) {
 			"TIDAK DIKETAHUI", 0,
 		},
 		{
+			"jawaban tanpa pengecekan (sapaan)",
+			"Halo! Ada yang bisa saya bantu terkait jaringan Anda?",
+			"TIDAK DIKETAHUI", 0,
+		},
+		{
+			"minta perjelas",
+			"Maaf, bisakah Anda jelaskan gangguan yang dialami?",
+			"TIDAK DIKETAHUI", 0,
+		},
+		{
 			"verdict di tengah kalimat",
 			"Berdasarkan bukti, VERDICT: SEHAT dan KEYAKINAN: 88",
 			"SEHAT", 88,
@@ -48,18 +58,24 @@ func TestParseVerdict(t *testing.T) {
 	}
 }
 
-func TestExtractTarget(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"cek ke 8.8.8.8 dong", "8.8.8.8"},
-		{"internet lambat, target google.com", "google.com"},
-		{"tolong cek pelanggan.net:443", "pelanggan.net:443"},
-		{"tidak ada target di sini", ""},
-		{"ping -c 4 8.8.8.8", "8.8.8.8"}, // flag diabaikan
+// probedTarget mengambil target dari langkah tool pertama — dipakai agar riwayat
+// menampilkan alamat yang benar-benar dicek meski pengirim tidak menyebutkannya.
+func TestProbedTarget(t *testing.T) {
+	if got := probedTarget(nil); got != "" {
+		t.Errorf("probedTarget(nil) = %q, mau kosong", got)
 	}
-	for _, c := range cases {
-		if got := extractTarget(c.in); got != c.want {
-			t.Errorf("extractTarget(%q) = %q, mau %q", c.in, got, c.want)
-		}
+	steps := []Step{
+		{Kind: "thought", Text: "menganalisis"},
+		{Kind: "tool", Tool: "ping", Target: "192.168.1.1"},
+		{Kind: "tool", Tool: "dns", Target: "google.com"},
+	}
+	if got := probedTarget(steps); got != "192.168.1.1" {
+		t.Errorf("probedTarget = %q, mau 192.168.1.1", got)
+	}
+	// Langkah tanpa target (interface/system) harus dilewati, bukan dianggap target.
+	noTarget := []Step{{Kind: "tool", Tool: "interface"}, {Kind: "tool", Tool: "ping", Target: "8.8.8.8"}}
+	if got := probedTarget(noTarget); got != "8.8.8.8" {
+		t.Errorf("probedTarget = %q, mau 8.8.8.8", got)
 	}
 }
 

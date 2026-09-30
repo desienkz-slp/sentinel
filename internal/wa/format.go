@@ -16,6 +16,10 @@ type ReportView struct {
 	ElapsedMS  int64
 	Escalated  bool
 	Answer     string
+	// IsChat menandai balasan tanpa pengecekan (sapaan, pertanyaan umum, minta
+	// perjelas). Pesan seperti ini TIDAK boleh dibungkus sebagai laporan diagnosis
+	// dengan status "TIDAK DIKETAHUI" — cukup dikirim sebagai obrolan biasa.
+	IsChat bool
 }
 
 const maxWALen = 3500 // batas aman sebelum WhatsApp memotong pesan
@@ -41,6 +45,12 @@ func VerdictEmoji(v string) string {
 
 // FormatReport menyusun pesan laporan diagnosis untuk WhatsApp.
 func FormatReport(v ReportView) string {
+	// Balasan obrolan (tanpa pengecekan) dikirim apa adanya — tanpa header
+	// laporan dan tanpa status, karena memang bukan hasil diagnosis.
+	if v.IsChat {
+		return truncateWALen(strings.TrimSpace(v.Answer))
+	}
+
 	var b strings.Builder
 
 	verdict := strings.ToUpper(strings.TrimSpace(v.Verdict))
@@ -64,10 +74,15 @@ func FormatReport(v ReportView) string {
 	}
 
 	out := strings.TrimSpace(b.String())
-	if len(out) > maxWALen {
-		out = out[:maxWALen] + "\n\n_… pesan dipotong, buka dashboard untuk detail._"
+	return truncateWALen(out)
+}
+
+// truncateWALen memotong pesan agar tidak melewati batas aman WhatsApp.
+func truncateWALen(s string) string {
+	if len(s) > maxWALen {
+		return s[:maxWALen] + "\n\n_… pesan dipotong, buka dashboard untuk detail._"
 	}
-	return out
+	return s
 }
 
 // formatBody mengubah jawaban terstruktur model menjadi teks ramah WhatsApp.

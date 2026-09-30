@@ -73,6 +73,51 @@ Gateway mengirim field "reply" kembali ke chat  ◄── perilaku bawaan webhoo
 
 ---
 
+## Cara berpikir agen (bertahap, bukan seragam)
+
+Agen **tidak** menjalankan semua probe untuk setiap pesan. Alurnya:
+
+```
+Pesan masuk
+   │
+   ├─ TAHAP 1 — PAHAMI: apa keluhannya? perlu dicek sama sekali?
+   │     sapaan / pertanyaan umum / broadcast  → jawab langsung, TANPA tool
+   │     target tidak jelas                    → tanya balik, TANPA probe buta
+   │     keluhan nyata                         → lanjut
+   │
+   ├─ TAHAP 2 — CEK SESUAI KELUHAN (1-3 probe saja, yang relevan)
+   │     "lambat"              → ping (latensi & loss), lalu http/tcp
+   │     "tidak bisa buka situs" → dns, lalu http
+   │     "mati total"          → ping gateway lokal, baru ping publik
+   │     "putus-nyambung"      → ping paket banyak, lalu traceroute
+   │     "wifi lemah"          → interface, lalu ping gateway
+   │     "PPPoE/RADIUS gagal"  → radius, lalu service
+   │
+   └─ TAHAP 3 — SIMPULKAN (VERDICT/KEYAKINAN/BUKTI/REKOMENDASI)
+```
+
+Balasan menyesuaikan jenis pesan:
+
+| Pesan | Yang dilakukan | Yang diterima pengirim |
+|---|---|---|
+| "halo" | tidak ada pengecekan | obrolan biasa, tanpa header laporan |
+| "tahlil kan ?" (tidak jelas) | tidak ada pengecekan | minta perjelas keluhan |
+| broadcast "STATUS USER…" | tidak ada pengecekan | diakui singkat |
+| "internet lambat sejak pagi" | agen **memilih sendiri** target & probe | laporan diagnosis lengkap |
+| "cek ke 8.8.8.8" | target dipakai apa adanya | laporan diagnosis lengkap |
+
+Kalau pengirim tidak menyebut target, agen yang menentukan alamat mana yang masuk akal untuk
+keluhan itu — dan laporan menampilkan alamat yang **benar-benar dicek**, bukan tanda "—".
+
+**Riwayat di dashboard** menandai balasan tanpa pengecekan sebagai `CHAT` (bukan
+`TIDAK DIKETAHUI`) supaya tidak terlihat seperti diagnosis yang gagal.
+
+> Sebelumnya sistem ini **memukul rata**: pesan seperti `"tahlil kan ?"` memicu 9 probe
+> (`interface`, `ping`×3, `dns`, `system`, `service`×2, `http`) ke alamat yang tidak diminta,
+> lalu mencoba eskalasi ke Codex. Fungsi penebak target otomatis sudah dihapus.
+
+---
+
 ## Kebutuhan sistem
 
 | Kebutuhan | Versi | Wajib? | Untuk apa |

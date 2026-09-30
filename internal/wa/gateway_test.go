@@ -141,6 +141,24 @@ func TestFormatReport(t *testing.T) {
 	}
 }
 
+func TestFormatReportChat(t *testing.T) {
+	// Balasan obrolan harus dikirim apa adanya: tanpa header laporan, tanpa
+	// status "TIDAK DIKETAHUI", tanpa metrik mesin.
+	msg := FormatReport(ReportView{
+		IsChat: true, Verdict: "TIDAK DIKETAHUI", Engine: "llm (tanpa pengecekan)",
+		Answer: "Halo! Ada yang bisa saya bantu terkait kendala jaringan Anda?",
+	})
+	if strings.Contains(msg, "Laporan Diagnosis") {
+		t.Errorf("balasan chat tidak boleh berheader laporan:\n%s", msg)
+	}
+	if strings.Contains(msg, "TIDAK DIKETAHUI") || strings.Contains(msg, "Target:") {
+		t.Errorf("balasan chat tidak boleh memuat status/target:\n%s", msg)
+	}
+	if !strings.Contains(msg, "Halo! Ada yang bisa saya bantu") {
+		t.Errorf("isi balasan hilang:\n%s", msg)
+	}
+}
+
 func TestFormatReportTruncates(t *testing.T) {
 	long := strings.Repeat("gangguan pada segmen uplink. ", 400)
 	msg := FormatReport(ReportView{Target: "x", Verdict: "GANGGUAN", Answer: long})

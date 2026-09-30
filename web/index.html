@@ -50,7 +50,8 @@
     background:#0a0f15;border:1px solid #172230;border-radius:8px;padding:8px}
   .verdict{border-radius:12px;padding:14px;border:1px solid var(--line);background:var(--panel2);margin-bottom:12px}
   .verdict .v{font:700 20px/1.2 var(--mono)}
-  .v.SEHAT{color:var(--ok)} .v.DEGRADASI{color:var(--warn)} .v.GANGGUAN{color:var(--bad)} .v\.TIDAK{color:var(--dim)}
+  .v.SEHAT{color:var(--ok)} .v.DEGRADASI{color:var(--warn)} .v.GANGGUAN{color:var(--bad)}
+  .v.CHAT{color:var(--acc);font-size:15px;font-weight:600}
   .meta{font:12px/1.6 var(--mono);color:var(--dim);margin-top:6px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -450,11 +451,18 @@ async function runDiag() {
 
 function showReport(r) {
   const v = $('vText');
-  v.textContent = r.verdict || 'TIDAK DIKETAHUI';
-  v.className = 'v ' + (r.verdict||'').replace(/ /g,'.');
+  // Tanpa pengecekan (sapaan/pertanyaan umum/minta perjelas) bukan diagnosis —
+  // tampilkan sebagai obrolan biasa, jangan seolah gagal mendiagnosis.
+  const tanpaCek = /tanpa pengecekan/.test(r.engine || '');
+  const label = tanpaCek ? 'CHAT' : (r.verdict || 'TIDAK DIKETAHUI');
+  v.textContent = label;
+  v.className = 'v ' + label.replace(/ /g, '.');
   const conf = r.confidence ? `${Math.round(r.confidence)}%` : '—';
-  $('vMeta').innerHTML = `target: <b>${esc(r.target||'—')}</b> · keyakinan: <b>${conf}</b> · engine: <b>${esc(r.engine)}</b>` +
-    (r.escalated?' · <span style="color:#a855f7">dieskalasi ke Codex</span>':'') + ` · ${r.elapsed_ms}ms` + (r.error?` · <span style="color:var(--bad)">${esc(r.error)}</span>`:'');
+  $('vMeta').innerHTML = `target: <b>${esc(r.target||'—')}</b>` +
+    (tanpaCek ? '' : ` · keyakinan: <b>${conf}</b>`) +
+    ` · engine: <b>${esc(r.engine)}</b>` +
+    (r.escalated?' · <span style="color:#a855f7">dieskalasi ke Codex</span>':'') +
+    ` · ${r.elapsed_ms}ms` + (r.error?` · <span style="color:var(--bad)">${esc(r.error)}</span>`:'');
   $('answer').textContent = r.answer || r.escalation || '';
   $('pillModel').textContent = 'model: ' + $('sModel').value;
 }
@@ -466,7 +474,7 @@ async function refreshHistory() {
     $('hist').innerHTML = rs.slice(0,15).map(r=>`<tr>
       <td>${new Date(r.started_at).toLocaleTimeString('id-ID')}</td>
       <td>${esc(r.target||'—')}</td>
-      <td style="color:${r.verdict==='SEHAT'?'var(--ok)':r.verdict==='GANGGUAN'?'var(--bad)':'var(--warn)'}">${esc(r.verdict)}</td>
+      <td style="color:${/tanpa pengecekan/.test(r.engine||'')?'var(--acc)':r.verdict==='SEHAT'?'var(--ok)':r.verdict==='GANGGUAN'?'var(--bad)':'var(--warn)'}">${/tanpa pengecekan/.test(r.engine||'')?'CHAT':esc(r.verdict)}</td>
       <td>${esc(r.engine)}</td><td>${r.elapsed_ms}</td></tr>`).join('');
   } catch(e) {}
 }

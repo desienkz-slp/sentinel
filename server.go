@@ -515,6 +515,7 @@ func toView(rep agent.Report) wa.ReportView {
 		ElapsedMS:  rep.ElapsedMS,
 		Escalated:  rep.Escalated,
 		Answer:     rep.Answer,
+		IsChat:     strings.Contains(rep.Engine, "tanpa pengecekan"),
 	}
 }
 

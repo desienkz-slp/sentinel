@@ -64,21 +64,45 @@ func New(cfg *config.Config, client *llm.Client, runner *diag.Runner, esc Escala
 }
 
 const systemPrompt = `Anda adalah "NOC Sentinel", asisten NOC (Network Operations Center) untuk ISP.
-Tugas Anda mendiagnosis gangguan jaringan secara metodis.
+Anda menerima pesan apa pun dari pelanggan atau teknisi lewat WhatsApp.
 
-ATURAN KETAT:
-1. Gunakan tool diagnostik untuk MENGUMPULKAN BUKTI sebelum menyimpulkan. Jangan menebak.
-2. Mulai dari lapisan bawah: konektivitas dasar (ping) -> DNS -> TCP/HTTP -> jalur (traceroute) -> layanan spesifik (radius/service).
-3. Pilih maksimal 1 tool per langkah, dan hanya tool dari daftar yang tersedia.
-4. Setelah bukti cukup, jawab dengan format PERSIS seperti ini:
+CARA BERPIKIR — WAJIB BERTAHAP:
+
+TAHAP 1 — PAHAMI DULU (jangan langsung cek).
+Baca pesan dan tentukan: apa keluhannya, dan apakah perlu pengecekan teknis sama sekali.
+  - Sapaan, terima kasih, atau pertanyaan umum -> JAWAB LANGSUNG. JANGAN pakai tool apa pun.
+  - Pesan informasi / broadcast otomatis (laporan status sistem) -> akui singkat. JANGAN pakai tool.
+  - Keluhan gangguan nyata -> lanjut ke TAHAP 2.
+  - Target tidak jelas dan tidak bisa disimpulkan dari pesan -> TANYA BALIK ke pengirim.
+    Jangan melakukan probe buta ke alamat yang tidak diminta.
+
+TAHAP 2 — CEK SESUAI KELUHAN (hanya yang relevan).
+Jalankan HANYA tool yang benar-benar menguji dugaan Anda atas keluhan itu.
+  - JANGAN menjalankan probe seragam untuk semua pesan.
+  - Cukup 1-3 probe. Begitu bukti cukup untuk menyimpulkan, BERHENTI.
+  - Jangan mengulang kombinasi tool+target yang sudah dijalankan.
+  - Pemetaan keluhan -> probe yang tepat:
+      "lambat" / "lelet"          -> ping (latensi & loss), lalu http atau tcp
+      "tidak bisa buka situs"     -> dns, lalu http
+      "mati total" / "tidak konek"-> ping ke gateway lokal dulu, baru ping publik
+      "putus nyambung" / "kedip"  -> ping dengan paket lebih banyak, lalu traceroute
+      "wifi lemah" / perangkat    -> interface, lalu ping ke gateway lokal
+      "login/PPPoE/RADIUS gagal"  -> radius, lalu service
+      "email/website tertentu"    -> dns, lalu http ke domain itu
+
+TAHAP 3 — SIMPULKAN.
+Bila Anda melakukan pengecekan, jawab dengan format PERSIS:
    VERDICT: <SEHAT|DEGRADASI|GANGGUAN|TIDAK DIKETAHUI>
    KEYAKINAN: <0-100>
    AKAR_MASALAH: <satu kalimat>
    BUKTI: <poin bukti dari hasil tool>
-   REKOMENDASI: <langkah perbaikan konkret untuk teknisi, 1-3 poin>
-5. Jika bukti menunjukkan masalah di luar jangkauan tool (mis. butuh ubah konfigurasi router/OLT),
-   tetap simpulkan dan tandai rekomendasi sebagai tindakan manual.
-6. Jawab dalam Bahasa Indonesia, ringkas dan operasional.`
+   REKOMENDASI: <langkah perbaikan konkret, 1-3 poin>
+
+Bila Anda TIDAK melakukan pengecekan (sapaan/pertanyaan umum/informasi), cukup balas singkat dan
+ramah dalam Bahasa Indonesia — TANPA format VERDICT di atas.
+
+Catatan: bila bukti menunjukkan masalah di luar jangkauan tool (mis. perlu ubah konfigurasi
+router/OLT), tetap simpulkan dan tandai rekomendasi sebagai tindakan manual.`
 
 // Run menjalankan satu sesi diagnosis penuh (tanpa streaming).
 func (e *Engine) Run(ctx context.Context, query, target string) Report {
@@ -102,15 +126,15 @@ func (e *Engine) RunWith(ctx context.Context, query, target string, emit func(St
 			emit(s)
 		}
 	}
-	if target == "" {
-		target = extractTarget(query)
-		rep.Target = target
-	}
-
+	// Target TIDAK ditebak dari pesan. Sebelumnya sistem mengekstrak alamat apa pun
+	// yang mirip host dari teks bebas, lalu memakainya untuk probe — itu membuat
+	// pesan seperti "tahlil kan ?" memicu pengecekan ke alamat yang tidak diminta.
+	// Sekarang target hanya dipakai bila operator/pelanggan menyebutkannya secara
+	// eksplisit; selebihnya agen yang memutuskan (termasuk bertanya balik).
 	msgs := []llm.Message{{Role: "system", Content: systemPrompt}}
 	user := query
 	if target != "" {
-		user += fmt.Sprintf("\n\nTarget utama: %s", target)
+		user += fmt.Sprintf("\n\nTarget yang disebut pengirim: %s", target)
 	}
 	msgs = append(msgs, llm.Message{Role: "user", Content: user})
 
@@ -161,19 +185,57 @@ func (e *Engine) RunWith(ctx context.Context, query, target string, emit func(St
 	rep.Answer, rep.Verdict, rep.Confidence = parseVerdict(rep.Answer)
 	rep.ElapsedMS = time.Since(start).Milliseconds()
 
-	// Eskalasi ke Codex bila keyakinan rendah atau veredikt tidak jelas.
+	// Bila agen menjawab tanpa pengecekan (sapaan, pertanyaan umum, minta perjelas),
+	// jangan eskalasi ke Codex — tidak ada yang perlu dianalisis dan verdict memang kosong.
+	// Eskalasi hanya berguna ketika ada bukti probe yang belum terjelaskan.
+	if len(usedTools) == 0 {
+		rep.Engine = "llm (tanpa pengecekan)"
+		if rep.Target == "" {
+			rep.Target = probedTarget(rep.Steps)
+		}
+		e.simpan(rep)
+		return rep
+	}
+
+	// Eskalasi ke Codex bila keyakinan rendah atau verdict tidak jelas.
 	if e.shouldEscalate(rep, usedTools) {
 		e.escalate(ctx, &rep)
 	}
 
+	// Bila pengirim tidak menyebut target, tampilkan alamat yang benar-benar dicek
+	// agar laporan tidak menampilkan "Target: —" padahal ada probe yang dijalankan.
+	if rep.Target == "" {
+		rep.Target = probedTarget(rep.Steps)
+	}
+
+	e.simpan(rep)
+	return rep
+}
+
+// simpan menyimpan laporan ke riwayat (dipakai kedua jalur keluar RunWith).
+func (e *Engine) simpan(rep Report) {
 	e.mu.Lock()
 	e.reports = append(e.reports, rep)
 	if len(e.reports) > 200 {
 		e.reports = e.reports[len(e.reports)-200:]
 	}
 	e.mu.Unlock()
-	return rep
 }
+
+// probedTarget mengembalikan target pertama yang benar-benar dicek agen,
+// supaya riwayat menampilkan alamat nyata meski pengirim tidak menyebutkannya.
+func probedTarget(steps []Step) string {
+	for _, s := range steps {
+		if s.Kind == "tool" && s.Target != "" {
+			return s.Target
+		}
+	}
+	return ""
+}
+
+// Catatan: fungsi extractTarget() dihapus. Menebak alamat dari teks bebas membuat
+// pesan yang tidak meminta pengecekan (mis. "tahlil kan ?") ikut memicu probe ke
+// alamat yang tidak diminta. Keputusan target kini sepenuhnya milik agen.
 
 func (e *Engine) shouldEscalate(rep Report, used map[string]int) bool {
 	if e.Codex == nil || !e.Codex.Available() {
@@ -294,27 +356,7 @@ func firstString(m map[string]any, keys ...string) string {
 	return ""
 }
 
-// extractTarget menebak target jaringan dari pertanyaan bebas.
-// Kandidat harus terlihat seperti host/IP (punya titik atau titik dua),
-// supaya angka biasa seperti "4" pada "ping -c 4" tidak ikut terambil.
-func extractTarget(q string) string {
-	fields := strings.FieldsFunc(q, func(r rune) bool {
-		return r == ' ' || r == ',' || r == '\n' || r == '	' || r == '"' || r == '\''
-	})
-	for _, f := range fields {
-		c := strings.Trim(f, ".,;:()[]?!")
-		if c == "" || strings.HasPrefix(c, "-") {
-			continue
-		}
-		if !strings.ContainsAny(c, ".:") {
-			continue
-		}
-		if diag.Allowed(c) {
-			return c
-		}
-	}
-	return ""
-}
+// extractTarget dihapus — lihat catatan di atas tentang alasan penghapusannya.
 
 // Reports mengembalikan riwayat (terbaru dulu).
 func (e *Engine) Reports() []Report {
