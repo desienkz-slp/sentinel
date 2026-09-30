@@ -1,6 +1,9 @@
 package agent
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseVerdict(t *testing.T) {
 	cases := []struct {
@@ -111,4 +114,53 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// PisahBalasan memisahkan teks pelanggan dari ringkasan teknis. Ini yang
+// mencegah pelanggan menerima "VERDICT:"/"BUKTI:" mentah.
+func TestPisahBalasan(t *testing.T) {
+	answer := "BALASAN: Halo Pak, koneksi dari kami normal ya.\n" +
+		"Coba cabut pasang ONT di rumah.\n\n" +
+		"VERDICT: DEGRADASI\nKEYAKINAN: 78\nAKAR_MASALAH: packet loss di uplink\nBUKTI: ping loss 12%"
+
+	balasan, teknis := PisahBalasan(answer)
+
+	if !strings.Contains(balasan, "Halo Pak") || !strings.Contains(balasan, "cabut pasang ONT") {
+		t.Errorf("balasan pelanggan tidak lengkap: %q", balasan)
+	}
+	// Label dan ringkasan teknis TIDAK boleh ikut ke pelanggan.
+	for _, jangan := range []string{"BALASAN:", "VERDICT:", "KEYAKINAN:", "BUKTI:", "packet loss"} {
+		if strings.Contains(balasan, jangan) {
+			t.Errorf("balasan pelanggan memuat %q: %q", jangan, balasan)
+		}
+	}
+	// Ringkasan teknis harus terpisah dan lengkap.
+	for _, wajib := range []string{"VERDICT: DEGRADASI", "KEYAKINAN: 78", "packet loss"} {
+		if !strings.Contains(teknis, wajib) {
+			t.Errorf("ringkasan teknis kehilangan %q: %q", wajib, teknis)
+		}
+	}
+}
+
+// Tanpa format BALASAN, jawaban tetap aman: label teknis dibuang.
+func TestPisahBalasanTanpaFormat(t *testing.T) {
+	answer := "Koneksi dari kami normal ya Pak.\nVERDICT: SEHAT\nBUKTI: ping 28ms"
+	balasan, teknis := PisahBalasan(answer)
+	if strings.Contains(balasan, "VERDICT") || strings.Contains(balasan, "BUKTI") {
+		t.Errorf("label teknis bocor: %q", balasan)
+	}
+	if !strings.Contains(balasan, "Koneksi dari kami normal") {
+		t.Errorf("isi balasan hilang: %q", balasan)
+	}
+	if !strings.Contains(teknis, "VERDICT: SEHAT") {
+		t.Errorf("ringkasan teknis hilang: %q", teknis)
+	}
+}
+
+// Jawaban kosong tidak boleh panic.
+func TestPisahBalasanKosong(t *testing.T) {
+	b, tk := PisahBalasan("")
+	if b != "" || tk != "" {
+		t.Errorf("jawaban kosong -> (%q, %q), mau kosong", b, tk)
+	}
 }

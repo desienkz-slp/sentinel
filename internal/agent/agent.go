@@ -379,7 +379,13 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	}
 
 	// Pisahkan: teks untuk pelanggan vs ringkasan teknis untuk sistem.
-	rep.Balasan, _ = PisahBalasan(rep.Answer)
+	// Answer disimpan sebagai RINGKASAN TEKNIS saja (tanpa teks pelanggan dan
+	// tanpa label "BALASAN:") supaya dashboard tidak menampilkan teks campur.
+	balasan, teknis := PisahBalasan(rep.Answer)
+	rep.Balasan = balasan
+	if strings.TrimSpace(teknis) != "" {
+		rep.Answer = strings.TrimSpace(teknis)
+	}
 	rep.Answer, rep.Verdict, rep.Confidence = parseVerdict(rep.Answer)
 	if rep.Balasan == "" {
 		rep.Balasan = rep.Answer // fallback: jangan pernah kosong
@@ -558,49 +564,73 @@ func oneLine(s string) string {
 var (
 	verdictRe = regexp.MustCompile(`(?i)VERDICT\s*[:=]\s*([^\n]{0,80})`)
 	confRe    = regexp.MustCompile(`(?i)KEYAKINAN\s*[:=]\s*([0-9]+(?:[.,][0-9]+)?)\s*%?`)
-	// balasanRe mengambil bagian "BALASAN:" — yaitu teks yang dibaca pelanggan,
-	// terpisah dari ringkasan teknis (VERDICT/BUKTI) yang hanya untuk sistem.
-	balasanRe = regexp.MustCompile(`(?is)BALASAN\s*[:=]\s*(.+?)(?:\n\s*\n\s*VERDICT|\n\s*VERDICT\s*[:=]|$)`)
-	// pembukaRe untuk membuang label format dari teks pelanggan.
+	// labelStripRe membuang label format dari teks pelanggan.
 	labelStripRe = regexp.MustCompile(`(?im)^\s*(BALASAN|VERDICT|KEYAKINAN|AKAR_MASALAH|BUKTI|REKOMENDASI)\s*[:=]\s*`)
-	verdictWords = []string{"TIDAK DIKETAHUI", "SEHAT", "DEGRADASI", "GANGGUAN"}
+	// labelTeknisRe mengenali baris awal blok ringkasan teknis.
+	labelTeknisRe = regexp.MustCompile(`(?im)^\s*(VERDICT|KEYAKINAN|AKAR_MASALAH|BUKTI)\s*[:=]`)
+	verdictWords  = []string{"TIDAK DIKETAHUI", "SEHAT", "DEGRADASI", "GANGGUAN"}
 )
 
 // PisahBalasan memisahkan jawaban model menjadi dua bagian:
 //   - balasan: teks untuk pelanggan (bahasa manusia)
 //   - teknis : ringkasan VERDICT/KEYAKINAN/AKAR_MASALAH/BUKTI untuk sistem
 //
+// Dipisah berbasis BARIS (bukan satu regex besar) karena Go's RE2 tidak
+// mendukung lookahead — pendekatan regex tunggal akan ikut memakan kata
+// "VERDICT" di awal blok teknis.
+//
 // Bila model tidak memakai format "BALASAN:", seluruh jawaban dianggap balasan
-// pelanggan (dengan label teknis dibuang), supaya perilakunya tetap aman.
+// pelanggan dengan baris teknis dibuang, supaya perilakunya tetap aman.
 func PisahBalasan(answer string) (balasan, teknis string) {
 	answer = strings.TrimSpace(answer)
 	if answer == "" {
 		return "", ""
 	}
-	if m := balasanRe.FindStringSubmatch(answer); m != nil {
-		balasan = strings.TrimSpace(m[1])
-		// Buang label yang mungkin masih menempel.
-		balasan = labelStripRe.ReplaceAllString(balasan, "")
-		balasan = strings.TrimSpace(balasan)
-		// Sisa setelah blok BALASAN dianggap bagian teknis.
-		if i := strings.Index(answer, m[0]); i >= 0 {
-			teknis = strings.TrimSpace(answer[i+len(m[0]):])
+	lines := strings.Split(answer, "\n")
+
+	// Cari awal blok teknis: baris pertama yang diawali label teknis.
+	teknisStart := -1
+	for i, ln := range lines {
+		if labelTeknisRe.MatchString(ln) {
+			teknisStart = i
+			break
 		}
-		return balasan, teknis
 	}
-	// Tanpa format BALASAN: pakai seluruh jawaban, tapi buang baris teknis
-	// supaya pelanggan tidak menerima "VERDICT: ..." mentah.
-	var lines []string
-	for _, ln := range strings.Split(answer, "\n") {
-		t := strings.TrimSpace(ln)
-		u := strings.ToUpper(t)
-		if strings.HasPrefix(u, "VERDICT") || strings.HasPrefix(u, "KEYAKINAN") ||
-			strings.HasPrefix(u, "AKAR_MASALAH") || strings.HasPrefix(u, "BUKTI") {
-			continue
+
+	// Cari awal blok balasan (baris "BALASAN:"), bila ada.
+	balasanStart := -1
+	for i, ln := range lines {
+		if i == teknisStart {
+			break
 		}
-		lines = append(lines, ln)
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(ln)), "BALASAN") {
+			balasanStart = i
+			break
+		}
 	}
-	return strings.TrimSpace(strings.Join(lines, "\n")), answer
+
+	// Tentukan batas tiap bagian.
+	balasanEnd := len(lines)
+	if teknisStart >= 0 {
+		balasanEnd = teknisStart
+	}
+	awal := 0
+	if balasanStart >= 0 {
+		awal = balasanStart
+	}
+	if balasanEnd > awal {
+		balasan = strings.TrimSpace(strings.Join(lines[awal:balasanEnd], "\n"))
+	}
+	balasan = strings.TrimSpace(labelStripRe.ReplaceAllString(balasan, ""))
+
+	if teknisStart >= 0 {
+		teknis = strings.TrimSpace(strings.Join(lines[teknisStart:], "\n"))
+	} else {
+		// Tidak ada blok teknis terpisah: jawaban model seluruhnya dianggap
+		// ringkasan (dipakai parseVerdict), dan balasan tetap teks pelanggan.
+		teknis = answer
+	}
+	return balasan, teknis
 }
 
 // parseVerdict mengekstrak VERDICT/KEYAKINAN dari jawaban bebas.
