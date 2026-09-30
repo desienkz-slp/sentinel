@@ -16,6 +16,8 @@ import (
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
 	"ainoc/internal/llm"
+	"ainoc/internal/session"
+	"ainoc/internal/standard"
 	"ainoc/internal/supervisor"
 	"ainoc/internal/wa"
 )
@@ -31,6 +33,7 @@ type Server struct {
 	engine *agent.Engine
 	wa     *wa.Client
 	sup    *supervisor.Manager
+	sesi   *session.Store
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -87,6 +90,12 @@ func (s *Server) routes() http.Handler {
 			s.llm.APIKey = *body.LLMAPIKey
 		}
 		if body.LLMModel != nil && *body.LLMModel != "" {
+			// Ganti model = buang cache, supaya jawaban dari model lama tidak
+			// disajikan ulang (standar konteks tetap, tapi kualitas jawaban bisa beda).
+			if *body.LLMModel != s.cfg.LLMModel {
+				s.sesi.CacheClearAll()
+				log.Printf("[standar] model diganti ke %s — cache dikosongkan", *body.LLMModel)
+			}
 			s.cfg.LLMModel = *body.LLMModel
 			s.llm.Model = *body.LLMModel
 		}
@@ -175,12 +184,34 @@ func (s *Server) routes() http.Handler {
 		writeJSON(w, 200, s.engine.Reports())
 	})
 
+	// Kondisi sesi percakapan (per nomor) + cache.
+	mux.HandleFunc("/api/sesi", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{
+			"statistik":     s.sesi.Stats(),
+			"percakapan":    s.sesi.Conversations(),
+			"standar":       standard.Version,
+			"standar_aktif": s.cfg.StandardDoc != "",
+		})
+	})
+
+	// Kosongkan cache (mis. setelah mengganti model supaya tidak menyajikan
+	// jawaban dari model lama).
+	mux.HandleFunc("/api/sesi/cache", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]string{"error": "gunakan POST"})
+			return
+		}
+		s.sesi.CacheClearAll()
+		writeJSON(w, 200, map[string]any{"ok": true, "statistik": s.sesi.Stats()})
+	})
+
 	// Sesi diagnosis penuh dengan streaming langkah (SSE).
 	mux.HandleFunc("/api/ask", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Query  string `json:"query"`
-			Target string `json:"target"`
-			Stream bool   `json:"stream"`
+			Query    string `json:"query"`
+			Target   string `json:"target"`
+			Stream   bool   `json:"stream"`
+			Identity string `json:"identity"` // nomor pengirim; kosong = "dashboard"
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
@@ -191,11 +222,17 @@ func (s *Server) routes() http.Handler {
 			writeJSON(w, 400, map[string]string{"error": "query kosong"})
 			return
 		}
+		// Konteks & cache dipisahkan per pengirim. Uji dari dashboard memakai
+		// identitas sendiri supaya tidak mencampuri percakapan pelanggan.
+		identity := strings.TrimSpace(body.Identity)
+		if identity == "" {
+			identity = "dashboard"
+		}
 		ctx, cancel := timeoutCtx(r, time.Duration(s.cfg.LLMTimeout*2+s.cfg.MaxSteps*s.cfg.DiagTimeout+60)*time.Second)
 		defer cancel()
 
 		if !body.Stream {
-			writeJSON(w, 200, s.engine.Run(ctx, body.Query, strings.TrimSpace(body.Target)))
+			writeJSON(w, 200, s.engine.Run(ctx, identity, body.Query, strings.TrimSpace(body.Target)))
 			return
 		}
 
@@ -215,7 +252,7 @@ func (s *Server) routes() http.Handler {
 			_, _ = w.Write([]byte("\n"))
 			flusher.Flush()
 		}
-		rep := s.engine.RunWith(ctx, body.Query, strings.TrimSpace(body.Target), func(st agent.Step) {
+		rep := s.engine.RunWith(ctx, identity, body.Query, strings.TrimSpace(body.Target), func(st agent.Step) {
 			send("step", st)
 		})
 		send("report", rep)
@@ -297,7 +334,7 @@ func (s *Server) routes() http.Handler {
 		runWith := func(parent context.Context) agent.Report {
 			ctx, cancel := context.WithTimeout(parent, budget)
 			defer cancel()
-			return s.engine.Run(ctx, msg.Message, "")
+			return s.engine.Run(ctx, id, msg.Message, "")
 		}
 
 		// Mode async: balas "diterima" sekarang, hasil menyusul lewat /api/whatsapp/send.

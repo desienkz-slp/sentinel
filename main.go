@@ -25,6 +25,7 @@ import (
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
 	"ainoc/internal/llm"
+	"ainoc/internal/session"
 	"ainoc/internal/supervisor"
 	"ainoc/internal/wa"
 )
@@ -61,7 +62,15 @@ func main() {
 	client := llm.New(cfg.LLMBaseURL, cfg.LLMAPIKey, cfg.LLMModel, cfg.LLMTimeout)
 	runner := diag.New(cfg.DiagTimeout)
 	bridge := codexbridge.New(cfg.CodexPath, cfg.CodexModel, cfg.CodexSbx, 300)
-	engine := agent.New(cfg, client, runner, bridge)
+
+	// Sesi percakapan per nomor + cache jawaban.
+	sesi := session.New(session.Config{
+		MaxTurns: 10,
+		TTL:      time.Duration(cfg.SesiTTLMin) * time.Minute,
+		CacheTTL: time.Duration(cfg.CacheTTLMin) * time.Minute,
+		MaxConvs: 500,
+	})
+	engine := agent.New(cfg, client, runner, bridge, sesi)
 
 	// WhatsApp Gateway di-vendor di wa-gateway/. Bila ada, Go yang mengelolanya
 	// supaya cukup satu perintah start untuk seluruh aplikasi.
@@ -76,7 +85,7 @@ func main() {
 	}
 	waclient := wa.New(waBase, cfg.WATimeout)
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

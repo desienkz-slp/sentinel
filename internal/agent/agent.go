@@ -15,6 +15,8 @@ import (
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
 	"ainoc/internal/llm"
+	"ainoc/internal/session"
+	"ainoc/internal/standard"
 )
 
 type Step struct {
@@ -41,6 +43,14 @@ type Report struct {
 	Escalated  bool      `json:"escalated"`
 	Escalation string    `json:"escalation,omitempty"`
 	Error      string    `json:"error,omitempty"`
+	// Jejak standar & sesi — supaya laporan bisa diaudit: standar versi berapa,
+	// intent apa menurut kode, nomor siapa, dan apakah konteks lanjutan dipakai.
+	Standar  string `json:"standar,omitempty"`
+	Intent   string `json:"intent,omitempty"`
+	Sesi     string `json:"sesi,omitempty"`
+	Lanjutan bool   `json:"lanjutan,omitempty"`
+	CacheHit bool   `json:"cache_hit,omitempty"`
+	HematMS  int64  `json:"hemat_ms,omitempty"`
 }
 
 // Escalator adalah abstraksi Codex bridge (memudahkan pengujian).
@@ -49,69 +59,92 @@ type Escalator interface {
 	Run(ctx context.Context, task string) codexbridge.Result
 }
 
+// Engine adalah orkestrator agen. Sesi percakapan (per nomor) dan cache disimpan
+// di sini supaya konteks pelanggan terisolasi dan jawaban identik tidak dihitung ulang.
 type Engine struct {
 	Cfg   *config.Config
 	LLM   *llm.Client
 	Diag  *diag.Runner
 	Codex Escalator
+	Sesi  *session.Store
 
 	mu      sync.Mutex
 	reports []Report
 }
 
-func New(cfg *config.Config, client *llm.Client, runner *diag.Runner, esc Escalator) *Engine {
-	return &Engine{Cfg: cfg, LLM: client, Diag: runner, Codex: esc}
+func New(cfg *config.Config, client *llm.Client, runner *diag.Runner, esc Escalator, sesi *session.Store) *Engine {
+	if sesi == nil {
+		sesi = session.New(session.DefaultConfig())
+	}
+	return &Engine{Cfg: cfg, LLM: client, Diag: runner, Codex: esc, Sesi: sesi}
 }
 
-const systemPrompt = `Anda adalah "NOC Sentinel", asisten NOC (Network Operations Center) untuk ISP.
-Anda menerima pesan apa pun dari pelanggan atau teknisi lewat WhatsApp.
+// buildSystemPrompt menyusun kontrak perilaku: dokumen standar (yang bisa diganti
+// operator tanpa build ulang) + instruksi operasional yang tetap.
+func (e *Engine) buildSystemPrompt() string {
+	doc := standard.Doc(e.Cfg.StandardDoc)
+	return `Anda adalah "NOC Sentinel", asisten NOC (Network Operations Center) untuk ISP.
+Anda menerima pesan dari pelanggan dan teknisi lewat WhatsApp.
 
-CARA BERPIKIR — WAJIB BERTAHAP:
+=== STANDAR KONTEKS v` + standard.Version + ` (WAJIB DIPATUHI) ===
+` + doc + `
+=== AKHIR STANDAR ===
 
-TAHAP 1 — PAHAMI DULU (jangan langsung cek).
-Baca pesan dan tentukan: apa keluhannya, dan apakah perlu pengecekan teknis sama sekali.
-  - Sapaan, terima kasih, atau pertanyaan umum -> JAWAB LANGSUNG. JANGAN pakai tool apa pun.
-  - Pesan informasi / broadcast otomatis (laporan status sistem) -> akui singkat. JANGAN pakai tool.
-  - Keluhan gangguan nyata -> lanjut ke TAHAP 2.
-  - Target tidak jelas dan tidak bisa disimpulkan dari pesan -> TANYA BALIK ke pengirim.
-    Jangan melakukan probe buta ke alamat yang tidak diminta.
+CATATAN OPERASIONAL:
+- Balas dalam Bahasa Indonesia, ringkas, dan operasional.
+- Jangan menyebut nama tool, nama model, atau istilah internal kepada pelanggan.
+- Bila pengirim tidak menyebut target, pilih sendiri alamat yang paling masuk akal
+  untuk keluhan itu (keluhan umum: gateway lokal lalu DNS publik seperti 8.8.8.8).
+- Bila sudah ada konteks percakapan sebelumnya dengan pengirim ini, gunakan sebagai
+  rujukan; pesan lanjutan tidak perlu mengulang detail.`
+}
 
-TAHAP 2 — CEK SESUAI KELUHAN (hanya yang relevan).
-Jalankan HANYA tool yang benar-benar menguji dugaan Anda atas keluhan itu.
-  - JANGAN menjalankan probe seragam untuk semua pesan.
-  - Cukup 1-3 probe. Begitu bukti cukup untuk menyimpulkan, BERHENTI.
-  - Jangan mengulang kombinasi tool+target yang sudah dijalankan.
-  - Pemetaan keluhan -> probe yang tepat:
-      "lambat" / "lelet"          -> ping (latensi & loss), lalu http atau tcp
-      "tidak bisa buka situs"     -> dns, lalu http
-      "mati total" / "tidak konek"-> ping ke gateway lokal dulu, baru ping publik
-      "putus nyambung" / "kedip"  -> ping dengan paket lebih banyak, lalu traceroute
-      "wifi lemah" / perangkat    -> interface, lalu ping ke gateway lokal
-      "login/PPPoE/RADIUS gagal"  -> radius, lalu service
-      "email/website tertentu"    -> dns, lalu http ke domain itu
+// HasilKlasifikasi menyatukan keputusan kode (standar) dengan konteks sesi.
+type HasilKlasifikasi struct {
+	Intent   standard.Intent
+	Key      string
+	CacheKey string
+	CacheHit bool
+	Lanjutan bool // ada percakapan sebelumnya yang masih aktif
+}
 
-TAHAP 3 — SIMPULKAN.
-Bila Anda melakukan pengecekan, jawab dengan format PERSIS:
-   VERDICT: <SEHAT|DEGRADASI|GANGGUAN|TIDAK DIKETAHUI>
-   KEYAKINAN: <0-100>
-   AKAR_MASALAH: <satu kalimat>
-   BUKTI: <poin bukti dari hasil tool>
-   REKOMENDASI: <langkah perbaikan konkret, 1-3 poin>
+// Klasifikasi menjalankan standar secara deterministik: tentukan intent,
+// kunci sesi (per nomor), dan kunci cache.
+func (e *Engine) Klasifikasi(identity, query string) HasilKlasifikasi {
+	key := session.Key(identity)
+	intent := standard.Classify(query)
+	_, lastIntent, turns := e.Sesi.Meta(key)
+	lanjutan := turns > 0
+	// Pesan lanjutan yang pendek (mis. "masih lambat") dianggap keluhan bila
+	// percakapan sebelumnya juga tentang keluhan — konteks per nomor dipakai.
+	if intent == standard.IntentUnclear && lanjutan && lastIntent == string(standard.IntentComplaint) {
+		if len(strings.Fields(standard.Normalize(query))) <= 5 {
+			intent = standard.IntentComplaint
+		}
+	}
+	return HasilKlasifikasi{
+		Intent:   intent,
+		Key:      key,
+		CacheKey: session.CacheKey(identity, query),
+		Lanjutan: lanjutan,
+	}
+}
 
-Bila Anda TIDAK melakukan pengecekan (sapaan/pertanyaan umum/informasi), cukup balas singkat dan
-ramah dalam Bahasa Indonesia — TANPA format VERDICT di atas.
-
-Catatan: bila bukti menunjukkan masalah di luar jangkauan tool (mis. perlu ubah konfigurasi
-router/OLT), tetap simpulkan dan tandai rekomendasi sebagai tindakan manual.`
+// Prompt lama dihapus — kontrak perilaku kini berasal dari paket standard
+// (standards/context-standard.md) sehingga bisa diubah tanpa menyentuh kode.
 
 // Run menjalankan satu sesi diagnosis penuh (tanpa streaming).
-func (e *Engine) Run(ctx context.Context, query, target string) Report {
-	return e.RunWith(ctx, query, target, nil)
+// identity = pengirim (nomor). Gunakan RunWith bila ingin streaming langkah.
+func (e *Engine) Run(ctx context.Context, identity, query, target string) Report {
+	return e.RunWith(ctx, identity, query, target, nil)
 }
 
 // RunWith sama seperti Run, tetapi memanggil emit untuk setiap langkah baru
 // sehingga UI dapat menampilkannya secara live (SSE).
-func (e *Engine) RunWith(ctx context.Context, query, target string, emit func(Step)) Report {
+//
+// identity adalah pengirim (nomor WhatsApp). Konteks percakapan dan cache
+// dipisahkan per identity sehingga pelanggan tidak saling mengganggu.
+func (e *Engine) RunWith(ctx context.Context, identity, query, target string, emit func(Step)) Report {
 	start := time.Now()
 	rep := Report{
 		ID:        fmt.Sprintf("INC-%d", start.Unix()),
@@ -126,19 +159,60 @@ func (e *Engine) RunWith(ctx context.Context, query, target string, emit func(St
 			emit(s)
 		}
 	}
-	// Target TIDAK ditebak dari pesan. Sebelumnya sistem mengekstrak alamat apa pun
-	// yang mirip host dari teks bebas, lalu memakainya untuk probe — itu membuat
-	// pesan seperti "tahlil kan ?" memicu pengecekan ke alamat yang tidak diminta.
-	// Sekarang target hanya dipakai bila operator/pelanggan menyebutkannya secara
-	// eksplisit; selebihnya agen yang memutuskan (termasuk bertanya balik).
-	msgs := []llm.Message{{Role: "system", Content: systemPrompt}}
+
+	// STANDAR dijalankan kode: tentukan intent + kunci sesi + kunci cache.
+	klas := e.Klasifikasi(identity, query)
+	rep.Intent = string(klas.Intent)
+	rep.Standar = standard.Version
+	rep.Sesi = klas.Key
+	rep.Lanjutan = klas.Lanjutan
+
+	// ---- CACHE: pertanyaan sama dari nomor sama dalam jendela waktu ----
+	if ans, verdict, conf, engine, elapsed, _, ok := e.Sesi.CacheLookup(klas.CacheKey); ok {
+		rep.Answer, rep.Verdict, rep.Confidence = ans, verdict, conf
+		rep.Engine = engine + " (cache)"
+		rep.ElapsedMS = time.Since(start).Milliseconds()
+		rep.CacheHit = true
+		rep.HematMS = elapsed - rep.ElapsedMS
+		add(Step{Kind: "cache", Text: fmt.Sprintf(
+			"jawaban identik dalam %d menit terakhir untuk nomor ini — dipakai ulang (hemat %dms)",
+			int(e.Sesi.CacheTTL().Minutes()), rep.HematMS)})
+		if rep.Target == "" {
+			rep.Target = e.Sesi.LastTarget(klas.Key)
+		}
+		e.simpan(rep)
+		return rep
+	}
+
+	// ---- GERBANG KERAS: hanya keluhan nyata boleh memicu pengecekan ----
+	// Ini yang membuat standar tetap sama untuk model apa pun: model tidak bisa
+	// memaksa probe pada sapaan/informasi walaupun ia "berhalusinasi".
+	bolehProbe := standard.BolehProbe(klas.Intent)
+	tools := e.Diag.Tools()
+	if !bolehProbe {
+		tools = nil
+		add(Step{Kind: "intent", Text: fmt.Sprintf(
+			"standar v%s: intent=%s -> %s", standard.Version, klas.Intent,
+			map[bool]string{true: "boleh cek jaringan", false: "TIDAK boleh cek jaringan (tanpa tool)"}[bolehProbe])})
+	}
+
+	// ---- RIWAYAT: konteks percakapan nomor ini saja ----
+	msgs := []llm.Message{{Role: "system", Content: e.buildSystemPrompt()}}
+	msgs = append(msgs, e.Sesi.History(klas.Key)...)
+
 	user := query
 	if target != "" {
 		user += fmt.Sprintf("\n\nTarget yang disebut pengirim: %s", target)
 	}
+	if !bolehProbe {
+		user += "\n\n(Pesan ini terdeteksi sebagai " + string(klas.Intent) +
+			" oleh standar konteks. Jawab langsung tanpa melakukan pengecekan jaringan.)"
+	}
+	if lastTarget := e.Sesi.LastTarget(klas.Key); lastTarget != "" && target == "" {
+		user += "\n\nKonteks: percakapan sebelumnya dengan pengirim ini memeriksa " + lastTarget + "."
+	}
 	msgs = append(msgs, llm.Message{Role: "user", Content: user})
 
-	tools := e.Diag.Tools()
 	usedTools := map[string]int{}
 
 	for step := 0; step < e.Cfg.MaxSteps; step++ {
@@ -187,12 +261,12 @@ func (e *Engine) RunWith(ctx context.Context, query, target string, emit func(St
 
 	// Bila agen menjawab tanpa pengecekan (sapaan, pertanyaan umum, minta perjelas),
 	// jangan eskalasi ke Codex — tidak ada yang perlu dianalisis dan verdict memang kosong.
-	// Eskalasi hanya berguna ketika ada bukti probe yang belum terjelaskan.
 	if len(usedTools) == 0 {
 		rep.Engine = "llm (tanpa pengecekan)"
 		if rep.Target == "" {
 			rep.Target = probedTarget(rep.Steps)
 		}
+		e.catat(klas, rep)
 		e.simpan(rep)
 		return rep
 	}
@@ -208,8 +282,29 @@ func (e *Engine) RunWith(ctx context.Context, query, target string, emit func(St
 		rep.Target = probedTarget(rep.Steps)
 	}
 
+	e.catat(klas, rep)
 	e.simpan(rep)
 	return rep
+}
+
+// catat menyimpan pertukaran ke riwayat percakapan nomor tersebut dan
+// menyimpannya ke cache (hanya bila hasilnya layak dipakai ulang).
+func (e *Engine) catat(klas HasilKlasifikasi, rep Report) {
+	e.Sesi.Append(klas.Key, "user", rep.Query, string(klas.Intent), "", "")
+	e.Sesi.Append(klas.Key, "assistant", rep.Answer, string(klas.Intent), rep.Verdict, rep.Target)
+
+	// Cache hanya untuk jawaban yang selesai (tidak error, tidak timeout).
+	if rep.Error != "" {
+		return
+	}
+	steps := make([]string, 0, len(rep.Steps))
+	for _, s := range rep.Steps {
+		if s.Kind == "tool" {
+			steps = append(steps, s.Tool)
+		}
+	}
+	e.Sesi.CacheStore(klas.CacheKey, rep.Answer, rep.Verdict, rep.Confidence,
+		rep.Engine, rep.ElapsedMS, steps)
 }
 
 // simpan menyimpan laporan ke riwayat (dipakai kedua jalur keluar RunWith).
@@ -233,10 +328,7 @@ func probedTarget(steps []Step) string {
 	return ""
 }
 
-// Catatan: fungsi extractTarget() dihapus. Menebak alamat dari teks bebas membuat
-// pesan yang tidak meminta pengecekan (mis. "tahlil kan ?") ikut memicu probe ke
-// alamat yang tidak diminta. Keputusan target kini sepenuhnya milik agen.
-
+// shouldEscalate menentukan apakah analisis perlu dilanjutkan ke Codex CLI.
 func (e *Engine) shouldEscalate(rep Report, used map[string]int) bool {
 	if e.Codex == nil || !e.Codex.Available() {
 		return false

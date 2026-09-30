@@ -178,6 +178,20 @@
     </div>
 
     <div class="card" style="margin-top:16px">
+      <h2>Standar Konteks & Sesi <span class="pill" id="stdTag" style="font-size:11px;padding:3px 8px">v—</span></h2>
+      <div class="hint" id="sesiStat">memuat…</div>
+      <div class="btns">
+        <button class="ghost" onclick="muatSesi()">↻ Muat ulang</button>
+        <button class="ghost" onclick="hapusCache()">🗑 Kosongkan cache</button>
+      </div>
+      <table style="margin-top:10px">
+        <thead><tr><th>Nomor</th><th>Giliran</th><th>Intent</th><th>Target</th><th>Idle</th><th>Pesan terakhir</th></tr></thead>
+        <tbody id="sesiRows"><tr><td colspan="6" style="color:var(--dim)">Belum ada percakapan.</td></tr></tbody>
+      </table>
+      <div class="hint">Konteks dipisah per nomor: riwayat &amp; cache satu pelanggan tidak bercampur dengan pelanggan lain. Standar konteks dijalankan kode, jadi tetap sama untuk model apa pun.</div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
       <h2>Riwayat Insiden</h2>
       <table>
         <thead><tr><th>Waktu</th><th>Target</th><th>Verdict</th><th>Engine</th><th>ms</th></tr></thead>
@@ -234,8 +248,43 @@ async function boot() {
   await loadModels();
   waGateway();
   waStatus();
+  muatSesi();
   refreshHistory();
   setInterval(waGateway, 10000);
+  setInterval(muatSesi, 15000);
+}
+
+// ---------- Standar konteks & sesi ----------
+async function muatSesi() {
+  try {
+    const d = await api('/api/sesi');
+    const s = d.statistik || {};
+    $('stdTag').textContent = 'v' + (d.standar || '—') + (d.standar_aktif ? ' (custom)' : '');
+    const rasio = (s.cache_hit + s.cache_miss) > 0
+      ? Math.round(100 * s.cache_hit / (s.cache_hit + s.cache_miss)) : 0;
+    $('sesiStat').textContent =
+      `Percakapan aktif: ${s.percakapan_aktif||0} · cache: ${s.cache_entri||0} entri ` +
+      `(hit ${s.cache_hit||0} / miss ${s.cache_miss||0} = ${rasio}%) · ` +
+      `TTL sesi ${Math.round((s.sesi_ttl_detik||0)/60)} mnt · TTL cache ${Math.round((s.cache_ttl_detik||0)/60)} mnt`;
+    const rows = d.percakapan || [];
+    $('sesiRows').innerHTML = rows.length ? rows.map(c => `<tr>
+      <td><b>${esc(c.nomor)}</b></td>
+      <td>${c.giliran}</td>
+      <td>${esc(c.intent||'—')}</td>
+      <td>${esc(c.target||'—')}</td>
+      <td>${c.idle_detik}s</td>
+      <td style="color:var(--dim)">${esc(c.terakhir||'—')}</td></tr>`).join('')
+      : '<tr><td colspan="6" style="color:var(--dim)">Belum ada percakapan.</td></tr>';
+  } catch(e) { $('sesiStat').textContent = 'Gagal memuat: ' + e.message; }
+}
+
+async function hapusCache() {
+  if (!confirm('Kosongkan cache jawaban? Diagnosis berikutnya akan dihitung ulang.')) return;
+  try {
+    const d = await api('/api/sesi/cache', {method:'POST', body:'{}'});
+    $('sesiStat').textContent = 'Cache dikosongkan. ' + JSON.stringify(d.statistik);
+    await muatSesi();
+  } catch(e) { $('sesiStat').textContent = 'Gagal: ' + e.message; }
 }
 
 // ---------- WhatsApp ----------

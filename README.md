@@ -75,6 +75,9 @@ Gateway mengirim field "reply" kembali ke chat  ◄── perilaku bawaan webhoo
 
 ## Cara berpikir agen (bertahap, bukan seragam)
 
+**Standar konteks dijalankan KODE, bukan penilaian model** — supaya perilaku tetap sama
+walau model diganti. Detail lengkap: **[STANDARD.md](STANDARD.md)**.
+
 Agen **tidak** menjalankan semua probe untuk setiap pesan. Alurnya:
 
 ```
@@ -115,6 +118,36 @@ keluhan itu — dan laporan menampilkan alamat yang **benar-benar dicek**, bukan
 > Sebelumnya sistem ini **memukul rata**: pesan seperti `"tahlil kan ?"` memicu 9 probe
 > (`interface`, `ping`×3, `dns`, `system`, `service`×2, `http`) ke alamat yang tidak diminta,
 > lalu mencoba eskalasi ke Codex. Fungsi penebak target otomatis sudah dihapus.
+
+### Standar konteks, sesi per nomor, dan cache
+
+Tiga mekanisme yang membuat perilaku konsisten dan hemat:
+
+| Mekanisme | Isi |
+|---|---|
+| **Standar konteks** | Klasifikasi intent + gerbang tool dijalankan **kode Go**, bukan model. Intent non-keluhan → **daftar tool dikosongkan**, jadi model tidak bisa memaksa probe. |
+| **Sesi per nomor** | Riwayat & target terakhir **terpisah per pengirim**. Konteks pelanggan A tidak bercampur dengan B. |
+| **Cache** | Kunci `hash(nomor + pertanyaan ternormalisasi)`. Pertanyaan sama dari nomor sama → jawaban dipakai ulang. **Dikosongkan otomatis saat model berganti.** |
+
+Hasil uji:
+
+```
+GERBANG INTENT (kode, bukan model)
+  "halo"                    intent=CHAT       tool: (TIDAK ADA)
+  "STATUS USER: …"          intent=INFO       tool: (TIDAK ADA)
+  "tahlil kan ?"            intent=UNCLEAR    tool: (TIDAK ADA)
+  "apakah bisa cek jaringan?" intent=UNCLEAR  tool: (TIDAK ADA)
+  "internet saya lambat"    intent=COMPLAINT  tool: [ping, http]
+
+CACHE & ISOLASI
+  1) nomor A, "internet lambat…"        cache=False  18.399 ms
+  2) nomor A, "Internet Lambat…" (beda) cache=True        0 ms
+  3) nomor B, pertanyaan sama           cache=False  24.884 ms  ← konteks terpisah
+```
+
+Panel **Standar Konteks & Sesi** di dashboard menampilkan versi standar, rasio cache
+hit/miss, dan tabel percakapan aktif per nomor. Standar bisa diganti tanpa build ulang
+lewat `NOC_STANDARD_DOC=/path/standar.md`.
 
 ---
 
@@ -171,6 +204,9 @@ cp config.example.json config.json   # opsional, semua nilai bisa lewat env
 | `NOC_WA_AUTOSTART` | `true` | Go menyalakan gateway otomatis saat start |
 | `NOC_WA_DIR` | *(otomatis)* | lokasi folder gateway |
 | `NOC_WA_GROUP` | `false` | `true` = proses juga pesan dari grup |
+| `NOC_STANDARD_DOC` | *(kosong)* | path file standar konteks pengganti (lihat [STANDARD.md](STANDARD.md)) |
+| `NOC_CACHE_TTL_MIN` | `10` | umur cache jawaban per nomor (menit) |
+| `NOC_SESI_TTL_MIN` | `120` | percakapan dianggap selesai setelah idle (menit) |
 
 Semua nilai juga bisa diubah dari **panel ⚙ Pengaturan** di dashboard (tanpa restart), termasuk
 tombol **Tes koneksi LLM** dan **Tes Codex CLI**.
@@ -191,6 +227,8 @@ tombol **Tes koneksi LLM** dan **Tes Codex CLI**.
 | POST | `/api/ask` | sesi diagnosis penuh; `stream:true` → SSE (`step`, `report`) |
 | POST | `/api/codex` | tugas analisis ke Codex CLI `{task}` |
 | GET | `/api/reports` | riwayat insiden |
+| GET | `/api/sesi` | statistik sesi per nomor + cache + versi standar |
+| POST | `/api/sesi/cache` | kosongkan cache jawaban |
 | POST | `/api/wa/webhook` | **penerima pesan WhatsApp masuk** dari gateway |
 | GET | `/api/wa/status` | status sesi WhatsApp (tertaut / belum login) |
 | GET | `/api/wa/qr` | QR pairing WhatsApp |
@@ -363,6 +401,7 @@ ai-noc-go/
 ├─ web/index.html               # dashboard (di-embed ke binary)
 ├─ config.example.json
 ├─ MODEL_SETUP.md               # panduan setup model
+├─ STANDARD.md                  # panduan standar konteks, sesi & cache
 ├─ wa-gateway/                  # WhatsApp Gateway (Node/Baileys) — embedded
 │  ├─ app/{server,session,qr,webhook,health}.js
 │  ├─ public/                   # UI gateway asli (diproxy di /whatsapp)
@@ -384,12 +423,13 @@ ai-noc-go/
 ## Test
 
 ```bash
-go test ./...        # 49 unit test
+go test ./...        # 90 unit test
 go vet ./...         # bersih
 ```
 
 Mencakup: guard injeksi target, paket RADIUS RFC 2865, parser SSE (konten & tool call bertahap),
-parser `VERDICT/KEYAKINAN`, deteksi target dari bahasa bebas, pembersihan banner Codex,
+parser `VERDICT/KEYAKINAN`, klasifikasi intent (chat/info/keluhan/tidak jelas), isolasi sesi
+per nomor, cache (normalisasi + TTL + pemisahan per nomor), pembersihan banner Codex,
 pemilihan `codex.exe` native di atas shim `.CMD`, allowlist WhatsApp (normalisasi nomor
 `@s.whatsapp.net`/`@c.us`/`+62`), deteksi pesan grup, deteksi sesi tertaut, pemformatan laporan WA,
 dan supervisor proses gateway (deteksi folder hilang, npm install, ring buffer log, Stop idempoten).

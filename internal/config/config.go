@@ -31,6 +31,13 @@ type Config struct {
 	WADir       string   `json:"wa_dir"`
 	WAAutoStart bool     `json:"wa_autostart"`
 	WAGroup     bool     `json:"wa_group"` // balas pesan dari grup juga
+	// StandardDoc: path file standar konteks yang bisa diedit operator tanpa
+	// build ulang. Kosong = pakai standar bawaan (di-embed).
+	StandardDoc string `json:"standard_doc"`
+	// CacheTTLMin: masa berlaku cache jawaban per nomor (menit).
+	CacheTTLMin int `json:"cache_ttl_min"`
+	// SesiTTLMin: percakapan dianggap selesai setelah idle selama ini (menit).
+	SesiTTLMin int `json:"sesi_ttl_min"`
 }
 
 func atob(s string, def bool) bool {
@@ -78,6 +85,8 @@ func Default() *Config {
 		WAAutoReply: true,
 		WAAsync:     false,
 		WAAutoStart: true,
+		CacheTTLMin: 10,
+		SesiTTLMin:  120,
 	}
 }
 
@@ -187,6 +196,11 @@ func Load(path string) *Config {
 	c.WAAsync = atob(getenv("NOC_WA_ASYNC"), c.WAAsync)
 	c.WAAutoStart = atob(getenv("NOC_WA_AUTOSTART"), c.WAAutoStart)
 	c.WAGroup = atob(getenv("NOC_WA_GROUP"), c.WAGroup)
+	if v := getenv("NOC_STANDARD_DOC"); v != "" {
+		c.StandardDoc = v
+	}
+	c.CacheTTLMin = atoi(getenv("NOC_CACHE_TTL_MIN"), c.CacheTTLMin)
+	c.SesiTTLMin = atoi(getenv("NOC_SESI_TTL_MIN"), c.SesiTTLMin)
 	if v := getenv("NOC_WA_DIR"); v != "" {
 		c.WADir = v
 	}
@@ -236,5 +250,8 @@ func (c *Config) Redacted() map[string]any {
 		"wa_autostart":  c.WAAutoStart,
 		"wa_group":      c.WAGroup,
 		"wa_embedded":   c.WADir != "",
+		"standard_doc":  c.StandardDoc,
+		"cache_ttl_min": c.CacheTTLMin,
+		"sesi_ttl_min":  c.SesiTTLMin,
 	}
 }
