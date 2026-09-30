@@ -119,22 +119,40 @@ func TestIsConnected(t *testing.T) {
 }
 
 func TestFormatReport(t *testing.T) {
-	answer := "VERDICT: DEGRADASI\nKEYAKINAN: 78\nAKAR_MASALAH: packet loss di uplink\nBUKTI:\n- ping 8.8.8.8 loss 12%\nREKOMENDASI: cek uplink ke IX"
+	// Format baru: balasan manusiawi pelanggan dulu, lalu ringkasan teknis ringkas.
+	answer := "BALASAN: Saya sudah cek, Pak. Koneksi dari kami normal, kendalanya kemungkinan\n" +
+		"di alat di rumah. Coba cabut pasang ONT ya.\n\n" +
+		"VERDICT: DEGRADASI\nKEYAKINAN: 78\nAKAR_MASALAH: packet loss di uplink\n" +
+		"BUKTI: ping 8.8.8.8 loss 12%"
 	msg := FormatReport(ReportView{
 		Target: "8.8.8.8", Verdict: "DEGRADASI", Confidence: 78,
 		Engine: "llm", ElapsedMS: 34226, Answer: answer,
+		Balasan: "Saya sudah cek, Pak. Koneksi dari kami normal, kendalanya kemungkinan\n" +
+			"di alat di rumah. Coba cabut pasang ONT ya.",
 	})
 
-	for _, want := range []string{
-		"*Target:* 8.8.8.8", "DEGRADASI", "78%", "llm", "34.2s",
-		"*VERDICT:* DEGRADASI", "*AKAR_MASALAH:* packet loss", "*REKOMENDASI:* cek uplink",
-	} {
+	// Balasan pelanggan harus muncul dan mendahului ringkasan teknis.
+	if !strings.Contains(msg, "Saya sudah cek, Pak") {
+		t.Errorf("balasan pelanggan hilang:\n%s", msg)
+	}
+	// Ringkasan teknis tetap ada untuk teknisi.
+	for _, want := range []string{"DEGRADASI", "78%", "Penyebab: packet loss di uplink"} {
 		if !strings.Contains(msg, want) {
-			t.Errorf("pesan kehilangan %q:\n%s", want, msg)
+			t.Errorf("ringkasan teknis kehilangan %q:\n%s", want, msg)
 		}
 	}
+	// Label mentah TIDAK boleh terlihat pelanggan.
+	for _, jangan := range []string{"BALASAN:", "VERDICT:", "BUKTI:", "KEYAKINAN:"} {
+		if strings.Contains(msg, jangan) {
+			t.Errorf("label teknis %q bocor ke pelanggan:\n%s", jangan, msg)
+		}
+	}
+	// Header kaku lama sudah tidak dipakai.
+	if strings.Contains(msg, "Laporan Diagnosis") {
+		t.Errorf("header kaku masih dipakai:\n%s", msg)
+	}
 	if strings.Contains(msg, "**") {
-		t.Errorf("markdown ** belum dikonversi ke format WhatsApp:\n%s", msg)
+		t.Errorf("markdown ** belum dikonversi:\n%s", msg)
 	}
 	if len(msg) > maxWALen {
 		t.Errorf("pesan %d karakter melebihi batas", len(msg))
@@ -146,7 +164,7 @@ func TestFormatReportChat(t *testing.T) {
 	// status "TIDAK DIKETAHUI", tanpa metrik mesin.
 	msg := FormatReport(ReportView{
 		IsChat: true, Verdict: "TIDAK DIKETAHUI", Engine: "llm (tanpa pengecekan)",
-		Answer: "Halo! Ada yang bisa saya bantu terkait kendala jaringan Anda?",
+		Balasan: "Halo! Ada yang bisa saya bantu terkait kendala jaringan Anda?",
 	})
 	if strings.Contains(msg, "Laporan Diagnosis") {
 		t.Errorf("balasan chat tidak boleh berheader laporan:\n%s", msg)

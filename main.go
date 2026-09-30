@@ -24,7 +24,9 @@ import (
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
+	"ainoc/internal/learning"
 	"ainoc/internal/llm"
+	"ainoc/internal/memory"
 	"ainoc/internal/session"
 	"ainoc/internal/supervisor"
 	"ainoc/internal/wa"
@@ -70,7 +72,15 @@ func main() {
 		CacheTTL: time.Duration(cfg.CacheTTLMin) * time.Minute,
 		MaxConvs: 500,
 	})
-	engine := agent.New(cfg, client, runner, bridge, sesi)
+	// Memory (fakta & riwayat per pengirim) — dipersist ke disk.
+	mem := memory.New(memory.Config{
+		Path:     cfg.MemoryPath,
+		MaxInc:   50,
+		MaxFacts: 20,
+	})
+	// Self-learning: playbook probe per kategori keluhan, dari hasil nyata.
+	learn := learning.New()
+	engine := agent.New(cfg, client, runner, bridge, sesi, mem, learn)
 
 	// WhatsApp Gateway di-vendor di wa-gateway/. Bila ada, Go yang mengelolanya
 	// supaya cukup satu perintah start untuk seluruh aplikasi.
@@ -85,7 +95,7 @@ func main() {
 	}
 	waclient := wa.New(waBase, cfg.WATimeout)
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
@@ -125,6 +135,18 @@ func main() {
 		}
 	}()
 
+	// Simpan memory berkala (setiap 2 menit) supaya pembelajaran tidak hilang
+	// bila proses mati mendadak.
+	go func() {
+		t := time.NewTicker(2 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			if err := mem.SaveIfDirty(); err != nil {
+				log.Printf("[memory] gagal simpan: %v", err)
+			}
+		}
+	}()
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
@@ -136,6 +158,12 @@ func main() {
 	if sup != nil {
 		log.Println("menghentikan WhatsApp Gateway…")
 		_ = sup.Stop()
+	}
+	// Simpan memory terakhir kali sebelum keluar.
+	if err := mem.SaveIfDirty(); err != nil {
+		log.Printf("[memory] gagal simpan saat keluar: %v", err)
+	} else {
+		log.Println("memory tersimpan.")
 	}
 	log.Println("dihentikan.")
 }

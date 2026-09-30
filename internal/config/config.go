@@ -38,6 +38,9 @@ type Config struct {
 	CacheTTLMin int `json:"cache_ttl_min"`
 	// SesiTTLMin: percakapan dianggap selesai setelah idle selama ini (menit).
 	SesiTTLMin int `json:"sesi_ttl_min"`
+	// MemoryPath: file JSON tempat memory (fakta & riwayat per pengirim) disimpan.
+	// Kosong = pakai data/memory.json di samping binary.
+	MemoryPath string `json:"memory_path"`
 }
 
 func atob(s string, def bool) bool {
@@ -87,7 +90,22 @@ func Default() *Config {
 		WAAutoStart: true,
 		CacheTTLMin: 10,
 		SesiTTLMin:  120,
+		MemoryPath:  defaultMemoryPath(),
 	}
+}
+
+// defaultMemoryPath menentukan lokasi memory.json.
+func defaultMemoryPath() string {
+	if exe, err := os.Executable(); err == nil {
+		base := filepath.Dir(exe)
+		// bin/ai-noc-go.exe -> simpan di <root>/data/memory.json
+		root := filepath.Dir(base)
+		if filepath.Base(base) == "bin" {
+			return filepath.Join(root, "data", "memory.json")
+		}
+		return filepath.Join(base, "data", "memory.json")
+	}
+	return filepath.Join("data", "memory.json")
 }
 
 // resolveWADir mencari folder gateway WA: eksplisit -> di samping exe -> CWD.
@@ -201,6 +219,9 @@ func Load(path string) *Config {
 	}
 	c.CacheTTLMin = atoi(getenv("NOC_CACHE_TTL_MIN"), c.CacheTTLMin)
 	c.SesiTTLMin = atoi(getenv("NOC_SESI_TTL_MIN"), c.SesiTTLMin)
+	if v := getenv("NOC_MEMORY_PATH"); v != "" {
+		c.MemoryPath = v
+	}
 	if v := getenv("NOC_WA_DIR"); v != "" {
 		c.WADir = v
 	}
@@ -253,5 +274,6 @@ func (c *Config) Redacted() map[string]any {
 		"standard_doc":  c.StandardDoc,
 		"cache_ttl_min": c.CacheTTLMin,
 		"sesi_ttl_min":  c.SesiTTLMin,
+		"memory_path":   c.MemoryPath,
 	}
 }

@@ -294,21 +294,31 @@ modifikasi logika gateway, hanya penyesuaian timeout (lihat bagian timeout di ba
 
 ### Contoh balasan yang diterima pelanggan
 
+Balasan dipisah dua bagian: **pesan manusiawi untuk pelanggan**, lalu **ringkasan
+teknis ringkas** untuk teknisi.
+
 ```
-🛰️ NOC Sentinel — Laporan Diagnosis
+pak wifi saya mati total dari tadi malam
 
-Target: 8.8.8.8
-Status: ✅ SEHAT
-Keyakinan: 95%
-Mesin: llm (42.7s)
+→ Halo Pak, mohon maaf atas ketidaknyamanannya ya. Dari pengecekan sistem kami,
+  jalur jaringan dan koneksi internet utama saat ini normal serta lancar, jadi
+  kemungkinan kendalanya ada pada perangkat router di rumah. Boleh coba cabut
+  kabel adaptor router sekitar 30 detik lalu colokkan kembali ya Pak, sambil
+  diperhatikan apakah lampu indikatornya menyala normal atau ada yang merah/mati.
+  Kalau setelah di-restart wifinya masih mati total, kabari saya ya biar langsung
+  kami jadwalkan teknisi untuk cek ke lokasi.
 
-AKAR_MASALAH: konektivitas upstream normal; keluhan berasal dari sisi pelanggan
-BUKTI:
-- Ping 8.8.8.8: 0% packet loss, RTT rata-rata 28 ms
-- Traceroute: 10 hop tanpa degradasi
-REKOMENDASI:
-1. Cek utilisasi bandwidth di BRAS (FUP/QoS)
-2. Cek redaman optik ONT + tes via kabel LAN
+  ———
+  ✅ SEHAT · 90%
+  Penyebab: Jaringan gateway ISP dan internet normal, kendala diduga pada
+  router/ONT lokal pelanggan atau suplai daya perangkat.
+```
+
+Obrolan biasa dibalas tanpa ringkasan teknis sama sekali:
+
+```
+terima kasih pak   →  Sama-sama, Pak. Senang bisa membantu.
+                      Kalau nanti ada kendala lagi, langsung kabari saja ya.
 ```
 
 ### Pilihan mode

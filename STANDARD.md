@@ -30,7 +30,7 @@ Model hanya menjalankan; ia tidak bisa melanggarnya.
 | Intent | Contoh | Boleh probe? |
 |---|---|---|
 | `CHAT` | "halo", "pagi", "terima kasih", "tes" | ❌ tidak |
-| `INFO` | "STATUS USER: SERVER KABUH", "TERHUBUNG KEMBALI" | ❌ tidak |
+| `INFO` | "STATUS USER: SERVER PUSAT", "TERHUBUNG KEMBALI" | ❌ tidak |
 | `COMPLAINT` | "internet lambat", "wifi mati", "login PPPoE gagal" | ✅ ya |
 | `UNCLEAR` | "tahlil kan ?", "apakah bisa cek jaringan?" | ❌ tidak (tanya balik) |
 
@@ -76,6 +76,61 @@ NOC_STANDARD_DOC=/path/standar-saya.md ./bin/ai-noc-go
 Bila path tidak terbaca, **standar bawaan tetap dipakai** — sistem tidak pernah
 kehilangan standar. Versi standar tercatat di setiap laporan (`standar: "1.0.0"`)
 sehingga hasil bisa diaudit.
+
+---
+
+## 2a. Dua bagian jawaban: pelanggan vs sistem
+
+Balasan diagnosis dipisah menjadi **dua bagian** supaya pelanggan tidak menerima
+laporan teknis mentah:
+
+```
+BALASAN: Saya sudah cek dari sisi kami, Pak. Koneksi dari server ke internet normal,
+jadi kendalanya kemungkinan di alat di rumah. Coba cabut kabel power ONT sekitar
+30 detik lalu pasang lagi ya. Kalau setelah itu masih lambat, bilang ke saya —
+nanti saya jadwalkan teknisi untuk cek langsung ke lokasi.
+
+VERDICT: DEGRADASI
+KEYAKINAN: 85
+AKAR_MASALAH: Kualitas sinyal optik ke ONT pelanggan di bawah ambang normal.
+BUKTI: ping ke 8.8.8.8 normal 28ms tanpa packet loss.
+```
+
+- **BALASAN** — yang dibaca pelanggan. Bahasa awam, 2–5 kalimat, ada langkah konkret.
+- **Ringkasan teknis** — untuk dashboard/teknisi. Tidak ditampilkan mentah ke pelanggan.
+
+Parser `PisahBalasan()` memisahkan keduanya. Yang dikirim ke WhatsApp adalah BALASAN,
+lalu ringkasan teknis **ringkas** (status + penyebab) dipisah garis `———`. Baris
+`BUKTI` mentah tidak pernah dikirim ke pelanggan.
+
+Kalau model tidak memakai format `BALASAN:`, seluruh jawaban dianggap balasan
+pelanggan dengan label teknis dibuang — jadi perilakunya tetap aman.
+
+### Contoh yang diterima pelanggan
+
+```
+pak wifi saya mati total dari tadi malam
+
+→ Halo Pak, mohon maaf atas ketidaknyamanannya ya. Dari pengecekan sistem kami,
+  jalur jaringan dan koneksi internet utama saat ini normal serta lancar, jadi
+  kemungkinan kendalanya ada pada perangkat router di rumah. Boleh coba cabut
+  kabel adaptor router sekitar 30 detik lalu colokkan kembali ya Pak, sambil
+  diperhatikan apakah lampu indikatornya menyala normal atau ada yang merah/mati.
+  Kalau setelah di-restart wifinya masih mati total, kabari saya ya biar langsung
+  kami jadwalkan teknisi untuk cek ke lokasi.
+
+  ———
+  ✅ SEHAT · 90%
+  Penyebab: Jaringan gateway ISP dan internet normal, kendala diduga pada
+  router/ONT lokal pelanggan atau suplai daya perangkat.
+```
+
+```
+terima kasih pak
+
+→ Sama-sama, Pak. Senang bisa membantu. Kalau nanti ada kendala lagi,
+  langsung kabari saja ya.
+```
 
 ---
 

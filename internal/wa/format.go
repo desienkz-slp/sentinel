@@ -16,6 +16,9 @@ type ReportView struct {
 	ElapsedMS  int64
 	Escalated  bool
 	Answer     string
+	// Balasan = teks untuk pelanggan (bahasa manusia), terpisah dari Answer
+	// yang memuat ringkasan teknis lengkap.
+	Balasan string
 	// IsChat menandai balasan tanpa pengecekan (sapaan, pertanyaan umum, minta
 	// perjelas). Pesan seperti ini TIDAK boleh dibungkus sebagai laporan diagnosis
 	// dengan status "TIDAK DIKETAHUI" — cukup dikirim sebagai obrolan biasa.
@@ -43,12 +46,14 @@ func VerdictEmoji(v string) string {
 	}
 }
 
-// FormatReport menyusun pesan laporan diagnosis untuk WhatsApp.
+// FormatReport menyusun pesan WhatsApp: balasan manusiawi untuk pelanggan,
+// lalu ringkasan teknis singkat di bawahnya (berguna untuk teknisi yang ikut
+// membaca percakapan).
 func FormatReport(v ReportView) string {
 	// Balasan obrolan (tanpa pengecekan) dikirim apa adanya — tanpa header
 	// laporan dan tanpa status, karena memang bukan hasil diagnosis.
 	if v.IsChat {
-		return truncateWALen(strings.TrimSpace(v.Answer))
+		return truncateWALen(strings.TrimSpace(v.Balasan))
 	}
 
 	var b strings.Builder
@@ -58,23 +63,57 @@ func FormatReport(v ReportView) string {
 		verdict = "TIDAK DIKETAHUI"
 	}
 
-	b.WriteString("*🛰️ NOC Sentinel — Laporan Diagnosis*\n\n")
-	fmt.Fprintf(&b, "*Target:* %s\n", orDash(v.Target))
-	fmt.Fprintf(&b, "*Status:* %s %s\n", VerdictEmoji(verdict), verdict)
+	// 1) Balasan untuk pelanggan — ini bagian utama.
+	balasan := strings.TrimSpace(v.Balasan)
+	if balasan == "" {
+		balasan = strings.TrimSpace(v.Answer)
+	}
+	if balasan != "" {
+		b.WriteString(balasan)
+	}
+
+	// 2) Ringkasan teknis ringkas — dipisah garis supaya jelas bedanya.
+	teknis := ringkasTeknis(v)
+	if teknis != "" {
+		if b.Len() > 0 {
+			b.WriteString("\n\n———\n")
+		}
+		b.WriteString(teknis)
+	}
+
+	return truncateWALen(strings.TrimSpace(b.String()))
+}
+
+// ringkasTeknis menyusun ringkasan teknis singkat: status, keyakinan, dan
+// akar masalah (bila ada di jawaban model). Sengaja TIDAK memuat seluruh BUKTI
+// agar tidak membanjiri pelanggan.
+func ringkasTeknis(v ReportView) string {
+	verdict := strings.ToUpper(strings.TrimSpace(v.Verdict))
+	if verdict == "" {
+		verdict = "TIDAK DIKETAHUI"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %s", VerdictEmoji(verdict), verdict)
 	if v.Confidence > 0 {
-		fmt.Fprintf(&b, "*Keyakinan:* %.0f%%\n", v.Confidence)
+		fmt.Fprintf(&b, " · %.0f%%", v.Confidence)
 	}
-	fmt.Fprintf(&b, "*Mesin:* %s (%.1fs)\n", orDash(v.Engine), float64(v.ElapsedMS)/1000)
 	if v.Escalated {
-		b.WriteString("*Catatan:* analisis dieskalasi ke Codex CLI\n")
+		b.WriteString(" · dianalisis lanjut")
 	}
-
-	if body := formatBody(v.Answer); body != "" {
-		b.WriteString("\n" + body)
+	if akar := akarMasalah(v.Answer); akar != "" {
+		b.WriteString("\n" + akar)
 	}
+	return b.String()
+}
 
-	out := strings.TrimSpace(b.String())
-	return truncateWALen(out)
+// akarMasalah mengambil baris AKAR_MASALAH dari jawaban model (bila ada).
+var akarRe = regexp.MustCompile(`(?im)^\s*AKAR_MASALAH\s*[:=]\s*(.+)$`)
+
+func akarMasalah(answer string) string {
+	if m := akarRe.FindStringSubmatch(answer); m != nil {
+		return "Penyebab: " + strings.TrimSpace(m[1])
+	}
+	return ""
 }
 
 // truncateWALen memotong pesan agar tidak melewati batas aman WhatsApp.

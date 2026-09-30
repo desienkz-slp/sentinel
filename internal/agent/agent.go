@@ -14,7 +14,9 @@ import (
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
+	"ainoc/internal/learning"
 	"ainoc/internal/llm"
+	"ainoc/internal/memory"
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
 )
@@ -51,6 +53,12 @@ type Report struct {
 	Lanjutan bool   `json:"lanjutan,omitempty"`
 	CacheHit bool   `json:"cache_hit,omitempty"`
 	HematMS  int64  `json:"hemat_ms,omitempty"`
+	// Jejak pembelajaran: kategori keluhan dan berapa kali berulang.
+	Signature string `json:"signature,omitempty"`
+	Ulang     int    `json:"ulang,omitempty"`
+	// Balasan = teks untuk pelanggan (bahasa manusia). Answer memuat ringkasan
+	// teknis lengkap untuk dashboard/audit.
+	Balasan string `json:"balasan,omitempty"`
 }
 
 // Escalator adalah abstraksi Codex bridge (memudahkan pengujian).
@@ -59,24 +67,116 @@ type Escalator interface {
 	Run(ctx context.Context, task string) codexbridge.Result
 }
 
-// Engine adalah orkestrator agen. Sesi percakapan (per nomor) dan cache disimpan
-// di sini supaya konteks pelanggan terisolasi dan jawaban identik tidak dihitung ulang.
+// Engine adalah orkestrator agen. Sesi percakapan (per nomor), memory, dan
+// pembelajaran disimpan di sini supaya konteks pelanggan terisolasi, jawaban
+// identik tidak dihitung ulang, dan sistem makin pintar dari waktu ke waktu.
 type Engine struct {
 	Cfg   *config.Config
 	LLM   *llm.Client
 	Diag  *diag.Runner
 	Codex Escalator
 	Sesi  *session.Store
+	Mem   *memory.Store
+	Learn *learning.Store
 
 	mu      sync.Mutex
 	reports []Report
 }
 
-func New(cfg *config.Config, client *llm.Client, runner *diag.Runner, esc Escalator, sesi *session.Store) *Engine {
+func New(cfg *config.Config, client *llm.Client, runner *diag.Runner, esc Escalator, sesi *session.Store, mem *memory.Store, learn *learning.Store) *Engine {
 	if sesi == nil {
 		sesi = session.New(session.DefaultConfig())
 	}
-	return &Engine{Cfg: cfg, LLM: client, Diag: runner, Codex: esc, Sesi: sesi}
+	if mem == nil {
+		mem = memory.New(memory.Config{})
+	}
+	if learn == nil {
+		learn = learning.New()
+	}
+	return &Engine{Cfg: cfg, LLM: client, Diag: runner, Codex: esc, Sesi: sesi, Mem: mem, Learn: learn}
+}
+
+// KonteksAI adalah seluruh informasi yang "dilempar" ke model sebelum menjawab.
+// Ini yang membuat AI tahu banyak konteks, bukan hanya pesan terakhir.
+type KonteksAI struct {
+	Klas         HasilKlasifikasi
+	Signature    learning.Signature
+	Facts        []memory.Fact
+	Insiden      []memory.Incident
+	Ulang        int
+	VerdictAkhir string
+	Playbook     []string
+	SudahDicek   bool
+}
+
+// SusunKonteks mengumpulkan semua konteks yang relevan untuk satu pesan masuk.
+// Dipanggil sebelum LLM, hasilnya disuntikkan ke prompt.
+func (e *Engine) SusunKonteks(identity, query string) KonteksAI {
+	klas := e.Klasifikasi(identity, query)
+	sig := learning.SignatureOf(query)
+
+	k := KonteksAI{
+		Klas:      klas,
+		Signature: sig,
+		Facts:     e.Mem.Facts(klas.Key),
+		Insiden:   e.Mem.RecentIncidents(klas.Key, 14*24*time.Hour),
+		Playbook:  e.Learn.Playbook(sig),
+	}
+	k.Ulang, k.VerdictAkhir, _ = e.Mem.Recurrence(klas.Key, string(sig), 7*24*time.Hour)
+	// Tandai bila target ini sudah pernah diperiksa (hindari probe berulang).
+	if tgt := e.Sesi.LastTarget(klas.Key); tgt != "" {
+		k.SudahDicek = true
+	}
+	return k
+}
+
+// blokKonteks menyusun teks konteks yang disuntikkan ke prompt. Inilah bagian
+// yang membuat AI "tahu banyak konteks" saat ada pesan WhatsApp masuk.
+func (k KonteksAI) blokKonteks() string {
+	var b strings.Builder
+
+	if len(k.Facts) > 0 {
+		b.WriteString("\n\nYang sudah kita ketahui tentang pengirim ini:\n")
+		for i, f := range k.Facts {
+			if i >= 6 {
+				break
+			}
+			b.WriteString("- " + f.Kind + ": " + f.Text)
+			if f.Hits > 1 {
+				fmt.Fprintf(&b, " (disebut %dx)", f.Hits)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if len(k.Insiden) > 0 {
+		fmt.Fprintf(&b, "\nRiwayat gangguan pengirim ini (%d insiden terakhir):\n", len(k.Insiden))
+		for i, inc := range k.Insiden {
+			if i >= 5 {
+				break
+			}
+			fmt.Fprintf(&b, "- %s: %s -> %s (%s, target %s)\n",
+				inc.At.Format("02 Jan 15:04"), inc.Signature, inc.Verdict, inc.Engine, inc.Target)
+		}
+	}
+
+	if k.Ulang >= 2 {
+		fmt.Fprintf(&b, "\nPERHATIAN: keluhan kategori %s sudah %dx dalam 7 hari terakhir (terakhir: %s). "+
+			"Ini indikasi masalah BERULANG/kronis, bukan gangguan sesaat — sebutkan hal ini di analisis.\n",
+			k.Signature, k.Ulang, k.VerdictAkhir)
+	}
+
+	if len(k.Playbook) > 0 {
+		b.WriteString("\nUrutan probe yang paling terbukti berguna untuk keluhan jenis ini " +
+			"(hasil pembelajaran dari diagnosis sebelumnya): " + strings.Join(k.Playbook, " -> ") + "\n")
+	}
+
+	if k.SudahDicek {
+		b.WriteString("\nCatatan: target ini sudah pernah diperiksa di percakapan sebelumnya — " +
+			"jangan ulangi probe yang sama kecuali pengirim meminta ulang.\n")
+	}
+
+	return b.String()
 }
 
 // buildSystemPrompt menyusun kontrak perilaku: dokumen standar (yang bisa diganti
@@ -142,8 +242,8 @@ func (e *Engine) Run(ctx context.Context, identity, query, target string) Report
 // RunWith sama seperti Run, tetapi memanggil emit untuk setiap langkah baru
 // sehingga UI dapat menampilkannya secara live (SSE).
 //
-// identity adalah pengirim (nomor WhatsApp). Konteks percakapan dan cache
-// dipisahkan per identity sehingga pelanggan tidak saling mengganggu.
+// identity adalah pengirim (nomor WhatsApp). Konteks percakapan, memory, dan
+// cache dipisahkan per identity sehingga pelanggan tidak saling mengganggu.
 func (e *Engine) RunWith(ctx context.Context, identity, query, target string, emit func(Step)) Report {
 	start := time.Now()
 	rep := Report{
@@ -160,12 +260,15 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 		}
 	}
 
-	// STANDAR dijalankan kode: tentukan intent + kunci sesi + kunci cache.
-	klas := e.Klasifikasi(identity, query)
+	// KONTEKS: standar (intent) + memory (fakta & riwayat) + pembelajaran (playbook).
+	konteks := e.SusunKonteks(identity, query)
+	klas := konteks.Klas
 	rep.Intent = string(klas.Intent)
 	rep.Standar = standard.Version
 	rep.Sesi = klas.Key
 	rep.Lanjutan = klas.Lanjutan
+	rep.Signature = string(konteks.Signature)
+	rep.Ulang = konteks.Ulang
 
 	// ---- CACHE: pertanyaan sama dari nomor sama dalam jendela waktu ----
 	if ans, verdict, conf, engine, elapsed, _, ok := e.Sesi.CacheLookup(klas.CacheKey); ok {
@@ -196,13 +299,23 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 			map[bool]string{true: "boleh cek jaringan", false: "TIDAK boleh cek jaringan (tanpa tool)"}[bolehProbe])})
 	}
 
-	// ---- RIWAYAT: konteks percakapan nomor ini saja ----
+	// ---- KONTEKS KE AI: riwayat percakapan + memory + pembelajaran ----
+	// Inilah yang membuat AI tahu banyak konteks saat ada pesan WhatsApp masuk,
+	// bukan hanya pesan terakhir.
 	msgs := []llm.Message{{Role: "system", Content: e.buildSystemPrompt()}}
 	msgs = append(msgs, e.Sesi.History(klas.Key)...)
 
 	user := query
 	if target != "" {
 		user += fmt.Sprintf("\n\nTarget yang disebut pengirim: %s", target)
+	}
+	if blok := konteks.blokKonteks(); blok != "" {
+		user += blok
+		if len(konteks.Facts) > 0 || len(konteks.Insiden) > 0 {
+			add(Step{Kind: "konteks", Text: fmt.Sprintf(
+				"konteks dikirim ke AI: %d fakta, %d insiden, %d pengulangan, playbook %v",
+				len(konteks.Facts), len(konteks.Insiden), konteks.Ulang, konteks.Playbook)})
+		}
 	}
 	if !bolehProbe {
 		user += "\n\n(Pesan ini terdeteksi sebagai " + string(klas.Intent) +
@@ -265,7 +378,12 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 		}
 	}
 
+	// Pisahkan: teks untuk pelanggan vs ringkasan teknis untuk sistem.
+	rep.Balasan, _ = PisahBalasan(rep.Answer)
 	rep.Answer, rep.Verdict, rep.Confidence = parseVerdict(rep.Answer)
+	if rep.Balasan == "" {
+		rep.Balasan = rep.Answer // fallback: jangan pernah kosong
+	}
 	rep.ElapsedMS = time.Since(start).Milliseconds()
 
 	// Bila agen menjawab tanpa pengecekan (sapaan, pertanyaan umum, minta perjelas),
@@ -275,7 +393,7 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 		if rep.Target == "" {
 			rep.Target = probedTarget(rep.Steps)
 		}
-		e.catat(klas, rep)
+		e.catat(klas, konteks, rep)
 		e.simpan(rep)
 		return rep
 	}
@@ -291,29 +409,62 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 		rep.Target = probedTarget(rep.Steps)
 	}
 
-	e.catat(klas, rep)
+	e.catat(klas, konteks, rep)
 	e.simpan(rep)
 	return rep
 }
 
-// catat menyimpan pertukaran ke riwayat percakapan nomor tersebut dan
-// menyimpannya ke cache (hanya bila hasilnya layak dipakai ulang).
-func (e *Engine) catat(klas HasilKlasifikasi, rep Report) {
+// catat menyimpan pertukaran ke riwayat percakapan nomor tersebut, menyimpannya
+// ke cache, MEMPELAJARI hasilnya, dan MENYIMPAN fakta baru ke memory.
+func (e *Engine) catat(klas HasilKlasifikasi, konteks KonteksAI, rep Report) {
 	e.Sesi.Append(klas.Key, "user", rep.Query, string(klas.Intent), "", "")
 	e.Sesi.Append(klas.Key, "assistant", rep.Answer, string(klas.Intent), rep.Verdict, rep.Target)
+
+	// --- SELF LEARNING: catat hasil untuk memperbaiki playbook ---
+	probes := make([]string, 0, len(rep.Steps))
+	durasi := map[string]int64{}
+	for _, s := range rep.Steps {
+		if s.Kind == "tool" {
+			probes = append(probes, s.Tool)
+			durasi[s.Tool] = s.DurationMS
+		}
+	}
+	// Hanya pelajari hasil yang selesai (bukan timeout/error), supaya playbook
+	// tidak belajar dari diagnosis yang terpotong.
+	if rep.Error == "" {
+		e.Learn.Record(konteks.Signature, rep.Verdict, probes, durasi)
+	}
+
+	// --- MEMORY: fakta otomatis dari pesan pengirim ---
+	for _, f := range memory.ExtractFacts(rep.Query) {
+		e.Mem.AddFact(klas.Key, f.Kind, f.Text)
+	}
+
+	// --- MEMORY: catat insiden (hanya bila ada pengecekan) ---
+	if len(probes) > 0 {
+		e.Mem.AddIncident(klas.Key, memory.Incident{
+			ID: rep.ID, At: rep.StartedAt, Query: truncate(rep.Query, 200),
+			Signature: string(konteks.Signature), Intent: string(klas.Intent),
+			Verdict: rep.Verdict, Confidence: rep.Confidence,
+			Target: rep.Target, Probes: probes, Engine: rep.Engine,
+		})
+	}
 
 	// Cache hanya untuk jawaban yang selesai (tidak error, tidak timeout).
 	if rep.Error != "" {
 		return
 	}
-	steps := make([]string, 0, len(rep.Steps))
-	for _, s := range rep.Steps {
-		if s.Kind == "tool" {
-			steps = append(steps, s.Tool)
-		}
-	}
 	e.Sesi.CacheStore(klas.CacheKey, rep.Answer, rep.Verdict, rep.Confidence,
-		rep.Engine, rep.ElapsedMS, steps)
+		rep.Engine, rep.ElapsedMS, probes)
+}
+
+func truncate(s string, n int) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // simpan menyimpan laporan ke riwayat (dipakai kedua jalur keluar RunWith).
@@ -405,10 +556,52 @@ func oneLine(s string) string {
 }
 
 var (
-	verdictRe    = regexp.MustCompile(`(?i)VERDICT\s*[:=]\s*([^\n]{0,80})`)
-	confRe       = regexp.MustCompile(`(?i)KEYAKINAN\s*[:=]\s*([0-9]+(?:[.,][0-9]+)?)\s*%?`)
+	verdictRe = regexp.MustCompile(`(?i)VERDICT\s*[:=]\s*([^\n]{0,80})`)
+	confRe    = regexp.MustCompile(`(?i)KEYAKINAN\s*[:=]\s*([0-9]+(?:[.,][0-9]+)?)\s*%?`)
+	// balasanRe mengambil bagian "BALASAN:" — yaitu teks yang dibaca pelanggan,
+	// terpisah dari ringkasan teknis (VERDICT/BUKTI) yang hanya untuk sistem.
+	balasanRe = regexp.MustCompile(`(?is)BALASAN\s*[:=]\s*(.+?)(?:\n\s*\n\s*VERDICT|\n\s*VERDICT\s*[:=]|$)`)
+	// pembukaRe untuk membuang label format dari teks pelanggan.
+	labelStripRe = regexp.MustCompile(`(?im)^\s*(BALASAN|VERDICT|KEYAKINAN|AKAR_MASALAH|BUKTI|REKOMENDASI)\s*[:=]\s*`)
 	verdictWords = []string{"TIDAK DIKETAHUI", "SEHAT", "DEGRADASI", "GANGGUAN"}
 )
+
+// PisahBalasan memisahkan jawaban model menjadi dua bagian:
+//   - balasan: teks untuk pelanggan (bahasa manusia)
+//   - teknis : ringkasan VERDICT/KEYAKINAN/AKAR_MASALAH/BUKTI untuk sistem
+//
+// Bila model tidak memakai format "BALASAN:", seluruh jawaban dianggap balasan
+// pelanggan (dengan label teknis dibuang), supaya perilakunya tetap aman.
+func PisahBalasan(answer string) (balasan, teknis string) {
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return "", ""
+	}
+	if m := balasanRe.FindStringSubmatch(answer); m != nil {
+		balasan = strings.TrimSpace(m[1])
+		// Buang label yang mungkin masih menempel.
+		balasan = labelStripRe.ReplaceAllString(balasan, "")
+		balasan = strings.TrimSpace(balasan)
+		// Sisa setelah blok BALASAN dianggap bagian teknis.
+		if i := strings.Index(answer, m[0]); i >= 0 {
+			teknis = strings.TrimSpace(answer[i+len(m[0]):])
+		}
+		return balasan, teknis
+	}
+	// Tanpa format BALASAN: pakai seluruh jawaban, tapi buang baris teknis
+	// supaya pelanggan tidak menerima "VERDICT: ..." mentah.
+	var lines []string
+	for _, ln := range strings.Split(answer, "\n") {
+		t := strings.TrimSpace(ln)
+		u := strings.ToUpper(t)
+		if strings.HasPrefix(u, "VERDICT") || strings.HasPrefix(u, "KEYAKINAN") ||
+			strings.HasPrefix(u, "AKAR_MASALAH") || strings.HasPrefix(u, "BUKTI") {
+			continue
+		}
+		lines = append(lines, ln)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n")), answer
+}
 
 // parseVerdict mengekstrak VERDICT/KEYAKINAN dari jawaban bebas.
 //

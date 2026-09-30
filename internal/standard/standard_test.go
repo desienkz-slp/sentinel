@@ -19,7 +19,7 @@ func TestClassify(t *testing.T) {
 		{"ok", "oke siap", IntentChat},
 
 		// Broadcast/laporan otomatis -> INFO
-		{"status user", "📡 STATUS USER: SERVER KABUH\nTotal User Terputus : 2", IntentInfo},
+		{"status user", "📡 STATUS USER: SERVER PUSAT\nTotal User Terputus : 2", IntentInfo},
 		{"terhubung kembali", "✅ TERHUBUNG KEMBALI\nRouter: SERVER PUSAT", IntentInfo},
 		{"powered by", "Laporan otomatis\n_Powered by JFN_", IntentInfo},
 

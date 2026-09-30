@@ -15,7 +15,9 @@ import (
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
+	"ainoc/internal/learning"
 	"ainoc/internal/llm"
+	"ainoc/internal/memory"
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
 	"ainoc/internal/supervisor"
@@ -34,6 +36,8 @@ type Server struct {
 	wa     *wa.Client
 	sup    *supervisor.Manager
 	sesi   *session.Store
+	mem    *memory.Store
+	learn  *learning.Store
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -192,6 +196,59 @@ func (s *Server) routes() http.Handler {
 			"standar":       standard.Version,
 			"standar_aktif": s.cfg.StandardDoc != "",
 		})
+	})
+
+	// Memory: apa yang sistem ketahui tentang tiap pengirim.
+	mux.HandleFunc("/api/memory", func(w http.ResponseWriter, r *http.Request) {
+		key := strings.TrimSpace(r.URL.Query().Get("nomor"))
+		if key != "" {
+			prof := s.mem.Profile(session.Key(key))
+			if prof == nil {
+				writeJSON(w, 404, map[string]string{"error": "nomor belum dikenal"})
+				return
+			}
+			writeJSON(w, 200, prof)
+			return
+		}
+		type ringkas struct {
+			Nomor    string `json:"nomor"`
+			Fakta    int    `json:"fakta"`
+			Insiden  int    `json:"insiden"`
+			Terakhir string `json:"terakhir"`
+		}
+		var out []ringkas
+		for _, k := range s.mem.Keys() {
+			if p := s.mem.Profile(k); p != nil {
+				out = append(out, ringkas{Nomor: k, Fakta: len(p.Facts), Insiden: len(p.Incidents),
+					Terakhir: p.LastSeen.Format("02 Jan 15:04")})
+			}
+		}
+		writeJSON(w, 200, map[string]any{
+			"statistik": s.mem.Stats(),
+			"pengirim":  out,
+			"path":      s.cfg.MemoryPath,
+		})
+	})
+
+	// Self-learning: apa yang dipelajari sistem dari hasil diagnosis.
+	mux.HandleFunc("/api/learning", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{
+			"statistik": s.learn.Stats(),
+			"signature": s.learn.Semua(),
+		})
+	})
+
+	// Simpan memory ke disk sekarang (tanpa menunggu berkala).
+	mux.HandleFunc("/api/memory/simpan", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]string{"error": "gunakan POST"})
+			return
+		}
+		if err := s.mem.Save(); err != nil {
+			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "path": s.cfg.MemoryPath, "statistik": s.mem.Stats()})
 	})
 
 	// Kosongkan cache (mis. setelah mengganti model supaya tidak menyajikan
@@ -552,6 +609,7 @@ func toView(rep agent.Report) wa.ReportView {
 		ElapsedMS:  rep.ElapsedMS,
 		Escalated:  rep.Escalated,
 		Answer:     rep.Answer,
+		Balasan:    rep.Balasan,
 		IsChat:     strings.Contains(rep.Engine, "tanpa pengecekan"),
 	}
 }
