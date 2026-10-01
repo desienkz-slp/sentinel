@@ -503,6 +503,7 @@ func (s *Server) routes() http.Handler {
 			"board_name": d.BoardName,
 			"uptime":     d.Uptime,
 			"cpu_load":   d.CPU,
+			"identity":   d.Identity,
 			"message":    fmt.Sprintf("mikrotik menjawab (RouterOS v%s, %s)", d.Version, d.BoardName),
 		})
 	})

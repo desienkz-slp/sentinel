@@ -116,6 +116,7 @@ type PingResult struct {
 	BoardName string `json:"board_name"`
 	Uptime    string `json:"uptime"`
 	CPU       string `json:"cpu_load"`
+	Identity  string `json:"identity"` // nama router di /system/identity
 }
 
 // Ping memverifikasi koneksi + auth terhadap RouterOS (tanpa membocorkan pass).
@@ -129,14 +130,19 @@ func (a *Adapter) Ping(ctx context.Context) (PingResult, error) {
 		return PingResult{}, err
 	}
 	r := firstRow(rows)
-	return PingResult{
+	res := PingResult{
 		BaseURL:   a.addr(),
 		LatencyMS: time.Since(start).Milliseconds(),
 		Version:   r["version"],
 		BoardName: r["board-name"],
 		Uptime:    r["uptime"],
 		CPU:       r["cpu-load"],
-	}, nil
+	}
+	// Identitas router (nama di /system/identity) — opsional, tidak gagal bila kosong.
+	if idRows, err := a.query(ctx, "/system/identity/print", nil); err == nil {
+		res.Identity = firstRow(idRows)["name"]
+	}
+	return res, nil
 }
 
 // Invoke memenuhi tool.Adapter.

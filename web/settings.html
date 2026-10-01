@@ -222,12 +222,22 @@ async function mkTest(i) {
   if (!r.host || !r.user) { msg('intMsg', false, 'Isi Host dan Username dulu untuk router ' + (r.name||i+1)); return; }
   msg('intMsg', null, `Menguji ${r.name||r.host}…`);
   try {
-    // Tes tanpa menyimpan: pakai endpoint check via nama setelah simpan sementara.
-    // Simpan dulu semua, lalu cek.
+    // Simpan dulu semua, lalu cek per nama host (nama bisa belum diset).
     await saveIntegrations(true);
     const d = await api('/api/mikrotik/check?name=' + encodeURIComponent(r.name||r.host));
-    if (d.ok) msg('intMsg', true, `${d.router}: RouterOS v${d.version} · ${d.board_name} · ${d.ping_ms}ms`);
-    else msg('intMsg', false, `${r.name||r.host}: ` + (d.error||'gagal'));
+    if (d.ok) {
+      // Ambil identity router otomatis bila nama belum diset / berbeda.
+      if (d.identity && (!r.name || r.name !== d.identity)) {
+        r.name = d.identity;
+        mkRender();
+        // Simpan nama baru ke server.
+        await saveIntegrations(true);
+        mkRender();
+      }
+      msg('intMsg', true, `${d.identity || r.name}: RouterOS v${d.version} · ${d.board_name} · ${d.ping_ms}ms`);
+    } else {
+      msg('intMsg', false, `${r.name||r.host}: ` + (d.error||'gagal'));
+    }
   } catch(e) { msg('intMsg', false, 'Gagal: ' + e.message); }
 }
 
