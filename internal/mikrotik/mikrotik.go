@@ -57,7 +57,14 @@ func (a *Adapter) Name() string { return "MikroTik RouterOS (API native)" }
 func (a *Adapter) Configured() bool { return a.cfg.Host != "" && a.cfg.User != "" }
 
 // ToolNames memenuhi tool.Adapter — hanya tool read-only.
-func (a *Adapter) ToolNames() []string { return []string{"mikrotik.get_pppoe_status"} }
+func (a *Adapter) ToolNames() []string {
+	return []string{
+		"mikrotik.get_pppoe_status",
+		"mikrotik.get_interface_stats",
+		"mikrotik.get_interface_live",
+		"mikrotik.get_customer_traffic",
+	}
+}
 
 // port mengembalikan port koneksi: eksplisit > default (8728/8729).
 func (a *Adapter) port() int {
@@ -120,6 +127,12 @@ func (a *Adapter) Invoke(ctx context.Context, name string, args map[string]any) 
 	switch name {
 	case "mikrotik.get_pppoe_status":
 		return a.getPPPoEStatus(ctx, args)
+	case "mikrotik.get_interface_stats":
+		return a.getInterfaceStats(ctx, args)
+	case "mikrotik.get_interface_live":
+		return a.getInterfaceLive(ctx, args)
+	case "mikrotik.get_customer_traffic":
+		return a.getCustomerTraffic(ctx, args)
 	default:
 		return tool.Output{}, fmt.Errorf("tool mikrotik tidak dikenal: %s", name)
 	}
@@ -172,6 +185,130 @@ func (a *Adapter) getPPPoEStatus(ctx context.Context, args map[string]any) (tool
 		Data: match,
 		Text: strings.TrimSpace(b.String()),
 	}, nil
+}
+
+// getInterfaceStats membaca statistik kumulatif tiap interface (rx/tx byte,
+// drop, error). Field terkonfirmasi: rx-byte, tx-byte, rx-drop, rx-error.
+func (a *Adapter) getInterfaceStats(ctx context.Context, args map[string]any) (tool.Output, error) {
+	rows, err := a.query(ctx, "/interface/print", nil)
+	if err != nil {
+		return tool.Output{}, err
+	}
+	filter := firstString(args, "interface", "name")
+	var b strings.Builder
+	count := 0
+	for _, s := range rows {
+		if s["type"] == "" {
+			continue // bukan interface (biasanya VLAN/slave tanpa tipe)
+		}
+		if s["disabled"] == "true" || s["running"] == "false" {
+			continue // interface mati/nonaktif
+		}
+		if filter != "" && s["name"] != filter {
+			continue
+		}
+		// Lewati interface yang benar-benar nol (tanpa traffic).
+		if s["rx-byte"] == "0" && s["tx-byte"] == "0" && filter == "" {
+			continue
+		}
+		count++
+		fmt.Fprintf(&b, "%s: rx=%s (%s), tx=%s (%s)",
+			s["name"], s["rx-byte"], humanBytes(parseUint(s["rx-byte"])),
+			s["tx-byte"], humanBytes(parseUint(s["tx-byte"])))
+		if s["rx-drop"] != "" && s["rx-drop"] != "0" {
+			fmt.Fprintf(&b, ", rx-drop=%s", s["rx-drop"])
+		}
+		if s["rx-error"] != "" && s["rx-error"] != "0" {
+			fmt.Fprintf(&b, ", rx-error=%s", s["rx-error"])
+		}
+		if s["comment"] != "" {
+			fmt.Fprintf(&b, " [%s]", s["comment"])
+		}
+		b.WriteString("\n")
+	}
+	if count == 0 {
+		return tool.Output{Text: "Tidak ada interface (atau filter tidak cocok)."}, nil
+	}
+	return tool.Output{Data: rows, Text: strings.TrimSpace(b.String())}, nil
+}
+
+// getInterfaceLive membaca live bps via /interface/monitor-traffic once.
+// Field terkonfirmasi: rx-bits-per-second, tx-bits-per-second, drops.
+func (a *Adapter) getInterfaceLive(ctx context.Context, args map[string]any) (tool.Output, error) {
+	iface := firstString(args, "interface", "name")
+	if iface == "" {
+		return tool.Output{}, fmt.Errorf("mikrotik.get_interface_live butuh interface (nama interface)")
+	}
+	rows, err := a.query(ctx, "/interface/monitor-traffic", map[string]string{
+		"interface": iface,
+		"once":      "",
+	})
+	if err != nil {
+		return tool.Output{}, err
+	}
+	if len(rows) == 0 {
+		return tool.Output{Text: fmt.Sprintf("Tidak ada data traffic untuk %q.", iface)}, nil
+	}
+	s := rows[0]
+	rx := parseUint(s["rx-bits-per-second"])
+	tx := parseUint(s["tx-bits-per-second"])
+	text := fmt.Sprintf("%s live: rx=%s, tx=%s",
+		s["name"], humanBps(rx), humanBps(tx))
+	if s["rx-drops-per-second"] != "" && s["rx-drops-per-second"] != "0" {
+		text += fmt.Sprintf(", rx-drops/s=%s", s["rx-drops-per-second"])
+	}
+	if s["rx-errors-per-second"] != "" && s["rx-errors-per-second"] != "0" {
+		text += fmt.Sprintf(", rx-errors/s=%s", s["rx-errors-per-second"])
+	}
+	return tool.Output{Data: rows, Text: text}, nil
+}
+
+// getCustomerTraffic membaca traffic per pelanggan dari /queue/simple (name
+// berformat <pppoe-USER>). Field terkonfirmasi: bytes, rate, dropped, max-limit.
+func (a *Adapter) getCustomerTraffic(ctx context.Context, args map[string]any) (tool.Output, error) {
+	identity := firstString(args, "identity", "username", "name", "customer")
+	rows, err := a.query(ctx, "/queue/simple/print", nil)
+	if err != nil {
+		return tool.Output{}, err
+	}
+
+	var match []map[string]string
+	for _, q := range rows {
+		name := trimQueueName(q["name"])
+		if identity == "" || name == identity || strings.Contains(name, identity) {
+			match = append(match, q)
+		}
+	}
+
+	if len(match) == 0 {
+		msg := "Tidak ada simple queue yang cocok."
+		if identity != "" {
+			msg = fmt.Sprintf("Tidak ada queue untuk pelanggan %q.", identity)
+		}
+		return tool.Output{Text: msg}, nil
+	}
+
+	var b strings.Builder
+	if identity != "" {
+		fmt.Fprintf(&b, "Traffic pelanggan %q: %d queue\n", identity, len(match))
+	} else {
+		fmt.Fprintf(&b, "Semua simple queue: %d\n", len(match))
+	}
+	for _, q := range match {
+		user := trimQueueName(q["name"])
+		rx, tx := splitPair(q["bytes"])
+		rrx, rtx := splitPair(q["rate"])
+		fmt.Fprintf(&b, "- %s: total rx=%s tx=%s", user, humanBytes(rx), humanBytes(tx))
+		fmt.Fprintf(&b, ", live rx=%s tx=%s", humanBps(rrx), humanBps(rtx))
+		if q["max-limit"] != "" {
+			fmt.Fprintf(&b, ", max-limit=%s", q["max-limit"])
+		}
+		if q["dropped"] != "" && q["dropped"] != "0/0" {
+			fmt.Fprintf(&b, ", dropped=%s", q["dropped"])
+		}
+		b.WriteString("\n")
+	}
+	return tool.Output{Data: match, Text: strings.TrimSpace(b.String())}, nil
 }
 
 // ---- Protokol biner RouterOS ----
@@ -403,6 +540,59 @@ func orDash(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// parseUint mengurai string angka (field RouterOS semuanya string) ke uint64.
+func parseUint(s string) uint64 {
+	var n uint64
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			break
+		}
+		n = n*10 + uint64(c-'0')
+	}
+	return n
+}
+
+// humanBytes mengubah byte ke bentuk terbaca (KB/MB/GB/TB).
+func humanBytes(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := uint64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// humanBps mengubah bits-per-second ke bentuk terbaca (kbps/Mbps/Gbps).
+func humanBps(n uint64) string {
+	const unit = 1000
+	if n < unit {
+		return fmt.Sprintf("%d bps", n)
+	}
+	div, exp := uint64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cbps", float64(n)/float64(div), "kMGTPE"[exp])
+}
+
+// splitPair memecah "rx/tx" menjadi dua uint64 (default 0 bila kosong).
+func splitPair(s string) (uint64, uint64) {
+	a, b, _ := strings.Cut(s, "/")
+	return parseUint(a), parseUint(b)
+}
+
+// trimQueueName membersihkan nama simple queue "<pppoe-USER>" -> "USER".
+func trimQueueName(name string) string {
+	name = strings.Trim(name, "<>")
+	name = strings.TrimPrefix(name, "pppoe-")
+	return name
 }
 
 func firstString(m map[string]any, keys ...string) string {

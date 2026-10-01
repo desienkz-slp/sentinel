@@ -170,15 +170,26 @@ func TestConfigured(t *testing.T) {
 	}
 }
 
-// TestToolNames hanya read-only.
+// TestToolNames hanya read-only (4 tool traffic/status).
 func TestToolNames(t *testing.T) {
 	a := New(Config{Host: "x", User: "y"})
 	if a.Domain() != "mikrotik" {
 		t.Errorf("Domain = %q, mau mikrotik", a.Domain())
 	}
 	names := a.ToolNames()
-	if len(names) != 1 || names[0] != "mikrotik.get_pppoe_status" {
-		t.Errorf("ToolNames = %v, mau [mikrotik.get_pppoe_status]", names)
+	want := []string{
+		"mikrotik.get_pppoe_status",
+		"mikrotik.get_interface_stats",
+		"mikrotik.get_interface_live",
+		"mikrotik.get_customer_traffic",
+	}
+	if len(names) != len(want) {
+		t.Fatalf("ToolNames = %v, mau %v", names, want)
+	}
+	for i, w := range want {
+		if names[i] != w {
+			t.Errorf("ToolNames[%d] = %q, mau %q", i, names[i], w)
+		}
 	}
 }
 
@@ -199,4 +210,95 @@ func portOf(addr string) int {
 		n = n*10 + int(c-'0')
 	}
 	return n
+}
+
+// TestGetInterfaceStats: parse rx/tx byte + humanBytes.
+func TestGetInterfaceStats(t *testing.T) {
+	addr, stop := mockRouterOS(t, "staff", "rahasia", func(cmd string) [][]string {
+		if cmd == "/interface/print" {
+			return [][]string{
+				{"=name=ether1", "=type=ether", "=rx-byte=228405285520454", "=tx-byte=23184709199749"},
+				{"=name=ether2", "=type=ether", "=rx-byte=27235253974210", "=tx-byte=211288494220234"},
+			}
+		}
+		return nil
+	})
+	defer stop()
+
+	a := New(Config{Host: hostOf(addr), Port: portOf(addr), User: "staff", Pass: "rahasia"})
+	out, err := a.Invoke(context.Background(), "mikrotik.get_interface_stats", map[string]any{})
+	if err != nil {
+		t.Fatalf("Invoke error: %v", err)
+	}
+	if !strings.Contains(out.Text, "ether1") || !strings.Contains(out.Text, "ether2") {
+		t.Errorf("Text = %q, mau memuat kedua interface", out.Text)
+	}
+	if !strings.Contains(out.Text, "TB") {
+		t.Errorf("Text = %q, mau memuat ukuran terbaca (TB)", out.Text)
+	}
+}
+
+// TestGetInterfaceLive: parse live bps.
+func TestGetInterfaceLive(t *testing.T) {
+	addr, stop := mockRouterOS(t, "staff", "rahasia", func(cmd string) [][]string {
+		if cmd == "/interface/monitor-traffic" {
+			return [][]string{{"=name=ether1", "=rx-bits-per-second=1531456376", "=tx-bits-per-second=125983088"}}
+		}
+		return nil
+	})
+	defer stop()
+
+	a := New(Config{Host: hostOf(addr), Port: portOf(addr), User: "staff", Pass: "rahasia"})
+	out, err := a.Invoke(context.Background(), "mikrotik.get_interface_live", map[string]any{"interface": "ether1"})
+	if err != nil {
+		t.Fatalf("Invoke error: %v", err)
+	}
+	if !strings.Contains(out.Text, "Gbps") {
+		t.Errorf("Text = %q, mau memuat 'Gbps' (1531456376 bps ~ 1.5 Gbps)", out.Text)
+	}
+}
+
+// TestGetCustomerTraffic: parse simple queue name <pppoe-USER> + bytes/rate.
+func TestGetCustomerTraffic(t *testing.T) {
+	addr, stop := mockRouterOS(t, "staff", "rahasia", func(cmd string) [][]string {
+		if cmd == "/queue/simple/print" {
+			return [][]string{
+				{"=name=<pppoe-pelanggan-satu>", "=bytes=43793175530/416066955503", "=rate=280200/7115056", "=max-limit=50000000/50000000"},
+				{"=name=<pppoe-pelanggan-dua>", "=bytes=8958194383/59929609759", "=rate=0/0", "=max-limit=16000000/16000000"},
+			}
+		}
+		return nil
+	})
+	defer stop()
+
+	a := New(Config{Host: hostOf(addr), Port: portOf(addr), User: "staff", Pass: "rahasia"})
+	out, err := a.Invoke(context.Background(), "mikrotik.get_customer_traffic", map[string]any{"identity": "pelanggan-satu"})
+	if err != nil {
+		t.Fatalf("Invoke error: %v", err)
+	}
+	if !strings.Contains(out.Text, "pelanggan-satu") {
+		t.Errorf("Text = %q, mau memuat pelanggan-satu", out.Text)
+	}
+	if strings.Contains(out.Text, "pelanggan-dua") {
+		t.Errorf("Text = %q, tidak boleh memuat pelanggan-dua (filter pelanggan-satu)", out.Text)
+	}
+}
+
+// TestHumanBytesAndBps: verifikasi format helper.
+func TestHumanBytesAndBps(t *testing.T) {
+	if got := humanBytes(1024); got != "1.0 KB" {
+		t.Errorf("humanBytes(1024) = %q, mau 1.0 KB", got)
+	}
+	if got := humanBytes(1024 * 1024 * 1024 * 1024); got != "1.0 TB" {
+		t.Errorf("humanBytes(1TB) = %q, mau 1.0 TB", got)
+	}
+	if got := humanBps(1000000000); got != "1.0 Gbps" {
+		t.Errorf("humanBps(1e9) = %q, mau 1.0 Gbps", got)
+	}
+	if got := humanBps(50000000); got != "50.0 Mbps" {
+		t.Errorf("humanBps(50e6) = %q, mau 50.0 Mbps", got)
+	}
+	if rx, tx := splitPair("280200/7115056"); rx != 280200 || tx != 7115056 {
+		t.Errorf("splitPair = %d/%d, mau 280200/7115056", rx, tx)
+	}
 }

@@ -63,6 +63,63 @@ tools:
           description: Username PPPoE atau nomor pelanggan ternormalisasi.
       required: [identity]
 
+  - name: mikrotik.get_interface_stats
+    domain: mikrotik
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: mikrotik
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+    description: Statistik kumulatif interface (rx/tx byte, drop, error).
+    parameters:
+      type: object
+      properties:
+        interface:
+          type: string
+          description: Nama interface (opsional; kosong = semua).
+      required: []
+
+  - name: mikrotik.get_interface_live
+    domain: mikrotik
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: mikrotik
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+    description: Traffic live (bits per second) satu interface.
+    parameters:
+      type: object
+      properties:
+        interface:
+          type: string
+          description: Nama interface (mis. ether1).
+      required: [interface]
+
+  - name: mikrotik.get_customer_traffic
+    domain: mikrotik
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: mikrotik
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+    description: Traffic per pelanggan (total + live) dari simple queue.
+    parameters:
+      type: object
+      properties:
+        identity:
+          type: string
+          description: Username PPPoE / nama queue (opsional; kosong = semua).
+      required: []
+
   - name: genieacs.get_device_state
     domain: genieacs
     version: 1.0.0
