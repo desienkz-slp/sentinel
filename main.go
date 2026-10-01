@@ -74,12 +74,14 @@ func main() {
 	}
 
 	client := llm.New(cfg.LLMBaseURL, cfg.LLMAPIKey, cfg.LLMModel, cfg.LLMTimeout)
+	client.WireAPI = cfg.LLMWireAPI
 	runner := diag.New(cfg.DiagTimeout)
 	bridge := codexbridge.New(cfg.CodexPath, cfg.CodexModel, cfg.CodexSbx, 300)
 	// Endpoint Codex override (opsional): diteruskan sebagai -c per-invoke.
 	bridge.BaseURL = cfg.CodexBaseURL
 	bridge.Provider = cfg.CodexProvider
 	bridge.APIKey = cfg.CodexAPIKey
+	bridge.WireAPI = cfg.CodexWireAPI
 
 	// Sesi percakapan per nomor + cache jawaban.
 	sesi := session.New(session.Config{

@@ -126,11 +126,13 @@ func (s *Server) routes() http.Handler {
 			LLMBaseURL    *string   `json:"llm_base_url"`
 			LLMAPIKey     *string   `json:"llm_api_key"`
 			LLMModel      *string   `json:"llm_model"`
+			LLMWireAPI    *string   `json:"llm_wire_api"`
 			MaxSteps      *int      `json:"max_steps"`
 			CodexModel    *string   `json:"codex_model"`
 			CodexBaseURL  *string   `json:"codex_base_url"`
 			CodexProvider *string   `json:"codex_provider"`
 			CodexAPIKey   *string   `json:"codex_api_key"`
+			CodexWireAPI  *string   `json:"codex_wire_api"`
 			WABaseURL     *string   `json:"wa_base_url"`
 			WAAllowlist   *[]string `json:"wa_allowlist"`
 			WAAutoReply   *bool     `json:"wa_auto_reply"`
@@ -172,6 +174,10 @@ func (s *Server) routes() http.Handler {
 			s.cfg.LLMModel = *body.LLMModel
 			s.llm.Model = *body.LLMModel
 		}
+		if body.LLMWireAPI != nil {
+			s.cfg.LLMWireAPI = strings.TrimSpace(*body.LLMWireAPI)
+			s.llm.WireAPI = s.cfg.LLMWireAPI
+		}
 		if body.MaxSteps != nil && *body.MaxSteps > 0 {
 			s.cfg.MaxSteps = *body.MaxSteps
 		}
@@ -191,6 +197,10 @@ func (s *Server) routes() http.Handler {
 			// Kosong = hapus key (kembali ke auth.json/config.toml).
 			s.cfg.CodexAPIKey = strings.TrimSpace(*body.CodexAPIKey)
 			s.codex.APIKey = s.cfg.CodexAPIKey
+		}
+		if body.CodexWireAPI != nil {
+			s.cfg.CodexWireAPI = strings.TrimSpace(*body.CodexWireAPI)
+			s.codex.WireAPI = s.cfg.CodexWireAPI
 		}
 		// WhatsApp: base URL boleh dikosongkan untuk mematikan integrasi.
 		if body.WABaseURL != nil {

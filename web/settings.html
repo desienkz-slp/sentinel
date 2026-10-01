@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pengaturan — NOC Sentinel</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="64x64" href="/favicon.png">
 <style>
   :root{
     --bg:#0b0f14; --panel:#121922; --panel2:#0f151d; --line:#1f2a37;
@@ -14,6 +16,7 @@
   body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
   header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
     background:linear-gradient(180deg,#111a24,#0d141c);position:sticky;top:0;z-index:10;flex-wrap:wrap}
+  .brand-logo{width:38px;height:38px;flex:0 0 auto}
   .logo{font-weight:700;letter-spacing:.5px;font-size:17px}
   .logo span{color:var(--acc)}
   .nav a{color:var(--dim);text-decoration:none;font-size:13px;padding:7px 12px;border:1px solid var(--line);
@@ -51,6 +54,7 @@
 </head>
 <body>
 <header>
+  <img class="brand-logo" src="/logo.png" alt="NOC Sentinel" width="38" height="38">
   <div class="logo">NOC <span>Sentinel</span></div>
   <nav class="nav">
     <a href="/">← Dashboard</a>
@@ -79,10 +83,19 @@
         <label for="sModel">Model</label>
         <select id="sModel"></select>
       </div>
-      <div style="display:flex;align-items:flex-end"><button class="ghost" onclick="loadModels('a')">Cek daftar model</button></div>
+      <div>
+        <label for="sWire">Tipe komunikasi</label>
+        <select id="sWire">
+          <option value="chat">Chat Completions (lainnya)</option>
+          <option value="responses">Responses (GPT)</option>
+          <option value="messages">Messages (Claude)</option>
+        </select>
+      </div>
     </div>
+    <div class="hint">Pilih tipe komunikasi native model: <b>Messages</b> untuk Claude, <b>Responses</b> untuk GPT/reasoning, <b>Chat Completions</b> untuk model lain — supaya thinking, prompt cache &amp; effort optimal.</div>
     <div class="hint" id="setMsgA"></div>
     <div class="btns">
+      <button class="ghost" onclick="loadModels('a')">Cek daftar model</button>
       <button class="ghost" onclick="pingLLM()">Tes koneksi (completion nyata)</button>
     </div>
     <div class="status">
@@ -104,6 +117,17 @@
         <select id="sCodex"></select>
       </div>
       <div><label for="sCodexProvider">Provider (opsional)</label><input id="sCodexProvider" placeholder="9router"></div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="sCodexWire">Tipe komunikasi</label>
+        <select id="sCodexWire">
+          <option value="responses">Responses (GPT)</option>
+          <option value="chat">Chat Completions (lainnya)</option>
+          <option value="messages">Messages (Claude)</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end"><div class="hint" style="margin:0">Format wire yang dipakai Codex saat eskalasi.</div></div>
     </div>
     <div class="hint" id="setMsgB"></div>
     <div class="btns">
@@ -297,6 +321,8 @@ async function boot() {
     // via tombol "Cek daftar model" atau otomatis di bawah).
     setSelectValue('sModel', c.llm_model);
     setSelectValue('sCodex', c.codex_model);
+    $('sWire').value = c.llm_wire_api || 'chat';
+    $('sCodexWire').value = c.codex_wire_api || 'responses';
     $('stBase').textContent = c.llm_base_url || '—';
     $('stModel').textContent = c.llm_model || '—';
     $('stSteps').textContent = c.max_steps || '—';
@@ -363,11 +389,13 @@ async function saveSettings() {
   try {
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
       llm_base_url: $('sBase').value, llm_api_key: $('sKey').value || undefined,
-      llm_model: $('sModel').value, max_steps: parseInt($('sSteps').value,10)||undefined,
+      llm_model: $('sModel').value, llm_wire_api: $('sWire').value,
+      max_steps: parseInt($('sSteps').value,10)||undefined,
       codex_model: $('sCodex').value,
       codex_base_url: $('sCodexBase').value || undefined,
       codex_provider: $('sCodexProvider').value || undefined,
-      codex_api_key: $('sCodexKey').value || undefined
+      codex_api_key: $('sCodexKey').value || undefined,
+      codex_wire_api: $('sCodexWire').value
     })});
     const c = d.config;
     $('stBase').textContent = c.llm_base_url; $('stModel').textContent = c.llm_model;
@@ -375,7 +403,7 @@ async function saveSettings() {
     $('stKey').textContent = c.llm_key_set ? 'tersimpan (••••)' : 'belum ada';
     $('sKey').value = ''; $('sCodexKey').value = '';
     updateCodexStatus(c);
-    msg('setMsg', true, `Tersimpan. Conversation: ${c.llm_model} · Reasoning: ${c.codex_model}`);
+    msg('setMsg', true, `Tersimpan. Conversation: ${c.llm_model} (${c.llm_wire_api}) · Reasoning: ${c.codex_model} (${c.codex_wire_api})`);
     setDot('LLM', false, 'tersimpan — belum dites');
   } catch(e){ msg('setMsg', false, 'Gagal: ' + e.message); }
 }

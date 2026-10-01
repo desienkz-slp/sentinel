@@ -34,6 +34,9 @@ type Bridge struct {
 	BaseURL  string
 	Provider string
 	APIKey   string
+	// WireAPI: format komunikasi native (chat | responses | messages).
+	// Default "responses" (sesuai config.toml user saat ini).
+	WireAPI string
 }
 
 func New(codexPath, model, sandbox string, timeoutSec int) *Bridge {
@@ -199,12 +202,26 @@ func (b *Bridge) endpointOverrides() []string {
 	out := []string{
 		"-c", "model_provider=" + provider,
 		"-c", "model_providers." + provider + ".base_url=" + strings.TrimRight(b.BaseURL, "/"),
-		"-c", "model_providers." + provider + ".wire_api=responses",
+		"-c", "model_providers." + provider + ".wire_api=" + b.wire(),
 	}
 	if b.APIKey != "" {
 		out = append(out, "-c", "model_providers."+provider+".http_headers.Authorization=Bearer "+b.APIKey)
 	}
 	return out
+}
+
+// wire menormalkan WireAPI Codex ke salah satu dari chat/responses/messages.
+// Codex memahami "responses" (default), "chat" (chat completions), dan
+// "messages" (anthropic).
+func (b *Bridge) wire() string {
+	switch strings.ToLower(strings.TrimSpace(b.WireAPI)) {
+	case "chat", "chat_completions":
+		return "chat"
+	case "messages", "anthropic":
+		return "messages"
+	default:
+		return "responses"
+	}
 }
 
 func (b *Bridge) ensureGitRepo() error {

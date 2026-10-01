@@ -15,6 +15,9 @@ type Config struct {
 	LLMBaseURL string `json:"llm_base_url"`
 	LLMAPIKey  string `json:"llm_api_key"`
 	LLMModel   string `json:"llm_model"`
+	// LLMWireAPI: format komunikasi native (chat | responses | messages).
+	// Default "chat" (/chat/completions).
+	LLMWireAPI string `json:"llm_wire_api"`
 	LLMTimeout int    `json:"llm_timeout_sec"`
 	MaxSteps   int    `json:"max_steps"`
 	CodexPath  string `json:"codex_path"`
@@ -26,8 +29,11 @@ type Config struct {
 	CodexBaseURL  string `json:"codex_base_url"`
 	CodexProvider string `json:"codex_provider"`
 	CodexAPIKey   string `json:"codex_api_key"`
-	DiagTimeout   int    `json:"diag_timeout_sec"`
-	Org           string `json:"org"`
+	// CodexWireAPI: format wire untuk Codex (chat | responses | messages).
+	// Default "responses" (sama dengan config.toml user saat ini).
+	CodexWireAPI string `json:"codex_wire_api"`
+	DiagTimeout  int    `json:"diag_timeout_sec"`
+	Org          string `json:"org"`
 
 	// Integrasi WhatsApp Gateway (Node/Baileys, project ai-noc).
 	WABaseURL   string   `json:"wa_base_url"`
@@ -156,16 +162,18 @@ func atoi(s string, def int) int {
 // Default mengembalikan konfigurasi awal sebelum file/env diterapkan.
 func Default() *Config {
 	return &Config{
-		Addr:        ":8090",
-		LLMBaseURL:  "http://127.0.0.1:20128/v1",
-		LLMModel:    "ag/gemini-3.8-flash-high",
-		LLMTimeout:  120,
-		MaxSteps:    12,
-		CodexPath:   "codex",
-		CodexModel:  "cx/gpt-5.6-terra",
-		CodexSbx:    "danger-full-access",
-		DiagTimeout: 30,
-		Org:         "NetLayer",
+		Addr:         ":8090",
+		LLMBaseURL:   "http://127.0.0.1:20128/v1",
+		LLMModel:     "ag/gemini-3.8-flash-high",
+		LLMWireAPI:   "chat",
+		LLMTimeout:   120,
+		MaxSteps:     12,
+		CodexPath:    "codex",
+		CodexModel:   "cx/gpt-5.6-terra",
+		CodexSbx:     "danger-full-access",
+		CodexWireAPI: "responses",
+		DiagTimeout:  30,
+		Org:          "NetLayer",
 
 		WABaseURL:   "http://127.0.0.1:3001",
 		WATimeout:   45,
@@ -334,6 +342,9 @@ func Load(path string) *Config {
 	if v := getenv("NOC_LLM_MODEL", "LLM_MODEL"); v != "" {
 		c.LLMModel = v
 	}
+	if v := getenv("NOC_LLM_WIRE_API"); v != "" {
+		c.LLMWireAPI = v
+	}
 	c.LLMTimeout = atoi(getenv("NOC_LLM_TIMEOUT"), c.LLMTimeout)
 	c.MaxSteps = atoi(getenv("NOC_MAX_STEPS"), c.MaxSteps)
 	c.DiagTimeout = atoi(getenv("NOC_DIAG_TIMEOUT"), c.DiagTimeout)
@@ -351,6 +362,9 @@ func Load(path string) *Config {
 	}
 	if v := getenv("NOC_CODEX_API_KEY"); v != "" {
 		c.CodexAPIKey = v
+	}
+	if v := getenv("NOC_CODEX_WIRE_API"); v != "" {
+		c.CodexWireAPI = v
 	}
 	if v := getenv("NOC_WA_BASE_URL", "N8N_WEBHOOK_URL"); v != "" {
 		c.WABaseURL = v
@@ -458,6 +472,7 @@ func (c *Config) Redacted() map[string]any {
 		"addr":           c.Addr,
 		"llm_base_url":   c.LLMBaseURL,
 		"llm_model":      c.LLMModel,
+		"llm_wire_api":   c.LLMWireAPI,
 		"llm_key":        k,
 		"llm_key_set":    c.LLMAPIKey != "",
 		"llm_timeout":    c.LLMTimeout,
@@ -467,6 +482,7 @@ func (c *Config) Redacted() map[string]any {
 		"codex_sandbox":  c.CodexSbx,
 		"codex_base_url": c.CodexBaseURL,
 		"codex_provider": c.CodexProvider,
+		"codex_wire_api": c.CodexWireAPI,
 		"codex_key_set":  c.CodexAPIKey != "",
 		"codex_key":      maskSecret(c.CodexAPIKey),
 		"diag_timeout":   c.DiagTimeout,
