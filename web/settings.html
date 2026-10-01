@@ -67,45 +67,64 @@
 
 <main>
   <section class="card">
-    <h2>Pengaturan Runtime AI</h2>
-    <div class="sub">LLM untuk diagnosis &amp; percakapan + eskalasi Codex CLI.</div>
+    <h2>Conversation — Endpoint A</h2>
+    <div class="sub">LLM untuk percakapan &amp; diagnosis (loop OODA + balasan pelanggan).</div>
 
     <div class="row">
-      <div><label for="sBase">Base URL (OpenAI-compatible)</label><input id="sBase" placeholder="http://127.0.0.1:20128/v1"></div>
+      <div><label for="sBase">Base URL</label><input id="sBase" placeholder="http://127.0.0.1:20128/v1"></div>
       <div><label for="sKey">API Key (kosongkan bila sudah tersimpan)</label><input id="sKey" type="password" placeholder="•••• (tidak ditampilkan)"></div>
     </div>
     <div class="row">
       <div>
-        <label for="sModel">Model default</label>
-        <input id="sModel" list="modelList" placeholder="ag/gemini-3.8-flash-high">
-        <datalist id="modelList"></datalist>
+        <label for="sModel">Model</label>
+        <input id="sModel" list="modelListA" placeholder="ag/gemini-3.8-flash-high">
+        <datalist id="modelListA"></datalist>
       </div>
-      <div><label for="sSteps">Maks langkah per sesi</label><input id="sSteps" type="number" min="1" max="20"></div>
+      <div style="display:flex;align-items:flex-end"><button class="ghost" onclick="loadModels('a')">Cek daftar model</button></div>
     </div>
-    <div class="row">
-      <div><label for="sCodex">Model Codex (eskalasi)</label><input id="sCodex" placeholder="cx/gpt-5.6-terra"></div>
-      <div><label for="sCodexProvider">Provider Codex (opsional)</label><input id="sCodexProvider" placeholder="9router (kosong = pakai config.toml)"></div>
-    </div>
-    <div class="row">
-      <div><label for="sCodexBase">Base URL Codex (opsional)</label><input id="sCodexBase" placeholder="http://127.0.0.1:20128/v1 (kosong = pakai config.toml)"></div>
-      <div><label for="sCodexKey">API Key Codex (opsional, kosongkan bila sudah tersimpan)</label><input id="sCodexKey" type="password" placeholder="••••"></div>
-    </div>
-    <div class="hint">Endpoint Codex bersifat opsional: kosongkan semua = Codex memakai <code>~/.codex/config.toml</code> sendiri. Bila diisi, diteruskan sebagai override per-invoke (tanpa menimpa file Anda).</div>
-    <div class="row">
-      <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan</button></div>
-    </div>
+    <div class="hint" id="setMsgA"></div>
     <div class="btns">
-      <button class="ghost" onclick="loadModels()">Muat daftar model</button>
-      <button class="ghost" onclick="pingLLM()">Tes koneksi LLM (completion nyata)</button>
+      <button class="ghost" onclick="pingLLM()">Tes koneksi (completion nyata)</button>
+    </div>
+    <div class="status">
+      Conversation: base <b id="stBase">—</b> · model <b id="stModel">—</b> · key <b id="stKey">—</b>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Reasoning — Endpoint B</h2>
+    <div class="sub">Model eskalasi analisis mendalam via Codex CLI (dipanggil saat keyakinan rendah).</div>
+
+    <div class="row">
+      <div><label for="sCodexBase">Base URL (opsional)</label><input id="sCodexBase" placeholder="http://127.0.0.1:20128/v1 (kosong = pakai config.toml)"></div>
+      <div><label for="sCodexKey">API Key (opsional)</label><input id="sCodexKey" type="password" placeholder="••••"></div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="sCodex">Model</label>
+        <input id="sCodex" list="modelListB" placeholder="cx/gpt-5.6-terra">
+        <datalist id="modelListB"></datalist>
+      </div>
+      <div><label for="sCodexProvider">Provider (opsional)</label><input id="sCodexProvider" placeholder="9router"></div>
+    </div>
+    <div class="hint" id="setMsgB"></div>
+    <div class="btns">
+      <button class="ghost" onclick="loadModels('b')">Cek daftar model</button>
       <button class="ghost" onclick="codexSelftest()">Tes Codex CLI</button>
     </div>
-    <div class="hint" id="setMsg"></div>
     <div class="status">
-      Tersimpan: base URL <b id="stBase">—</b> · model <b id="stModel">—</b> ·
-      maks langkah <b id="stSteps">—</b> · codex <b id="stCodex">—</b> ·
-      LLM key <b id="stKey">—</b>
-      <br>Codex endpoint: <b id="stCodexEp">—</b> · codex key <b id="stCodexKey">—</b>
+      Reasoning: <b id="stCodexEp">—</b> · model <b id="stCodex">—</b> · key <b id="stCodexKey">—</b>
     </div>
+  </section>
+
+  <section class="card">
+    <h2>Perilaku Agen</h2>
+    <div class="sub">Batas langkah &amp; simpan seluruh pengaturan (kedua endpoint).</div>
+    <div class="row">
+      <div><label for="sSteps">Maks langkah per sesi</label><input id="sSteps" type="number" min="1" max="20"></div>
+      <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan Semua Pengaturan</button></div>
+    </div>
+    <div class="hint" id="setMsg"></div>
   </section>
 
   <section class="card">
@@ -297,19 +316,22 @@ async function boot() {
   } catch (e) { console.error(e); }
 }
 
-async function loadModels() {
-  msg('setMsg', null, 'Memuat daftar model…');
+async function loadModels(ep) {
+  const isA = ep !== 'b';
+  const msgEl = isA ? 'setMsgA' : 'setMsgB';
+  const listEl = isA ? 'modelListA' : 'modelListB';
+  const fieldEl = isA ? 'sModel' : 'sCodex';
+  msg(msgEl, null, `Memuat daftar model (${isA ? 'Conversation' : 'Reasoning'})…`);
   try {
-    const d = await api('/api/models');
-    const cur = $('sModel').value;
+    const d = await api('/api/models?endpoint=' + (isA ? 'a' : 'b'));
     const nice = ['ag/gemini','cx/gpt','grip/gpt','grip/deepseek','grip/glm','grip/qwen'];
     const sorted = d.models.slice().sort((a,b)=>{
       const ra = nice.findIndex(p=>a.startsWith(p)), rb = nice.findIndex(p=>b.startsWith(p));
       return (ra<0?99:ra)-(rb<0?99:rb) || a.localeCompare(b);
     });
-    $('modelList').innerHTML = sorted.map(m=>`<option value="${esc(m)}">`).join('');
-    msg('setMsg', true, `${sorted.length} model dimuat — klik field "Model default" untuk memilih.`);
-  } catch(e){ msg('setMsg', false, 'Gagal memuat model: ' + e.message); }
+    $(listEl).innerHTML = sorted.map(m=>`<option value="${esc(m)}">`).join('');
+    msg(msgEl, true, `${sorted.length} model dimuat — klik field "Model" lalu pilih dari dropdown.`);
+  } catch(e){ msg(msgEl, false, 'Gagal memuat model: ' + e.message); }
 }
 
 async function saveSettings() {
@@ -329,7 +351,7 @@ async function saveSettings() {
     $('stKey').textContent = c.llm_key_set ? 'tersimpan (••••)' : 'belum ada';
     $('sKey').value = ''; $('sCodexKey').value = '';
     updateCodexStatus(c);
-    msg('setMsg', true, 'Tersimpan. Model aktif: ' + c.llm_model);
+    msg('setMsg', true, `Tersimpan. Conversation: ${c.llm_model} · Reasoning: ${c.codex_model}`);
     setDot('LLM', false, 'tersimpan — belum dites');
   } catch(e){ msg('setMsg', false, 'Gagal: ' + e.message); }
 }

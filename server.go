@@ -304,12 +304,25 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/models", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := timeoutCtx(r, 30*time.Second)
 		defer cancel()
-		ids, err := s.llm.Models(ctx)
+		// endpoint=a (Conversation/LLM) | b (Reasoning/Codex). Default = a.
+		ep := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("endpoint")))
+		base, key := s.cfg.LLMBaseURL, s.cfg.LLMAPIKey
+		if ep == "b" || ep == "reasoning" || ep == "codex" {
+			base, key = s.cfg.CodexBaseURL, s.cfg.CodexAPIKey
+			// Fallback: endpoint Codex kosong = pakai endpoint A (9Router sama).
+			if base == "" {
+				base = s.cfg.LLMBaseURL
+			}
+			if key == "" {
+				key = s.cfg.LLMAPIKey
+			}
+		}
+		ids, err := listModelsHTTP(ctx, base, key)
 		if err != nil {
-			writeJSON(w, 502, map[string]any{"error": err.Error()})
+			writeJSON(w, 502, map[string]any{"error": err.Error(), "endpoint": ep})
 			return
 		}
-		writeJSON(w, 200, map[string]any{"count": len(ids), "models": ids})
+		writeJSON(w, 200, map[string]any{"count": len(ids), "models": ids, "endpoint": ep})
 	})
 
 	// Probe tunggal (tombol manual di dashboard).
@@ -1174,6 +1187,46 @@ func truncateLog(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// listModelsHTTP meminta daftar model dari endpoint OpenAI-compatible sembarang
+// (dipakai /api/models?endpoint=a|b agar Conversation & Reasoning punya daftar
+// model sendiri-sendiri).
+func listModelsHTTP(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+	if baseURL == "" {
+		return nil, fmt.Errorf("base URL kosong — isi endpoint dulu")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	var doc struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&doc); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(doc.Data))
+	for _, m := range doc.Data {
+		if m.ID != "" {
+			ids = append(ids, m.ID)
+		}
+	}
+	return ids, nil
 }
 
 // maskSecret mengembalikan bentuk aman secret (••••abcd). Dipakai handler
