@@ -323,9 +323,13 @@ func (s *Server) routes() http.Handler {
 
 	// Daftar tool terdaftar (aktif + nonaktif) untuk dashboard.
 	mux.HandleFunc("/api/registry", func(w http.ResponseWriter, r *http.Request) {
+		aktif := s.reg.Enabled()
+		if aktif == nil {
+			aktif = []registry.Tool{} // jangan kirim null ke JSON
+		}
 		writeJSON(w, 200, map[string]any{
 			"semua": s.reg.All(),
-			"aktif": s.reg.Enabled(),
+			"aktif": aktif,
 		})
 	})
 

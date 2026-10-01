@@ -17,11 +17,13 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"ainoc/internal/agent"
 	"ainoc/internal/audit"
+	"ainoc/internal/billing"
 	"ainoc/internal/cache"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
@@ -113,6 +115,16 @@ func main() {
 	// Tool dispatcher: registry -> policy -> adapter. Tanpa adapter terdaftar,
 	// tidak ada tool eksternal yang bisa dipanggil (deny-by-default).
 	disp := tool.New(reg, pol, 8*time.Second)
+
+	// Daftarkan BillingAdapter (read-only) bila endpoint + API key tersedia.
+	// Tool tetap tidak aktif sampai registry.yaml menandai enabled:true.
+	if cfg.BillingURL != "" && cfg.BillingToken != "" {
+		ba := billing.New(cfg.BillingURL, cfg.BillingToken)
+		disp.Register(ba)
+		log.Printf("[billing] adapter NETORA terdaftar: %s/api/noc/v1 (read-only)", strings.TrimRight(cfg.BillingURL, "/"))
+	} else {
+		log.Printf("[billing] adapter NETORA nonaktif (NOC_BILLING_URL / NOC_BILLING_TOKEN belum diset)")
+	}
 
 	// Hubungkan registry + dispatcher ke agent supaya tool eksternal yang aktif
 	// bisa dipresentasikan ke LLM dan dipanggil lewat gerbang keamanan.
