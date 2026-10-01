@@ -60,6 +60,7 @@
   <div class="pill"><span class="dot" id="dotLLM"></span><span id="txtLLM">LLM belum dites</span></div>
   <div class="pill"><span class="dot" id="dotCodex"></span><span id="txtCodex">Codex…</span></div>
   <div class="pill"><span class="dot" id="dotBilling"></span><span id="txtBilling">Billing…</span></div>
+  <div class="pill"><span class="dot" id="dotMikrotik"></span><span id="txtMikrotik">MikroTik…</span></div>
 </header>
 
 <main>
@@ -131,6 +132,7 @@
     <div class="btns">
       <button onclick="saveIntegrations()">Simpan Integrasi</button>
       <button class="ghost" onclick="checkBilling()">Tes koneksi Billing</button>
+      <button class="ghost" onclick="checkMikrotik()">Tes koneksi MikroTik</button>
     </div>
     <div class="hint" id="intMsg"></div>
     <div class="status" id="intStatus"></div>
@@ -173,6 +175,7 @@ function statusIntegrasi(c) {
     row('GenieACS', c.genieacs_url, c.genieacs_set, c.genieacs_token_masked),
   ].join('<br>');
   setDot('Billing', !!c.billing_set, c.billing_set ? 'Billing dikonfigurasi' : 'Billing belum diset');
+  setDot('Mikrotik', !!c.mikrotik_set, c.mikrotik_set ? 'MikroTik dikonfigurasi' : 'MikroTik belum diset');
 }
 
 async function boot() {
@@ -268,6 +271,21 @@ async function checkBilling() {
       msg('intMsg', false, 'Billing GAGAL: ' + (d.error || 'tidak terhubung'));
     }
   } catch(e){ setDot('Billing', false, 'Billing error'); msg('intMsg', false, 'Gagal: ' + e.message); }
+}
+
+async function checkMikrotik() {
+  msg('intMsg', null, 'Menguji koneksi MikroTik…');
+  setDot('Mikrotik', false, 'menguji…');
+  try {
+    const d = await api('/api/mikrotik/check');
+    if (d.ok) {
+      setDot('Mikrotik', true, `MikroTik OK (${d.ping_ms}ms)`);
+      msg('intMsg', true, `MikroTik OK: RouterOS v${d.version} · ${d.board_name} · uptime ${d.uptime} · ${d.ping_ms}ms`);
+    } else {
+      setDot('Mikrotik', false, 'MikroTik gagal');
+      msg('intMsg', false, 'MikroTik GAGAL: ' + (d.error || 'tidak terhubung'));
+    }
+  } catch(e){ setDot('Mikrotik', false, 'MikroTik error'); msg('intMsg', false, 'Gagal: ' + e.message); }
 }
 
 async function pingLLM() {
