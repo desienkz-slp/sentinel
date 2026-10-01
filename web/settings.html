@@ -341,6 +341,10 @@ async function boot() {
     }));
     mkRender();
     statusIntegrasi(c);
+    // Auto-load daftar model kedua endpoint supaya dropdown langsung penuh.
+    // Tahan error: bila gagal, dropdown tetap menampilkan nilai tersimpan.
+    loadModels('a').catch(() => {});
+    loadModels('b').catch(() => {});
   } catch (e) { console.error(e); }
 }
 
