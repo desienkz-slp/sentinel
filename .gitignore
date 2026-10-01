@@ -15,3 +15,12 @@ bin/
 
 # Konfigurasi lokal
 config.json
+
+# Deployment secrets (never commit)
+deploy/.env
+.env
+deploy/.env.*
+!deploy/.env.example
+
+# PostgreSQL data volume local overrides
+*.pgdata/

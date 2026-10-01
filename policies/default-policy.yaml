@@ -1,0 +1,59 @@
+version: 1.0.0
+mode: COPILOT
+# This file is a policy baseline. It is intentionally deny-by-default for writes.
+# Production policy promotion requires review, replay tests and operator approval.
+
+default:
+  read: allow
+  write: deny
+  admin: deny
+  unknown: deny
+
+risk:
+  low:
+    max_scope: 1
+    approval_required: false
+  medium:
+    max_scope: 1
+    approval_required: true
+  high:
+    max_scope: 0
+    approval_required: true
+
+rules:
+  - id: readonly-diagnostics
+    description: Approved deterministic diagnostic tools are read-only.
+    match:
+      permission: READ
+    decision: ALLOW
+
+  - id: pppoe-stale-recovery-candidate
+    description: Prepared only; remains approval-gated until integration and replay approval exist.
+    match:
+      tool: mikrotik.disconnect_pppoe
+      permission: WRITE
+      scope: single_customer
+      risk: MEDIUM
+    decision: APPROVAL_REQUIRED
+    requires:
+      - billing_account_active
+      - radius_account_valid
+      - ont_online_or_unknown_documented
+      - pppoe_stale_evidence
+      - idempotency_key
+      - incident_id
+      - operator_approval
+      - verification_plan
+
+  - id: deny-mass-actions
+    description: Never allow model-initiated multi-customer write actions.
+    match:
+      scope: multi_customer
+      permission: WRITE
+    decision: DENY
+
+  - id: deny-admin-actions
+    description: Routing and other administrative changes require an explicit future policy.
+    match:
+      permission: ADMIN
+    decision: DENY

@@ -1,0 +1,83 @@
+{
+  "name": "customer-internet-down",
+  "description": "Deterministic investigation flow for reported internet outages.",
+  "version": "1.0.0",
+  "trigger": "CUSTOMER_INTERNET_DOWN",
+  "mode": "COPILOT",
+  "steps": [
+    {
+      "index": 0,
+      "name": "resolve_identity",
+      "tool": null,
+      "required_evidence": ["identity"],
+      "timeout_ms": 5000,
+      "expected_outputs": {"identity_id": "UUID"}
+    },
+    {
+      "index": 1,
+      "name": "check_billing",
+      "tool": "billing.get_customer",
+      "params": {"identity": "${identity_id}"},
+      "required_evidence": ["identity_id"],
+      "allowed_tools": ["billing.get_customer"],
+      "risk_level": "LOW",
+      "permission": "READ",
+      "timeout_ms": 8000,
+      "retry_policy": "safe_get"
+    },
+    {
+      "index": 2,
+      "name": "check_radius",
+      "tool": "radius.get_session",
+      "params": {"identity": "${identity_id}"},
+      "required_evidence": ["identity_id"],
+      "allowed_tools": ["radius.get_session"],
+      "risk_level": "LOW",
+      "permission": "READ",
+      "timeout_ms": 8000,
+      "retry_policy": "safe_get"
+    },
+    {
+      "index": 3,
+      "name": "check_mikrotik_pppoe",
+      "tool": "mikrotik.get_pppoe_status",
+      "params": {"device_id": "${device_id_if_known}", "customer_id": "${identity_id}"},
+      "required_evidence": [],
+      "allowed_tools": ["mikrotik.get_pppoe_status"],
+      "risk_level": "LOW",
+      "permission": "READ",
+      "timeout_ms": 8000,
+      "retry_policy": "safe_get"
+    },
+    {
+      "index": 4,
+      "name": "check_genieacs",
+      "tool": "genieacs.get_device_state",
+      "params": {"device_id": "${device_id_if_known}"},
+      "required_evidence": [],
+      "allowed_tools": ["genieacs.get_device_state"],
+      "risk_level": "LOW",
+      "permission": "READ",
+      "timeout_ms": 8000,
+      "retry_policy": "safe_get"
+    },
+    {
+      "index": 5,
+      "name": "correlate_and_diagnose",
+      "tool": null,
+      "input_evidence_from_steps": [1, 2, 3, 4],
+      "logic": "normalize → correlate → diagnosis",
+      "output": {"root_cause": "string", "confidence": "num", "recommendation": "action"}
+    }
+  ],
+  "policy_checks": {
+    "before_tool_call": ["tool registry", "permission", "scope"],
+    "before_recommendation": ["risk assessment", "policy decision"]
+  },
+  "audit": true,
+  "idempotency_required_for_actions": false,
+  "verification_plan": {
+    "on_resolution": "verify_service_state_post_action",
+    "on_escalation": "create_escalation_event"
+  }
+}

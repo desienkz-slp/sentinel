@@ -1,0 +1,48 @@
+# Local development/staging infrastructure for the Blueprint upgrade.
+# Bindings are localhost-only. Do not expose these ports publicly.
+name: noc-sentinel
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${NOC_POSTGRES_DB:-noc_sentinel}
+      POSTGRES_USER: ${NOC_POSTGRES_USER:-noc_app}
+      POSTGRES_PASSWORD: ${NOC_POSTGRES_PASSWORD:?set in deploy/.env}
+    ports:
+      - "127.0.0.1:${NOC_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - noc-postgres-data:/var/lib/postgresql/data
+      - ../migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${NOC_REDIS_PASSWORD:?set in deploy/.env}
+    ports:
+      - "127.0.0.1:${NOC_REDIS_PORT:-6379}:6379"
+    volumes:
+      - noc-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  noc-postgres-data:
+  noc-redis-data:

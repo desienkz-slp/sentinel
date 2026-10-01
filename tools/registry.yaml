@@ -1,0 +1,59 @@
+version: 1.0.0
+# Registry entries are declarations, not permission grants. Disabled tools may
+# not be presented to the model or invoked by workflows.
+tools:
+  - name: billing.get_customer
+    domain: billing
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: billing
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+
+  - name: radius.get_session
+    domain: radius
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: radius
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+
+  - name: mikrotik.get_pppoe_status
+    domain: mikrotik
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: mikrotik
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+
+  - name: genieacs.get_device_state
+    domain: genieacs
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: genieacs
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+
+  - name: mikrotik.disconnect_pppoe
+    domain: mikrotik
+    version: 1.0.0
+    enabled: false
+    permission: WRITE
+    risk: MEDIUM
+    scope: single_customer
+    idempotency: required
+    approval: required
+    verification: mikrotik.get_pppoe_status
+    rollback: escalate
