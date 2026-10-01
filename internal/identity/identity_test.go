@@ -23,12 +23,12 @@ func TestNormalizeVariants(t *testing.T) {
 
 func TestNormalizeGroupJIDNotANumber(t *testing.T) {
 	// JID grup tidak boleh diubah jadi nomor pelanggan.
-	got := Normalize("120363427487304722@g.us")
-	if got == "120363427487304722" {
+	got := Normalize("120363000000000000@g.us")
+	if got == "120363000000000000" {
 		// Memang digit, tapi harus dipakai dengan IsGroup, bukan sebagai nomor.
 	}
 	// Yang penting: JID grup tidak dianggap identitas pelanggan.
-	if IsGroup("120363427487304722@g.us", "") != true {
+	if IsGroup("120363000000000000@g.us", "") != true {
 		t.Error("JID grup harus terdeteksi IsGroup")
 	}
 }
@@ -59,8 +59,8 @@ func TestEqual(t *testing.T) {
 
 func TestIsLID(t *testing.T) {
 	cases := map[string]bool{
-		"152712477945985@lid": true,
-		"216311783260163@LID": true,
+		"111111111111111@lid": true,
+		"222222222222222@LID": true,
 		"628123456789":        false,
 		"":                    false,
 	}

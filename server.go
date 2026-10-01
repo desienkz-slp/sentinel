@@ -15,6 +15,7 @@ import (
 	"ainoc/internal/audit"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
+	"ainoc/internal/correlation"
 	"ainoc/internal/dedupe"
 	"ainoc/internal/diag"
 	"ainoc/internal/health"
@@ -27,6 +28,7 @@ import (
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
 	"ainoc/internal/supervisor"
+	"ainoc/internal/tool"
 	"ainoc/internal/wa"
 	"ainoc/internal/workflow"
 )
@@ -56,6 +58,9 @@ type Server struct {
 	// Blueprint upgrade: health, dedupe.
 	hreg *health.Registry
 	ded  *dedupe.Store
+
+	// Blueprint upgrade: tool dispatcher (registry -> policy -> adapter).
+	disp *tool.Dispatcher
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -337,6 +342,38 @@ func (s *Server) routes() http.Handler {
 	// Jejak audit (append-only).
 	mux.HandleFunc("/api/audit", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.aud.Recent(100))
+	})
+
+	// Daftar adapter tool yang terdaftar (semua deny-by-default sampai endpoint
+	// + kredensial nyata diberikan).
+	mux.HandleFunc("/api/tool/adapters", func(w http.ResponseWriter, r *http.Request) {
+		if s.disp == nil {
+			writeJSON(w, 200, map[string]any{"adapters": []string{}, "note": "tidak ada adapter terdaftar"})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"adapters": s.disp.Adapters()})
+	})
+
+	// Uji korelasi bukti lintas sistem (dry, tanpa memanggil sistem eksternal).
+	mux.HandleFunc("/api/correlate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]string{"error": "gunakan POST"})
+			return
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		set := correlation.NewSet()
+		for domain, raw := range body {
+			set.Add(domain, raw)
+		}
+		required := []string{"billing", "radius", "mikrotik", "genieacs"}
+		writeJSON(w, 200, map[string]any{
+			"conclusion": set.Correlate(required...),
+			"evidence":   set.Summary(),
+		})
 	})
 
 	// Simpan memory ke disk sekarang (tanpa menunggu berkala).

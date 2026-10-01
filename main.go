@@ -38,6 +38,7 @@ import (
 	"ainoc/internal/registry"
 	"ainoc/internal/session"
 	"ainoc/internal/supervisor"
+	"ainoc/internal/tool"
 	"ainoc/internal/wa"
 	"ainoc/internal/workflow"
 )
@@ -128,6 +129,10 @@ func main() {
 	_ = dbcfg
 	_ = cc
 
+	// Tool dispatcher: registry -> policy -> adapter. Tanpa adapter terdaftar,
+	// tidak ada tool eksternal yang bisa dipanggil (deny-by-default).
+	disp := tool.New(reg, pol, 8*time.Second)
+
 	// WhatsApp Gateway di-vendor di wa-gateway/. Bila ada, Go yang mengelolanya
 	// supaya cukup satu perintah start untuk seluruh aplikasi.
 	var sup *supervisor.Manager
@@ -159,7 +164,7 @@ func main() {
 		}
 	}()
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, disp: disp}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

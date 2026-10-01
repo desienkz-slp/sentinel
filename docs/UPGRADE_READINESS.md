@@ -20,6 +20,14 @@
 | **Workflow engine** | `internal/workflow` — deterministic step definitions from YAML | **Implemented** |
 | **Incident store** | `internal/incident` — structured incident records (JSON-backed) | **Implemented** |
 | **Audit log** | `internal/audit` — append-only, monotonic IDs | **Implemented** |
+| **Health registry** | `internal/health` — dependency status + graceful degradation | **Implemented** |
+| **Health probe** | `internal/healthcheck` — real LLM/WA/PG/Redis checks every 30s | **Implemented** |
+| **Cache** | `internal/cache` — TTL cache + GetOrSet | **Implemented** |
+| **Dedupe** | `internal/dedupe` — event fingerprint, WA duplicate messages filtered | **Implemented** |
+| **Identity** | `internal/identity` — normalize 0812/+62/@lid → 628xxx | **Implemented** |
+| **DB config** | `internal/db` — PostgreSQL/Redis DSN + password redaction | **Implemented** |
+| **Tool adapter framework** | `internal/tool` — registry → policy → adapter invoke chain | **Implemented** |
+| **Correlation** | `internal/correlation` — cross-system evidence normalization + diagnosis | **Implemented** |
 | API adapters | None for Billing/RADIUS/GenieACS/MikroTik | Awaiting endpoint contracts |
 | Redis/PostgreSQL/pgvector | Infrastructure definition included; services not yet provisioned | Prepared |
 
