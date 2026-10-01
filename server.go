@@ -25,6 +25,7 @@ import (
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
 	"ainoc/internal/memory"
+	"ainoc/internal/mikrotik"
 	"ainoc/internal/policy"
 	"ainoc/internal/registry"
 	"ainoc/internal/session"
@@ -66,6 +67,9 @@ type Server struct {
 
 	// Billing adapter (NETORA /api/noc/v1) — nil bila belum dikonfigurasi.
 	billing *billing.Adapter
+
+	// MikroTik adapter (RouterOS v7 REST) — nil bila belum dikonfigurasi.
+	mikrotik *mikrotik.Adapter
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -212,8 +216,9 @@ func (s *Server) routes() http.Handler {
 		if body.GenieACSToken != nil {
 			s.cfg.GenieACSToken = strings.TrimSpace(*body.GenieACSToken)
 		}
-		// Setelah URL/token berubah, daftarkan ulang BillingAdapter bila lengkap.
+		// Setelah URL/token berubah, daftarkan ulang adapter bila lengkap.
 		s.syncBillingAdapter()
+		s.syncMikrotikAdapter()
 		// Tulis ke disk. Tanpa ini pengaturan hanya hidup di memori dan hilang
 		// saat aplikasi di-restart — tombol "Simpan" jadi tidak ada artinya.
 		if err := s.cfg.Save(); err != nil {
@@ -414,6 +419,38 @@ func (s *Server) routes() http.Handler {
 			"ping_ms":         d.LatencyMS,
 			"total_customers": d.TotalCustomers,
 			"message":         fmt.Sprintf("billing menjawab (total pelanggan: %d)", d.TotalCustomers),
+		})
+	})
+
+	// Verifikasi koneksi MikroTik (GET /system/resource) untuk dashboard.
+	mux.HandleFunc("/api/mikrotik/check", func(w http.ResponseWriter, r *http.Request) {
+		if s.mikrotik == nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":      false,
+				"error":   "mikrotik belum dikonfigurasi — isi Host + Username + Password di Pengaturan",
+				"message": "mikrotik belum dikonfigurasi",
+			})
+			return
+		}
+		ctx, cancel := timeoutCtx(r, 20*time.Second)
+		defer cancel()
+		d, err := s.mikrotik.Ping(ctx)
+		if err != nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":    false,
+				"error": err.Error(),
+			})
+			return
+		}
+		writeJSON(w, 200, map[string]any{
+			"ok":         true,
+			"base_url":   d.BaseURL,
+			"ping_ms":    d.LatencyMS,
+			"version":    d.Version,
+			"board_name": d.BoardName,
+			"uptime":     d.Uptime,
+			"cpu_load":   d.CPU,
+			"message":    fmt.Sprintf("mikrotik menjawab (RouterOS v%s, %s)", d.Version, d.BoardName),
 		})
 	})
 
@@ -897,6 +934,33 @@ func (s *Server) syncBillingAdapter() {
 			log.Printf("[billing] adapter NETORA dilepas (host/API key dikosongkan)")
 		}
 		s.billing = nil
+	}
+}
+
+// syncMikrotikAdapter menyelaraskan adapter MikroTik dengan cfg saat ini.
+// Dipanggil saat startup dan setiap /api/config menyimpan perubahan. Bila
+// host+user lengkap, adapter dibuat & didaftarkan (tool tetap deny-by-default
+// sampai registry enabled:true); bila tidak, adapter lama dilepas.
+func (s *Server) syncMikrotikAdapter() {
+	if s.cfg.MikrotikHost != "" && s.cfg.MikrotikUser != "" {
+		if s.mikrotik != nil {
+			s.disp.Unregister(s.mikrotik)
+		}
+		s.mikrotik = mikrotik.New(mikrotik.Config{
+			Host: s.cfg.MikrotikHost,
+			Port: s.cfg.MikrotikPort,
+			User: s.cfg.MikrotikUser,
+			Pass: s.cfg.MikrotikPass,
+			TLS:  s.cfg.MikrotikTLS,
+		})
+		s.disp.Register(s.mikrotik)
+		log.Printf("[mikrotik] adapter RouterOS terdaftar: %s (read-only, Basic Auth)", s.cfg.MikrotikHost)
+	} else {
+		if s.mikrotik != nil {
+			s.disp.Unregister(s.mikrotik)
+			log.Printf("[mikrotik] adapter RouterOS dilepas (host/username dikosongkan)")
+		}
+		s.mikrotik = nil
 	}
 }
 

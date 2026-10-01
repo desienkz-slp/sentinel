@@ -9,6 +9,7 @@ package adapter
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,14 +20,16 @@ import (
 
 // Config adalah parameter koneksi satu adaptor.
 type Config struct {
-	Domain     string        // billing | radius | mikrotik | genieacs
-	BaseURL    string        // tanpa trailing slash
-	Token      string        // token (opsional, untuk HeaderName / Bearer)
-	Timeout    time.Duration // timeout per request
-	MaxRetries int           // jumlah retry (hanya untuk GET yang aman)
-	HeaderName string        // header auth (default Authorization: Bearer <token>)
-	BasicUser  string        // bila diisi: HTTP Basic Auth (BasicUser:BasicPass)
-	BasicPass  string        // (MikroTik REST memakai Basic Auth, bukan API key)
+	Domain      string        // billing | radius | mikrotik | genieacs
+	BaseURL     string        // tanpa trailing slash
+	Token       string        // token (opsional, untuk HeaderName / Bearer)
+	Timeout     time.Duration // timeout per request
+	MaxRetries  int           // jumlah retry (hanya untuk GET yang aman)
+	HeaderName  string        // header auth (default Authorization: Bearer <token>)
+	BasicUser   string        // bila diisi: HTTP Basic Auth (BasicUser:BasicPass)
+	BasicPass   string        // (MikroTik REST memakai Basic Auth, bukan API key)
+	InsecureTLS bool          // terima sertifikat self-signed (MikroTik default memakai
+	// sertifikat self-signed; setara curl -k). Hanya untuk jaringan terpercaya.
 }
 
 // HTTP adalah base adapter dengan client + retry + health.
@@ -46,9 +49,19 @@ func New(cfg Config) *HTTP {
 	if cfg.HeaderName == "" {
 		cfg.HeaderName = "Authorization"
 	}
+	// Transport khusus bila InsecureTLS: terima sertifikat self-signed
+	// (default MikroTik). Tanpa ini, HTTPS ke router self-signed gagal dengan
+	// x509: unknown authority. Penting: Transport hanya di-set bila non-nil,
+	// karena typed-nil (*http.Transport)(nil) membuat net/http panic.
+	cl := &http.Client{Timeout: cfg.Timeout}
+	if cfg.InsecureTLS {
+		cl.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // disengaja: MikroTik default self-signed
+		}
+	}
 	return &HTTP{
 		cfg: cfg,
-		cl:  &http.Client{Timeout: cfg.Timeout},
+		cl:  cl,
 	}
 }
 

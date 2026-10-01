@@ -179,6 +179,8 @@ func main() {
 
 	// Selaraskan BillingAdapter dengan config saat ini (URL+token dari env/config).
 	srv.syncBillingAdapter()
+	// Selaraskan MikrotikAdapter (host+user+pass dari env/config).
+	srv.syncMikrotikAdapter()
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
