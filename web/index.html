@@ -132,13 +132,12 @@
     </div>
 
     <div class="card" style="margin-top:16px">
-      <h2>WhatsApp Gateway <span id="waEmbedTag" class="pill" style="font-size:11px;padding:3px 8px">embedded</span></h2>
+      <h2>WhatsApp <span id="waEmbedTag" class="pill" style="font-size:11px;padding:3px 8px">terpadu</span></h2>
       <div class="btns" style="margin-top:0">
-        <button id="btnWaStart" onclick="waCtl('start')">▶ Mulai Gateway</button>
+        <button id="btnWaStart" onclick="waCtl('start')">▶ Mulai</button>
         <button class="ghost" onclick="waCtl('stop')">■ Hentikan</button>
         <button class="ghost" onclick="waCtl('restart')">↻ Restart</button>
         <button class="ghost" onclick="waGateway()">Cek proses</button>
-        <a href="/whatsapp" target="_blank" style="text-decoration:none"><button class="ghost" type="button">Buka UI Gateway ↗</button></a>
       </div>
       <div class="hint" id="waGwOut">memeriksa proses…</div>
       <pre id="waGwLog" class="hidden" style="max-height:150px;overflow:auto"></pre>
@@ -173,7 +172,7 @@
         <input id="waTo" placeholder="nomor tujuan, mis. 628123456789">
         <input id="waMsg" placeholder="pesan tes (kosong = laporan contoh)">
       </div>
-      <div class="hint" id="waMsgOut">Webhook masuk: <code>POST /api/wa/webhook</code> — arahkan <code>N8N_WEBHOOK_URL</code> gateway ke alamat ini.</div>
+      <div class="hint" id="waMsgOut">Webhook masuk: <code>POST /api/wa/webhook</code> (diatur otomatis oleh aplikasi).</div>
       <div id="waQRBox" class="hidden" style="margin-top:12px"></div>
     </div>
 
@@ -303,7 +302,7 @@ async function waGateway() {
       (d.installed?'':' · dependensi BELUM terpasang') +
       (d.credentials_linked?' · ✅ sesi WA tertaut':' · ⚠ belum ada sesi WA (perlu scan QR)') +
       (d.last_error?` · error: ${d.last_error}`:'');
-    $('waEmbedTag').textContent = d.state === 'disabled' ? 'eksternal' : 'embedded';
+    $('waEmbedTag').textContent = d.state === 'disabled' ? 'nonaktif' : 'terpadu';
     const log = $('waGwLog');
     if (d.log_tail && d.log_tail.length) { log.classList.remove('hidden'); log.textContent = d.log_tail.join('\n'); log.scrollTop = log.scrollHeight; }
     return d;
@@ -352,7 +351,7 @@ async function waStatus() {
   setDot('WA', false, 'WhatsApp: cek…');
   try {
     const d = await api('/api/wa/status');
-    if (!d.enabled) { setDot('WA', false, 'WA: gateway belum diset'); setWAMsg('Gateway belum dikonfigurasi. Jalankan whatsapp gateway lalu isi Base URL.'); return; }
+    if (!d.enabled) { setDot('WA', false, 'WA: gateway belum diset'); setWAMsg('Gateway belum dikonfigurasi. Isi Base URL gateway di atas.'); return; }
     setDot('WA', !!d.connected, d.connected ? 'WhatsApp tersambung' : 'WA: belum login (scan QR)');
     const s = d.gateway || {};
     setWAMsg('Status: ' + (s.status||s.state||'—') + (d.error ? ' · error: '+d.error : ''));

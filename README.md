@@ -248,7 +248,7 @@ tombol **Tes koneksi LLM** dan **Tes Codex CLI**.
 | POST | `/api/wa/send` | kirim pesan/notifikasi WhatsApp `{to, message}` |
 | GET | `/api/wa/gateway` | status proses gateway (state, PID, log) |
 | POST | `/api/wa/start` · `/stop` · `/restart` | kontrol proses WhatsApp Gateway |
-| GET | `/whatsapp` · `/api/whatsapp/*` | UI + API gateway asli (diproxy) |
+| GET | `/api/whatsapp/*` | API internal gateway Node (diproxy, otomatis) |
 
 Contoh:
 
@@ -284,8 +284,8 @@ Tidak perlu menjalankan apa pun secara terpisah — **Go yang mengurusnya**:
 - Mengarahkan webhook gateway ke `/api/wa/webhook` di aplikasi ini
 
 Semua dikendalikan dari **panel WhatsApp di dashboard** (`http://127.0.0.1:8090`):
-▶ Mulai · ■ Hentikan · ↻ Restart · status proses + log langsung · Buka UI Gateway.
-UI asli gateway juga tersedia di **`http://127.0.0.1:8090/whatsapp`** (diproxy, satu alamat).
+▶ Mulai · ■ Hentikan · ↻ Restart · status proses + log langsung.
+Seluruh kontrol WhatsApp ada di panel ini — **tidak ada halaman terpisah**. Cukup satu alamat: **`http://127.0.0.1:8090`**.
 
 ### Kenapa loop-nya tertutup tanpa patch gateway
 
@@ -429,7 +429,7 @@ ai-noc-go/
 ├─ STANDARD.md                  # panduan standar konteks, sesi & cache
 ├─ wa-gateway/                  # WhatsApp Gateway (Node/Baileys) — embedded
 │  ├─ app/{server,session,qr,webhook,health}.js
-│  ├─ public/                   # UI gateway asli (diproxy di /whatsapp)
+│  ├─ public/                   # UI bawaan gateway (tidak dipakai; kontrol ada di dashboard)
 │  └─ package.json              # node_modules dibuat otomatis saat start pertama
 ├─ tools/mock_wa_gateway.py     # gateway WA tiruan untuk uji tanpa QR
 └─ internal/

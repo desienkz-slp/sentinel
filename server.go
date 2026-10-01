@@ -573,14 +573,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/wa/stop", waAction("stop"))
 	mux.HandleFunc("/api/wa/restart", waAction("restart"))
 
-	// Proxy UI WhatsApp Gateway asli supaya semuanya satu alamat.
-	// Path gateway yang sudah memakai prefix /api/whatsapp/ dan /whatsapp
-	// diteruskan apa adanya agar JS-nya tidak perlu diubah.
+	// Proxy API gateway Node.js. Hanya endpoint /api/whatsapp/* yang perlu
+	// diteruskan; UI gateway sendiri tidak lagi dipakai karena semua kontrol
+	// WhatsApp sudah menyatu di dashboard aplikasi ini.
 	if s.sup != nil {
 		mux.HandleFunc("/api/whatsapp/", s.proxyToGateway)
-		mux.HandleFunc("/whatsapp", s.proxyToGateway)
-		mux.HandleFunc("/styles.css", s.proxyToGateway)
-		mux.HandleFunc("/app.js", s.proxyToGateway)
 	}
 
 	return withLogging(mux)
