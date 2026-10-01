@@ -12,33 +12,55 @@
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
-  header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
-    background:linear-gradient(180deg,#111a24,#0d141c);position:sticky;top:0;z-index:10;flex-wrap:wrap}
-  .logo{font-weight:700;letter-spacing:.5px;font-size:17px}
+
+  /* ---------- Header / top bar ---------- */
+  header{display:flex;align-items:center;gap:18px;padding:12px 22px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#111a24,#0d141c);position:sticky;top:0;z-index:50;flex-wrap:wrap}
+  .brand{display:flex;flex-direction:column;line-height:1.15}
+  .logo{font-weight:700;letter-spacing:.5px;font-size:18px}
   .logo span{color:var(--acc)}
+  .tagline{font:11px/1 var(--mono);color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-top:3px}
+  nav{display:flex;gap:6px;margin-left:8px}
+  nav a{color:var(--dim);text-decoration:none;font-size:13px;font-weight:600;padding:8px 14px;
+    border:1px solid transparent;border-radius:8px;letter-spacing:.3px}
+  nav a:hover{color:var(--txt);background:var(--panel2);border-color:var(--line)}
+  nav a.on{color:var(--acc);background:#12303c;border-color:#1e4a58}
+  .spacer{flex:1}
+  .pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .pill{font:12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line);border-radius:99px;color:var(--dim);
-    display:inline-flex;align-items:center;gap:6px;background:var(--panel2)}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+    display:inline-flex;align-items:center;gap:6px;background:var(--panel2);white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:0 0 auto}
   .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
   .dot.off{background:var(--bad)}
-  .spacer{flex:1}
-  main{display:grid;grid-template-columns:minmax(340px,1.1fr) minmax(380px,1.5fr);gap:16px;padding:16px 20px 40px;max-width:1560px;margin:0 auto}
-  @media(max-width:1080px){main{grid-template-columns:1fr}}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
-  .card h2{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:600}
-  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+
+  /* ---------- Layout shell ---------- */
+  .shell{max-width:1800px;margin:0 auto;padding:16px 22px 48px}
+  .grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;align-items:start}
+  .bottom{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start}
+  @media(max-width:1240px){ .grid{grid-template-columns:1fr} .bottom{grid-template-columns:1fr} }
+
+  /* ---------- Cards ---------- */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+  .card:last-child{margin-bottom:0}
+  .card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);font-weight:700;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card h2 .pill{margin-left:auto}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px;font-weight:600;letter-spacing:.3px}
   input,select,textarea,button{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);
     border-radius:8px;padding:9px 11px;width:100%}
-  textarea{min-height:88px;resize:vertical;font-family:var(--mono);font-size:13px}
+  textarea{min-height:96px;resize:vertical;font-family:var(--mono);font-size:13px;line-height:1.5}
   button{cursor:pointer;background:#16323d;border-color:#1e4a58;color:#c9f5ff;font-weight:600}
   button:hover{background:#1b3d4a}
   button:disabled{opacity:.5;cursor:not-allowed}
   button.ghost{background:transparent;border-color:var(--line);color:var(--dim);font-weight:500}
   button.ghost:hover{color:var(--txt);border-color:#33465c}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:640px){ .row{grid-template-columns:1fr} }
   .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
   .btns button{width:auto;flex:0 0 auto;padding:9px 16px}
-  #steps{list-style:none;margin:0;padding:0;max-height:520px;overflow:auto}
+
+  /* ---------- Diagnosis / steps ---------- */
+  #steps{list-style:none;margin:0;padding:0;max-height:560px;overflow:auto}
   #steps li{border-left:2px solid var(--line);padding:8px 0 8px 12px;margin-left:4px}
   #steps li.thought{border-color:var(--acc)}
   #steps li.tool{border-color:var(--warn)}
@@ -48,159 +70,187 @@
   .tag{font:11px/1 var(--mono);text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
   pre{margin:6px 0 0;font:12px/1.45 var(--mono);white-space:pre-wrap;word-break:break-word;color:#b9c8d8;
     background:#0a0f15;border:1px solid #172230;border-radius:8px;padding:8px}
-  .verdict{border-radius:12px;padding:14px;border:1px solid var(--line);background:var(--panel2);margin-bottom:12px}
-  .verdict .v{font:700 20px/1.2 var(--mono)}
+  .verdict{border-radius:12px;padding:16px;border:1px solid var(--line);background:var(--panel2);margin-bottom:12px}
+  .verdict .v{font:700 22px/1.2 var(--mono)}
   .v.SEHAT{color:var(--ok)} .v.DEGRADASI{color:var(--warn)} .v.GANGGUAN{color:var(--bad)}
-  .v.CHAT{color:var(--acc);font-size:15px;font-weight:600}
+  .v.CHAT{color:var(--acc);font-size:16px;font-weight:600}
   .meta{font:12px/1.6 var(--mono);color:var(--dim);margin-top:6px}
+  .answer{white-space:pre-wrap;font-size:13.5px;line-height:1.6}
+
+  /* ---------- Tables ---------- */
+  .table-wrap{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+
+  /* ---------- Misc ---------- */
   .grid-tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
   .grid-tools button{width:auto;padding:6px 10px;font:12px var(--mono);background:var(--panel2);color:var(--dim);
     border-color:var(--line);font-weight:500}
   .grid-tools button:hover{color:var(--acc);border-color:#27536b}
-  .answer{white-space:pre-wrap;font-size:13.5px}
   .hidden{display:none}
   .hint{font-size:12px;color:var(--dim);margin-top:8px}
   details summary{cursor:pointer;color:var(--dim);font-size:12px;margin-top:12px}
+  #waGwLog{max-height:160px;overflow:auto}
+  #waQRBox img{display:block}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">NOC <span>Sentinel</span></div>
-  <div class="pill"><span class="dot" id="dotLLM"></span><span id="txtLLM">LLM belum dites</span></div>
-  <div class="pill"><span class="dot" id="dotCodex"></span><span id="txtCodex">Codex…</span></div>
-  <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WhatsApp…</span></div>
+  <div class="brand">
+    <div class="logo">NOC <span>Sentinel</span></div>
+    <div class="tagline">AI Network Operations Console</div>
+  </div>
+  <nav>
+    <a href="/" class="on">Dashboard</a>
+    <a href="/settings.html">⚙ Pengaturan</a>
+  </nav>
   <div class="spacer"></div>
-  <div class="pill" id="pillModel">model: —</div>
-  <a class="pill" href="/settings.html" style="text-decoration:none;color:var(--dim)">⚙ Pengaturan</a>
+  <div class="pills">
+    <div class="pill"><span class="dot" id="dotLLM"></span><span id="txtLLM">LLM belum dites</span></div>
+    <div class="pill"><span class="dot" id="dotCodex"></span><span id="txtCodex">Codex…</span></div>
+    <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WhatsApp…</span></div>
+    <div class="pill" id="pillModel">model: —</div>
+  </div>
 </header>
 
-<main>
-  <section>
-    <div class="card">
-      <h2>Diagnosis Gangguan</h2>
-      <label for="q">Pertanyaan operator</label>
-      <textarea id="q" placeholder="Contoh: pelanggan di Jl. Melati internet lambat sejak pagi, cek dulu ke 8.8.8.8"></textarea>
-      <div class="row">
-        <div>
-          <label for="tgt">Target (opsional)</label>
-          <input id="tgt" placeholder="8.8.8.8 / pelanggan.net / 10.10.10.1:1812">
+<div class="shell">
+  <div class="grid">
+    <!-- ============ KOLOM UTAMA: workflow diagnosis ============ -->
+    <section>
+      <div class="card">
+        <h2>Diagnosis Gangguan</h2>
+        <label for="q">Pertanyaan operator</label>
+        <textarea id="q" placeholder="Contoh: pelanggan di Jl. Melati internet lambat sejak pagi, cek dulu ke 8.8.8.8"></textarea>
+        <div class="row">
+          <div>
+            <label for="tgt">Target (opsional)</label>
+            <input id="tgt" placeholder="8.8.8.8 / pelanggan.net / 10.10.10.1:1812">
+          </div>
+          <div>
+            <label for="mdl">Model analisis</label>
+            <select id="mdl"></select>
+          </div>
         </div>
-        <div>
-          <label for="mdl">Model analisis</label>
-          <select id="mdl"></select>
+        <div class="btns">
+          <button id="run" onclick="runDiag()">▶ Jalankan Diagnosis</button>
+          <button class="ghost" onclick="loadModels()">Muat daftar model</button>
+          <button class="ghost" onclick="document.getElementById('steps').innerHTML=''">Bersihkan</button>
         </div>
-      </div>
-      <div class="btns">
-        <button id="run" onclick="runDiag()">▶ Jalankan Diagnosis</button>
-        <button class="ghost" onclick="loadModels()">Muat daftar model</button>
-        <button class="ghost" onclick="document.getElementById('steps').innerHTML=''">Bersihkan</button>
-      </div>
-      <div class="hint">Agen akan memilih tool diagnostik sendiri (ping → DNS → TCP/HTTP → traceroute → radius), lalu menyimpulkan VERDICT + rekomendasi. Bila keyakinan rendah, analisis dieskalasi otomatis ke Codex CLI.</div>
+        <div class="hint">Agen akan memilih tool diagnostik sendiri (ping → DNS → TCP/HTTP → traceroute → radius), lalu menyimpulkan VERDICT + rekomendasi. Bila keyakinan rendah, analisis dieskalasi otomatis ke Codex CLI.</div>
 
-      <details>
-        <summary>Probe manual cepat</summary>
-        <div class="grid-tools" id="toolBtns"></div>
-        <div class="row" style="margin-top:8px">
-          <input id="probeTarget" placeholder="target untuk probe manual">
-          <button class="ghost" onclick="runProbe()">Jalankan probe</button>
-        </div>
-      </details>
-    </div>
+        <details>
+          <summary>Probe manual cepat</summary>
+          <div class="grid-tools" id="toolBtns"></div>
+          <div class="row" style="margin-top:8px">
+            <input id="probeTarget" placeholder="target untuk probe manual">
+            <button class="ghost" onclick="runProbe()">Jalankan probe</button>
+          </div>
+        </details>
+      </div>
 
-    <div class="card" style="margin-top:16px">
-      <h2>WhatsApp <span id="waEmbedTag" class="pill" style="font-size:11px;padding:3px 8px">terpadu</span></h2>
-      <div class="btns" style="margin-top:0">
-        <button id="btnWaStart" onclick="waCtl('start')">▶ Mulai</button>
-        <button class="ghost" onclick="waCtl('stop')">■ Hentikan</button>
-        <button class="ghost" onclick="waCtl('restart')">↻ Restart</button>
-        <button class="ghost" onclick="waGateway()">Cek proses</button>
-      </div>
-      <div class="hint" id="waGwOut">memeriksa proses…</div>
-      <pre id="waGwLog" class="hidden" style="max-height:150px;overflow:auto"></pre>
-
-      <div class="row" style="margin-top:14px">
-        <div><label for="sWAList">Allowlist nomor (pisah koma) — <b>kosong = SEMUA nomor boleh</b></label><input id="sWAList" placeholder="628123456789,628999888777"></div>
-      </div>
-      <div class="row">
-        <div>
-          <label for="sWAGroup">Pesan dari grup WhatsApp</label>
-          <select id="sWAGroup">
-            <option value="false">Abaikan — hanya balas chat pribadi</option>
-            <option value="true">Proses juga (mis. grup NOC internal)</option>
-          </select>
+      <div class="card">
+        <h2>Hasil</h2>
+        <div id="verdict" class="verdict">
+          <div class="v" id="vText">—</div>
+          <div class="meta" id="vMeta">Belum ada diagnosis dijalankan.</div>
         </div>
-        <div>
-          <label for="sWAAsync">Mode pengiriman</label>
-          <select id="sWAAsync">
-            <option value="false">Sinkron (balas langsung, tunggu 10–60 dtk)</option>
-            <option value="true">Async (balas "diterima", hasil menyusul)</option>
-          </select>
-        </div>
+        <div class="answer" id="answer"></div>
       </div>
-      <div class="btns">
-        <button onclick="saveWASettings()">Simpan pengaturan WA</button>
-        <button class="ghost" onclick="waStatus()">Cek status sesi</button>
-        <button class="ghost" onclick="waQR()">Tampilkan QR pairing</button>
-        <button class="ghost" onclick="waSend()">Kirim tes</button>
-        <button class="ghost" onclick="waReconnect()">↻ Reconnect</button>
-        <button class="ghost" style="color:var(--bad)" onclick="waLogout()">Keluar (Logout)</button>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <input id="waTo" placeholder="nomor tujuan, mis. 628123456789">
-        <input id="waMsg" placeholder="pesan tes (kosong = laporan contoh)">
-      </div>
-      <div class="hint" id="waMsgOut">Webhook masuk: <code>POST /api/wa/webhook</code> (diatur otomatis oleh aplikasi).</div>
-      <div id="waQRBox" class="hidden" style="margin-top:12px"></div>
-    </div>
 
-    <div class="card" style="margin-top:16px">
-      <h2>Standar Konteks & Sesi <span class="pill" id="stdTag" style="font-size:11px;padding:3px 8px">v—</span></h2>
+      <div class="card">
+        <h2>Jejak Langkah <span style="color:var(--acc);font-size:11px">live</span></h2>
+        <ul id="steps"><li style="border-color:var(--line);color:var(--dim)">Menunggu permintaan…</li></ul>
+      </div>
+    </section>
+
+    <!-- ============ KOLOM SAMPING: kontrol ============ -->
+    <aside>
+      <div class="card">
+        <h2>WhatsApp Gateway <span id="waEmbedTag" class="pill" style="font-size:11px;padding:3px 8px">terpadu</span></h2>
+        <div class="btns" style="margin-top:0">
+          <button id="btnWaStart" onclick="waCtl('start')">▶ Mulai</button>
+          <button class="ghost" onclick="waCtl('stop')">■ Hentikan</button>
+          <button class="ghost" onclick="waCtl('restart')">↻ Restart</button>
+          <button class="ghost" onclick="waGateway()">Cek proses</button>
+        </div>
+        <div class="hint" id="waGwOut">memeriksa proses…</div>
+        <pre id="waGwLog" class="hidden"></pre>
+
+        <label for="sWAList">Allowlist nomor (pisah koma) — <b>kosong = SEMUA nomor boleh</b></label>
+        <input id="sWAList" placeholder="628123456789,628999888777">
+
+        <div class="row">
+          <div>
+            <label for="sWAGroup">Pesan dari grup WhatsApp</label>
+            <select id="sWAGroup">
+              <option value="false">Abaikan — hanya balas chat pribadi</option>
+              <option value="true">Proses juga (mis. grup NOC internal)</option>
+            </select>
+          </div>
+          <div>
+            <label for="sWAAsync">Mode pengiriman</label>
+            <select id="sWAAsync">
+              <option value="false">Sinkron (balas langsung, tunggu 10–60 dtk)</option>
+              <option value="true">Async (balas "diterima", hasil menyusul)</option>
+            </select>
+          </div>
+        </div>
+        <div class="btns">
+          <button onclick="saveWASettings()">Simpan pengaturan WA</button>
+          <button class="ghost" onclick="waStatus()">Cek status sesi</button>
+          <button class="ghost" onclick="waQR()">Tampilkan QR pairing</button>
+        </div>
+        <div class="btns" style="margin-top:8px">
+          <button class="ghost" onclick="waSend()">Kirim tes</button>
+          <button class="ghost" onclick="waReconnect()">↻ Reconnect</button>
+          <button class="ghost" style="color:var(--bad)" onclick="waLogout()">Keluar (Logout)</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <input id="waTo" placeholder="nomor tujuan, mis. 628123456789">
+          <input id="waMsg" placeholder="pesan tes (kosong = laporan contoh)">
+        </div>
+        <div class="hint" id="waMsgOut">Webhook masuk: <code>POST /api/wa/webhook</code> (diatur otomatis oleh aplikasi).</div>
+        <div id="waQRBox" class="hidden" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <h2>Blueprint NOC <span class="pill" id="bpMode" style="font-size:11px;padding:3px 8px">—</span></h2>
+        <div class="hint" id="bpStat">memuat…</div>
+        <div class="hint">Tool registry &amp; policy engine — semua tool eksternal <b>deny-by-default</b> sampai endpoint &amp; kredensial nyata diberikan.</div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ============ BARIS BAWAH: data ============ -->
+  <div class="bottom">
+    <section class="card" style="margin-bottom:0">
+      <h2>Standar Konteks &amp; Sesi <span class="pill" id="stdTag" style="font-size:11px;padding:3px 8px">v—</span></h2>
       <div class="hint" id="sesiStat">memuat…</div>
       <div class="btns">
         <button class="ghost" onclick="muatSesi()">↻ Muat ulang</button>
         <button class="ghost" onclick="hapusCache()">🗑 Kosongkan cache</button>
       </div>
-      <table style="margin-top:10px">
-        <thead><tr><th>Nomor</th><th>Giliran</th><th>Intent</th><th>Target</th><th>Idle</th><th>Pesan terakhir</th></tr></thead>
-        <tbody id="sesiRows"><tr><td colspan="6" style="color:var(--dim)">Belum ada percakapan.</td></tr></tbody>
-      </table>
-      <div class="hint">Konteks dipisah per nomor: riwayat &amp; cache satu pelanggan tidak bercampur dengan pelanggan lain. Standar konteks dijalankan kode, jadi tetap sama untuk model apa pun.</div>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <h2>Riwayat Insiden</h2>
-      <table>
-        <thead><tr><th>Waktu</th><th>Target</th><th>Verdict</th><th>Engine</th><th>ms</th></tr></thead>
-        <tbody id="hist"><tr><td colspan="5" style="color:var(--dim)">Belum ada insiden.</td></tr></tbody>
-      </table>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <h2>Blueprint NOC <span class="pill" id="bpMode" style="font-size:11px;padding:3px 8px">—</span></h2>
-      <div class="hint" id="bpStat">memuat…</div>
-      <div class="hint">Tool registry &amp; policy engine — semua tool eksternal <b>deny-by-default</b> sampai endpoint &amp; kredensial nyata diberikan.</div>
-    </div>
-  </section>
-
-  <section>
-    <div class="card">
-      <h2>Hasil</h2>
-      <div id="verdict" class="verdict">
-        <div class="v" id="vText">—</div>
-        <div class="meta" id="vMeta">Belum ada diagnosis dijalankan.</div>
+      <div class="table-wrap" style="margin-top:10px">
+        <table>
+          <thead><tr><th>Nomor</th><th>Giliran</th><th>Intent</th><th>Target</th><th>Idle</th><th>Pesan terakhir</th></tr></thead>
+          <tbody id="sesiRows"><tr><td colspan="6" style="color:var(--dim)">Belum ada percakapan.</td></tr></tbody>
+        </table>
       </div>
-      <div class="answer" id="answer"></div>
-    </div>
+      <div class="hint">Konteks dipisah per nomor: riwayat &amp; cache satu pelanggan tidak bercampur dengan pelanggan lain. Standar konteks dijalankan kode, jadi tetap sama untuk model apa pun.</div>
+    </section>
 
-    <div class="card" style="margin-top:16px">
-      <h2>Jejak Langkah (live)</h2>
-      <ul id="steps"><li style="border-color:var(--line);color:var(--dim)">Menunggu permintaan…</li></ul>
-    </div>
-  </section>
-</main>
+    <section class="card" style="margin-bottom:0">
+      <h2>Riwayat Insiden</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Waktu</th><th>Target</th><th>Verdict</th><th>Engine</th><th>ms</th></tr></thead>
+          <tbody id="hist"><tr><td colspan="5" style="color:var(--dim)">Belum ada insiden.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -222,7 +272,6 @@ async function boot() {
     $('pillModel').textContent = 'model: ' + c.llm_model;
     setDot('Codex', st.codex_ready, st.codex_ready ? 'Codex siap ('+c.codex_model+')' : 'Codex tidak ditemukan');
     if (!c.llm_key_set) setDot('LLM', false, 'API key belum ada');
-    $('sWA').value = c.wa_base_url || '';
     $('sWAList').value = (c.wa_allowlist||[]).join(',');
     $('sWAGroup').value = String(!!c.wa_group);
     $('sWAAsync').value = String(!!c.wa_async);
