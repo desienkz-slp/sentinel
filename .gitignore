@@ -24,3 +24,6 @@ deploy/.env.*
 
 # PostgreSQL data volume local overrides
 *.pgdata/
+
+# Dokumen kontrak API internal — JANGAN di-commit
+NOC_AGENT_API.md
