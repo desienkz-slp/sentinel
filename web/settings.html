@@ -111,18 +111,18 @@
     </div>
     <div class="row">
       <div><label for="mikrotikHost">Host MikroTik (tanpa skema)</label><input id="mikrotikHost" placeholder="192.168.1.10"></div>
-      <div><label for="mikrotikPort">Port (kosong = 443 TLS / 80 HTTP)</label><input id="mikrotikPort" type="number" min="1" max="65535" placeholder="443"></div>
+      <div><label for="mikrotikPort">Port (kosong = 8729 SSL / 8728 plaintext)</label><input id="mikrotikPort" type="number" min="1" max="65535" placeholder="8729"></div>
     </div>
     <div class="row">
       <div><label for="mikrotikUser">Username (user router)</label><input id="mikrotikUser" placeholder="admin"></div>
       <div><label for="mikrotikPass">Password</label><input id="mikrotikPass" type="password" placeholder="•••• (kosongkan = tidak diubah)"></div>
     </div>
     <div class="row">
-      <div><label for="mikrotikTls">Koneksi aman (www-ssl / HTTPS)</label>
-        <select id="mikrotikTls"><option value="true">HTTPS (www-ssl) — disarankan</option><option value="false">HTTP (www) — hanya untuk tes</option></select>
+      <div><label for="mikrotikTls">Koneksi aman (API-SSL)</label>
+        <select id="mikrotikTls"><option value="true">API-SSL (port 8729) — disarankan</option><option value="false">Plaintext (port 8728) — hanya untuk tes</option></select>
       </div>
       <div style="display:flex;align-items:flex-end">
-        <div class="hint" style="margin:0">MikroTik REST = Basic Auth (user+password), bukan API key. RouterOS v7.1+, service www / www-ssl aktif.</div>
+        <div class="hint" style="margin:0">MikroTik pakai API native (protokol biner), bukan REST /www. Auth = user+password. Port custom didukung (mis. 8118).</div>
       </div>
     </div>
     <div class="row">

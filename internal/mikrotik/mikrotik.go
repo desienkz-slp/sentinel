@@ -1,83 +1,81 @@
-// Package mikrotik mengimplementasikan adapter read-only ke router MikroTik.
+// Package mikrotik mengimplementasikan adapter read-only ke router MikroTik
+// lewat API NATIVE RouterOS (protokol biner), BUKAN REST /www.
 //
 // Kontrak (lihat docs/mikrotik-api.md):
-//   - Transport : RouterOS v7.1+ REST API di /rest (service www / www-ssl)
-//   - Auth      : HTTP Basic Auth (username+password user router), BUKAN API key
-//   - TLS       : default MikroTik memakai sertifikat self-signed → InsecureTLS
-//     (setara curl -k) untuk jaringan terpercaya.
+//   - Transport : TCP, protokol biner proprietary ("sentence" = deret word
+//     ber-prefix panjang, ditutup byte 0x00).
+//   - Port      : 8728 (plaintext) / 8729 (TLS / API-SSL) / custom.
+//   - Auth      : /login =name=<user> =password=<pass> (plaintext, 6.43+)
+//     atau challenge-response MD5 (pra-6.43, =ret=).
 //
 // Adapter ini HANYA read-only. Tindakan WRITE (mis. disconnect PPPoE) tetap
 // lewat gerbang policy APPROVAL_REQUIRED dan dibangun terpisah.
 package mikrotik
 
 import (
+	"bufio"
 	"context"
-	"encoding/json"
+	"crypto/md5"
+	"crypto/tls"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"net"
 	"strings"
 	"time"
 
-	"ainoc/internal/adapter"
 	"ainoc/internal/tool"
 )
 
-// Adapter adalah adaptor MikroTik read-only (REST API RouterOS v7).
-type Adapter struct {
-	http *adapter.HTTP
-}
-
-// Config adalah parameter koneksi MikroTik (dari config.json / env).
+// Config adalah parameter koneksi API native RouterOS.
 type Config struct {
-	Host string // tanpa skema/port, mis. 192.168.88.1
-	Port int    // 0 = default (443 bila TLS, 80 bila tidak)
+	Host string // alamat IP / hostname, mis. 192.168.171.1
+	Port int    // 0 = default: 8728 (plaintext) / 8729 (TLS)
 	User string
 	Pass string
-	TLS  bool
+	TLS  bool // true = API-SSL (port 8729), false = plaintext (8728)
 }
 
-// New membuat MikrotikAdapter. Base URL dibangun: http(s)://host[:port]/rest.
+// Adapter adalah adaptor MikroTik read-only (API native RouterOS).
+type Adapter struct {
+	cfg     Config
+	timeout time.Duration
+}
+
+// New membuat MikrotikAdapter. Host+user wajib; port 0 = default per TLS.
 func New(c Config) *Adapter {
-	if c.Host == "" || c.User == "" {
-		return &Adapter{http: adapter.New(adapter.Config{Domain: "mikrotik"})}
-	}
-	scheme := "http"
-	if c.TLS {
-		scheme = "https"
-	}
-	port := c.Port
-	if port == 0 {
-		if c.TLS {
-			port = 443
-		} else {
-			port = 80
-		}
-	}
-	base := fmt.Sprintf("%s://%s:%d/rest", scheme, strings.TrimSpace(c.Host), port)
-	return &Adapter{
-		http: adapter.New(adapter.Config{
-			Domain:      "mikrotik",
-			BaseURL:     base,
-			BasicUser:   c.User,
-			BasicPass:   c.Pass,
-			InsecureTLS: c.TLS, // sertifikat self-signed MikroTik
-			MaxRetries:  2,
-		}),
-	}
+	return &Adapter{cfg: c, timeout: 8 * time.Second}
 }
 
 // Domain memenuhi tool.Adapter.
 func (a *Adapter) Domain() string { return "mikrotik" }
 
 // Name memenuhi tool.Adapter.
-func (a *Adapter) Name() string { return "MikroTik RouterOS" }
+func (a *Adapter) Name() string { return "MikroTik RouterOS (API native)" }
 
 // Configured memenuhi tool.Adapter.
-func (a *Adapter) Configured() bool { return a.http != nil && a.http.Configured() }
+func (a *Adapter) Configured() bool { return a.cfg.Host != "" && a.cfg.User != "" }
 
 // ToolNames memenuhi tool.Adapter — hanya tool read-only.
 func (a *Adapter) ToolNames() []string { return []string{"mikrotik.get_pppoe_status"} }
 
-// Health memenuhi tool.Adapter: probe GET /system/resource (identitas router).
+// port mengembalikan port koneksi: eksplisit > default (8728/8729).
+func (a *Adapter) port() int {
+	if a.cfg.Port != 0 {
+		return a.cfg.Port
+	}
+	if a.cfg.TLS {
+		return 8729
+	}
+	return 8728
+}
+
+// addr mengembalikan host:port untuk tampilan status.
+func (a *Adapter) addr() string {
+	return fmt.Sprintf("%s:%d", a.cfg.Host, a.port())
+}
+
+// Health memenuhi tool.Adapter: probe /system/resource (identitas router).
 func (a *Adapter) Health(ctx context.Context) (string, error) {
 	d, err := a.Ping(ctx)
 	if err != nil {
@@ -102,13 +100,13 @@ func (a *Adapter) Ping(ctx context.Context) (PingResult, error) {
 		return PingResult{}, fmt.Errorf("mikrotik belum dikonfigurasi (isi host + username + password)")
 	}
 	start := time.Now()
-	var res []map[string]string
-	if err := a.http.GetJSON(ctx, "/system/resource", &res); err != nil {
+	rows, err := a.query(ctx, "/system/resource/print", nil)
+	if err != nil {
 		return PingResult{}, err
 	}
-	r := first(res)
+	r := firstRow(rows)
 	return PingResult{
-		BaseURL:   a.http.BaseURL(),
+		BaseURL:   a.addr(),
 		LatencyMS: time.Since(start).Milliseconds(),
 		Version:   r["version"],
 		BoardName: r["board-name"],
@@ -127,22 +125,21 @@ func (a *Adapter) Invoke(ctx context.Context, name string, args map[string]any) 
 	}
 }
 
-// getPPPoEStatus membaca sesi PPPoE aktif dari /ppp/active lalu mencocokkan
-// username (name) dengan identitas yang dicari.
+// getPPPoEStatus membaca sesi PPPoE aktif dari /ppp/active/print lalu
+// mencocokkan username (name) dengan identitas yang dicari.
 func (a *Adapter) getPPPoEStatus(ctx context.Context, args map[string]any) (tool.Output, error) {
 	identity := firstString(args, "identity", "username", "name")
 	if identity == "" {
 		return tool.Output{}, fmt.Errorf("mikrotik.get_pppoe_status butuh identity (username PPPoE / nomor pelanggan)")
 	}
 
-	var active []map[string]string
-	if err := a.http.GetJSON(ctx, "/ppp/active", &active); err != nil {
+	rows, err := a.query(ctx, "/ppp/active/print", nil)
+	if err != nil {
 		return tool.Output{}, err
 	}
 
-	// Cocokkan: nama persis, lalu contains (nomor pelanggan bisa jadi bagian username).
 	var match []map[string]string
-	for _, s := range active {
+	for _, s := range rows {
 		name := s["name"]
 		if name == identity || strings.Contains(name, identity) {
 			match = append(match, s)
@@ -177,11 +174,228 @@ func (a *Adapter) getPPPoEStatus(ctx context.Context, args map[string]any) (tool
 	}, nil
 }
 
-func first(m []map[string]string) map[string]string {
-	if len(m) == 0 {
+// ---- Protokol biner RouterOS ----
+
+// query: connect -> login -> kirim satu command -> baca sampai !done.
+func (a *Adapter) query(ctx context.Context, cmd string, args map[string]string) ([]map[string]string, error) {
+	conn, err := a.connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	r := bufio.NewReader(conn)
+	w := bufio.NewWriter(conn)
+
+	if err := a.login(r, w); err != nil {
+		return nil, err
+	}
+
+	words := []string{cmd}
+	for k, v := range args {
+		words = append(words, "="+k+"="+v)
+	}
+	if err := writeSentence(w, words); err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]string
+	for {
+		sentence, err := readSentence(r)
+		if err != nil {
+			return nil, err
+		}
+		if len(sentence) == 0 {
+			continue
+		}
+		switch sentence[0] {
+		case "!done":
+			return rows, nil
+		case "!trap", "!fatal":
+			return nil, fmt.Errorf("mikrotik: %s", joinSentence(sentence))
+		case "!re":
+			rows = append(rows, parseAttrs(sentence[1:]))
+		}
+	}
+}
+
+func (a *Adapter) connect(ctx context.Context) (net.Conn, error) {
+	addr := a.addr()
+	d := net.Dialer{Timeout: a.timeout}
+	if a.cfg.TLS {
+		// API-SSL: sertifikat self-signed MikroTik -> skip verify (curl -k).
+		td := &tls.Dialer{
+			NetDialer: &d,
+			Config:    &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // disengaja
+		}
+		return td.DialContext(ctx, "tcp", addr)
+	}
+	return d.DialContext(ctx, "tcp", addr)
+}
+
+// login mengirim kredensial; menangani plaintext (6.43+) dan challenge MD5.
+func (a *Adapter) login(r *bufio.Reader, w *bufio.Writer) error {
+	if err := writeSentence(w, []string{"/login", "=name=" + a.cfg.User, "=password=" + a.cfg.Pass}); err != nil {
+		return err
+	}
+	sentence, err := readSentence(r)
+	if err != nil {
+		return err
+	}
+	if len(sentence) == 0 {
+		return fmt.Errorf("mikrotik: respons login kosong")
+	}
+	if sentence[0] == "!trap" {
+		return fmt.Errorf("login gagal: %s", loginMessage(sentence))
+	}
+	if sentence[0] == "!done" {
+		// Legacy (pra-6.43): ada =ret=<challenge> -> balas MD5.
+		for _, word := range sentence[1:] {
+			if strings.HasPrefix(word, "=ret=") {
+				return a.legacyLogin(r, w, strings.TrimPrefix(word, "=ret="))
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("login: respons tak dikenal: %s", joinSentence(sentence))
+}
+
+// legacyLogin menjawab challenge MD5 untuk RouterOS pra-6.43.
+func (a *Adapter) legacyLogin(r *bufio.Reader, w *bufio.Writer, challengeHex string) error {
+	challenge, err := hex.DecodeString(challengeHex)
+	if err != nil {
+		return fmt.Errorf("challenge login tidak valid: %v", err)
+	}
+	h := md5.New()
+	h.Write([]byte{0x00})
+	h.Write([]byte(a.cfg.Pass))
+	h.Write(challenge)
+	resp := "00" + hex.EncodeToString(h.Sum(nil))
+	if err := writeSentence(w, []string{"/login", "=name=" + a.cfg.User, "=response=" + resp}); err != nil {
+		return err
+	}
+	sentence, err := readSentence(r)
+	if err != nil {
+		return err
+	}
+	if len(sentence) > 0 && sentence[0] == "!done" {
+		return nil
+	}
+	return fmt.Errorf("login (legacy) gagal: %s", joinSentence(sentence))
+}
+
+// ---- Encode/decode sentence ----
+
+// writeSentence menulis satu sentence (deret word + terminator 0x00).
+func writeSentence(w *bufio.Writer, words []string) error {
+	for _, wd := range words {
+		b := []byte(wd)
+		if _, err := w.Write(encodeLength(len(b))); err != nil {
+			return err
+		}
+		if _, err := w.Write(b); err != nil {
+			return err
+		}
+	}
+	if err := w.WriteByte(0x00); err != nil {
+		return err
+	}
+	return w.Flush()
+}
+
+// readSentence membaca satu sentence sampai terminator (word panjang 0).
+func readSentence(r *bufio.Reader) ([]string, error) {
+	var words []string
+	for {
+		b, err := r.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		var length int
+		switch {
+		case b&0x80 == 0x00:
+			length = int(b)
+		case b&0xC0 == 0x80:
+			b2, err := r.ReadByte()
+			if err != nil {
+				return nil, err
+			}
+			length = int(b&0x3F)<<8 | int(b2)
+		case b&0xE0 == 0xC0:
+			b2, err := r.ReadByte()
+			if err != nil {
+				return nil, err
+			}
+			b3, err := r.ReadByte()
+			if err != nil {
+				return nil, err
+			}
+			length = int(b&0x1F)<<16 | int(b2)<<8 | int(b3)
+		default:
+			return nil, fmt.Errorf("panjang word tidak dikenal: 0x%02x", b)
+		}
+		if length == 0 {
+			return words, nil
+		}
+		data := make([]byte, length)
+		if _, err := io.ReadFull(r, data); err != nil {
+			return nil, err
+		}
+		words = append(words, string(data))
+	}
+}
+
+// encodeLength mengkode panjang word (variable-length, seperti UTF-8).
+func encodeLength(n int) []byte {
+	switch {
+	case n < 0x80:
+		return []byte{byte(n)}
+	case n < 0x4000:
+		return []byte{byte(n>>8) | 0x80, byte(n & 0xFF)}
+	case n < 0x200000:
+		return []byte{byte(n>>16) | 0xC0, byte(n >> 8 & 0xFF), byte(n & 0xFF)}
+	default:
+		panic("word mikrotik terlalu panjang")
+	}
+}
+
+// parseAttrs mengubah word "=key=value" menjadi map.
+func parseAttrs(words []string) map[string]string {
+	m := map[string]string{}
+	for _, w := range words {
+		if !strings.HasPrefix(w, "=") {
+			continue
+		}
+		kv := strings.SplitN(w[1:], "=", 2)
+		if len(kv) == 2 {
+			m[kv[0]] = kv[1]
+		} else {
+			m[kv[0]] = ""
+		}
+	}
+	return m
+}
+
+// joinSentence menggabung word untuk pesan error.
+func joinSentence(words []string) string {
+	return strings.Join(words, " ")
+}
+
+// loginMessage mengekstrak teks =message= dari respons !trap.
+func loginMessage(sentence []string) string {
+	for _, w := range sentence {
+		if strings.HasPrefix(w, "=message=") {
+			return strings.TrimPrefix(w, "=message=")
+		}
+	}
+	return joinSentence(sentence)
+}
+
+func firstRow(rows []map[string]string) map[string]string {
+	if len(rows) == 0 {
 		return map[string]string{}
 	}
-	return m[0]
+	return rows[0]
 }
 
 func orDash(s string) string {
@@ -201,5 +415,3 @@ func firstString(m map[string]any, keys ...string) string {
 	}
 	return ""
 }
-
-var _ = json.Valid // jaga import json tetap terpakai bila struktur berubah
