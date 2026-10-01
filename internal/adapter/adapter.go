@@ -100,7 +100,7 @@ func (h *HTTP) Get(ctx context.Context, path string) ([]byte, error) {
 			lastErr = err
 			continue
 		}
-		body, rerr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		body, rerr := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 		resp.Body.Close()
 		if rerr != nil {
 			lastErr = rerr

@@ -9,18 +9,23 @@ import (
 	"time"
 )
 
-// TestPing: parse /devices + hitung online/offline dari _lastInform.
+// deviceJSON membangun satu device dengan struktur nested GenieACS asli.
+func deviceJSON(id string, lastInform time.Time, rxPower string) string {
+	return `{"_id":"` + id + `",` +
+		`"_lastInform":"` + lastInform.Format(time.RFC3339) + `",` +
+		`"InternetGatewayDevice":{"DeviceInfo":{"Manufacturer":{"_value":"ZTE"},"ModelName":{"_value":"HG8245H5"}}},` +
+		`"VirtualParameters":{"RXPower":{"_value":"` + rxPower + `"}}}`
+}
+
+// TestPing: parse /devices + hitung online/offline dari _lastInform (RFC3339).
 func TestPing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/devices/" {
 			t.Errorf("path = %q, mau /devices/", r.URL.Path)
 		}
-		recent := time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05 -0700")
-		old := time.Now().Add(-30 * 24 * time.Hour).Format("2006-01-02 15:04:05 -0700")
-		w.Write([]byte(`[
-			{"_id":"ONT-AAA-001","_lastInform":"` + recent + `","Device.DeviceInfo.Manufacturer":"ZTE","Device.DeviceInfo.ModelName":"F660"},
-			{"_id":"ONT-BBB-002","_lastInform":"` + old + `","Device.DeviceInfo.Manufacturer":"Huawei","Device.DeviceInfo.ModelName":"HG8245"}
-		]`))
+		recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
+		old := deviceJSON("ONT-BBB-002", time.Now().Add(-30*24*time.Hour), "-28.00")
+		w.Write([]byte(`[` + recent + `,` + old + `]`))
 	}))
 	defer srv.Close()
 
@@ -37,14 +42,14 @@ func TestPing(t *testing.T) {
 	}
 }
 
-// TestGetDeviceState: cari device by _id, tampilkan ONLINE/OFFLINE.
+// TestGetDeviceState: cari device by _id, tampilkan ONLINE + vendor + model + RXPower.
 func TestGetDeviceState(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("query") == "" {
 			t.Errorf("query param kosong")
 		}
-		recent := time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05 -0700")
-		w.Write([]byte(`[{"_id":"ONT-AAA-001","_lastInform":"` + recent + `","Device.DeviceInfo.Manufacturer":"ZTE","Device.DeviceInfo.ModelName":"F660"}]`))
+		recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
+		w.Write([]byte(`[` + recent + `]`))
 	}))
 	defer srv.Close()
 
@@ -53,20 +58,19 @@ func TestGetDeviceState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Invoke error: %v", err)
 	}
-	if !strings.Contains(out.Text, "ONT-AAA-001") || !strings.Contains(out.Text, "ONLINE") {
-		t.Errorf("Text = %q, mau memuat ONT-AAA-001 ONLINE", out.Text)
+	for _, want := range []string{"ONT-AAA-001", "ONLINE", "ZTE", "HG8245H5", "-23.66 dBm"} {
+		if !strings.Contains(out.Text, want) {
+			t.Errorf("Text = %q, mau memuat %q", out.Text, want)
+		}
 	}
 }
 
-// TestGetDevicesFilter: filter online/offline.
+// TestGetDevicesFilter: filter online/offline (projection _id,_lastInform).
 func TestGetDevicesFilter(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		recent := time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05 -0700")
-		old := time.Now().Add(-30 * 24 * time.Hour).Format("2006-01-02 15:04:05 -0700")
-		w.Write([]byte(`[
-			{"_id":"ONT-AAA-001","_lastInform":"` + recent + `"},
-			{"_id":"ONT-BBB-002","_lastInform":"` + old + `"}
-		]`))
+		recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
+		old := deviceJSON("ONT-BBB-002", time.Now().Add(-30*24*time.Hour), "-28.00")
+		w.Write([]byte(`[` + recent + `,` + old + `]`))
 	}))
 	defer srv.Close()
 
@@ -104,19 +108,50 @@ func TestConfiguredAndToolNames(t *testing.T) {
 	}
 }
 
-// TestIsOnline: berbagai format timestamp.
+// TestIsOnline: RFC3339 dan format lama.
 func TestIsOnline(t *testing.T) {
 	recent := time.Now().Add(-1 * time.Hour)
 	cutoff := time.Now().Add(-7 * 24 * time.Hour)
-	if !isOnline(map[string]any{"_lastInform": recent.Format("2006-01-02 15:04:05 -0700")}, cutoff) {
-		t.Error("recent harusnya online")
-	}
-	if isOnline(map[string]any{"_lastInform": recent.Format(time.RFC3339)}, cutoff) {
-		// RFC3339 juga didukung -> recent = online, jadi ini harus true
-	} else {
+	if !isOnline(map[string]any{"_lastInform": recent.Format(time.RFC3339)}, cutoff) {
 		t.Error("recent (RFC3339) harusnya online")
 	}
 	if isOnline(map[string]any{"_lastInform": ""}, cutoff) {
 		t.Error("kosong harusnya offline")
+	}
+	old := time.Now().Add(-30 * 24 * time.Hour)
+	if isOnline(map[string]any{"_lastInform": old.Format(time.RFC3339)}, cutoff) {
+		t.Error("30 hari lalu harusnya offline")
+	}
+}
+
+// TestParamValue: baca nested _value.
+func TestParamValue(t *testing.T) {
+	d := map[string]any{
+		"InternetGatewayDevice": map[string]any{
+			"DeviceInfo": map[string]any{
+				"Manufacturer": map[string]any{"_value": "ZTE"},
+			},
+		},
+		"VirtualParameters": map[string]any{
+			"RXPower": map[string]any{"_value": "-23.66"},
+		},
+	}
+	if got := paramValue(d, "InternetGatewayDevice.DeviceInfo.Manufacturer"); got != "ZTE" {
+		t.Errorf("paramValue = %q, mau ZTE", got)
+	}
+	if got := paramValue(d, "VirtualParameters.RXPower"); got != "-23.66" {
+		t.Errorf("paramValue = %q, mau -23.66", got)
+	}
+	if got := paramValue(d, "tidak.ada"); got != "" {
+		t.Errorf("paramValue path tak ada = %q, mau kosong", got)
+	}
+	if got := rxPower(d); got != "-23.66" {
+		t.Errorf("rxPower = %q, mau -23.66", got)
+	}
+	if got := vendor(d); got != "ZTE" {
+		t.Errorf("vendor = %q, mau ZTE", got)
+	}
+	if got := model(d); got != "" {
+		t.Errorf("model = %q, mau kosong (tidak ada ModelName)", got)
 	}
 }

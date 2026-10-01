@@ -79,27 +79,23 @@ type PingResult struct {
 }
 
 // Ping memverifikasi koneksi terhadap NBI. Menghitung total device + yang online
-// (inform < 7 hari, ambang wajar untuk TR-069).
+// (inform < 7 hari, ambang wajar untuk TR-069). Pakai projection supaya respons
+// kecil (hanya _id + _lastInform), karena /devices tanpa projection bisa
+// puluhan MB untuk ratusan device.
 func (a *Adapter) Ping(ctx context.Context) (PingResult, error) {
 	if !a.Configured() {
 		return PingResult{}, fmt.Errorf("genieacs belum dikonfigurasi (isi host NBI)")
 	}
 	start := time.Now()
 	var devices []map[string]any
-	if err := a.http.GetJSON(ctx, "/devices/", &devices); err != nil {
+	if err := a.http.GetJSON(ctx, "/devices/?projection=_id,_lastInform", &devices); err != nil {
 		return PingResult{}, err
 	}
 	online := 0
 	cutoff := time.Now().Add(-7 * 24 * time.Hour)
 	for _, d := range devices {
-		if li, ok := d["_lastInform"].(string); ok {
-			if t, err := time.Parse("2006-01-02 15:04:05 -0700", li); err == nil && t.After(cutoff) {
-				online++
-			} else if err == nil {
-				// format tanpa tz? coba parse ISO
-			} else if t2, err2 := time.Parse(time.RFC3339, li); err2 == nil && t2.After(cutoff) {
-				online++
-			}
+		if isOnline(d, cutoff) {
+			online++
 		}
 	}
 	return PingResult{
@@ -144,10 +140,11 @@ func (a *Adapter) getDeviceState(ctx context.Context, args map[string]any) (tool
 	}, nil
 }
 
-// getDevices membaca daftar device (opsional filter online/offline).
+// getDevices membaca daftar device (opsional filter online/offline). Pakai
+// projection supaya respons kecil (tanpa projection bisa puluhan MB).
 func (a *Adapter) getDevices(ctx context.Context, args map[string]any) (tool.Output, error) {
 	var devices []map[string]any
-	if err := a.http.GetJSON(ctx, "/devices/", &devices); err != nil {
+	if err := a.http.GetJSON(ctx, "/devices/?projection=_id,_lastInform", &devices); err != nil {
 		return tool.Output{}, err
 	}
 
@@ -167,12 +164,6 @@ func (a *Adapter) getDevices(ctx context.Context, args map[string]any) (tool.Out
 		count++
 		id := str(d["_id"])
 		fmt.Fprintf(&b, "- %s: %s", id, onoff(online))
-		if man := str(d["Device.DeviceInfo.Manufacturer"]); man != "" {
-			fmt.Fprintf(&b, ", %s", man)
-		}
-		if model := str(d["Device.DeviceInfo.ModelName"]); model != "" {
-			fmt.Fprintf(&b, " %s", model)
-		}
 		if li := str(d["_lastInform"]); li != "" {
 			fmt.Fprintf(&b, ", inform=%s", li)
 		}
@@ -190,11 +181,14 @@ func deviceState(d map[string]any) string {
 	online := isOnline(d, time.Now().Add(-7*24*time.Hour))
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %s", id, onoff(online))
-	if man := str(d["Device.DeviceInfo.Manufacturer"]); man != "" {
+	if man := vendor(d); man != "" {
 		fmt.Fprintf(&b, ", vendor=%s", man)
 	}
-	if model := str(d["Device.DeviceInfo.ModelName"]); model != "" {
+	if model := model(d); model != "" {
 		fmt.Fprintf(&b, ", model=%s", model)
+	}
+	if rx := rxPower(d); rx != "" {
+		fmt.Fprintf(&b, ", rx=%s dBm", rx)
 	}
 	if li := str(d["_lastInform"]); li != "" {
 		fmt.Fprintf(&b, ", last-inform=%s", li)
@@ -228,6 +222,70 @@ func str(v any) string {
 	}
 	b, _ := json.Marshal(v)
 	return strings.Trim(string(b), `"`)
+}
+
+// paramValue mengambil nilai TR-069 dari struktur nested GenieACS.
+// Contoh: InternetGatewayDevice.DeviceInfo.Manufacturer = {"_value":"ZTE", ...}
+// VirtualParameters.RXPower = {"_value":"-23.66", ...}
+func paramValue(d map[string]any, path string) string {
+	parts := strings.Split(path, ".")
+	cur := any(d)
+	for _, p := range parts {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return ""
+		}
+		cur, ok = m[p]
+		if !ok {
+			return ""
+		}
+	}
+	if m, ok := cur.(map[string]any); ok {
+		if v, ok := m["_value"]; ok {
+			return str(v)
+		}
+	}
+	return str(cur)
+}
+
+// vendor membaca nama manufacturer ONT.
+func vendor(d map[string]any) string {
+	for _, p := range []string{
+		"InternetGatewayDevice.DeviceInfo.Manufacturer",
+		"Device.DeviceInfo.Manufacturer",
+		"InternetGatewayDevice.DeviceInfo.ManufacturerOUI",
+	} {
+		if v := paramValue(d, p); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// model membaca model ONT.
+func model(d map[string]any) string {
+	for _, p := range []string{
+		"InternetGatewayDevice.DeviceInfo.ModelName",
+		"Device.DeviceInfo.ModelName",
+	} {
+		if v := paramValue(d, p); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// rxPower membaca daya sinyal optik (dBm).
+func rxPower(d map[string]any) string {
+	for _, p := range []string{
+		"VirtualParameters.RXPower",
+		"InternetGatewayDevice.X_CMCC_EponInterfaceConfig.RXPower",
+	} {
+		if v := paramValue(d, p); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func onoff(online bool) string {
