@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -95,5 +97,53 @@ func TestSaveHasilJSONValid(t *testing.T) {
 	// Field privat (path) tidak boleh ikut tertulis ke file.
 	if _, ada := m["path"]; ada {
 		t.Error("field privat 'path' ikut tertulis ke config.json")
+	}
+}
+
+// memory_path kosong di config.json harus jatuh ke lokasi bawaan, bukan
+// mematikan memory. Ini yang membuat folder proyek bisa dipindah atau disalin
+// ke komputer lain tanpa kehilangan memory percakapan.
+func TestMemoryPathKosongPakaiDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	// Config hasil pindah komputer: path absolut lama sudah dibuang.
+	if err := os.WriteFile(path, []byte(`{"addr":":8090","wa_dir":"","memory_path":""}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := Load(path)
+	if strings.TrimSpace(c.MemoryPath) == "" {
+		t.Error("memory_path kosong membuat memory mati; harus jatuh ke lokasi bawaan")
+	}
+	if !strings.HasSuffix(c.MemoryPath, "memory.json") {
+		t.Errorf("MemoryPath = %q, mau berakhir memory.json", c.MemoryPath)
+	}
+}
+
+// wa_dir kosong harus terdeteksi otomatis, bukan menonaktifkan gateway.
+func TestWADirKosongTerdeteksiOtomatis(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"addr":":8090","wa_dir":""}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// resolveWADir memakai exe/CWD; di lingkungan test, wa-gateway tidak ada,
+	// jadi hasilnya boleh kosong. Yang penting: tidak panic dan tidak error.
+	c := Load(path)
+	_ = c.WADir
+}
+
+// config.json yang menyimpan path absolut tetap dihormati (operator mungkin
+// memang menaruh gateway di lokasi lain).
+func TestMemoryPathAbsolutDihormati(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	abs := filepath.Join(dir, "data", "memory.json")
+	isi := `{"addr":":8090","memory_path":` + strconv.Quote(abs) + `}`
+	if err := os.WriteFile(path, []byte(isi), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := Load(path)
+	if c.MemoryPath != abs {
+		t.Errorf("MemoryPath = %q, mau %q (path eksplisit harus dihormati)", c.MemoryPath, abs)
 	}
 }

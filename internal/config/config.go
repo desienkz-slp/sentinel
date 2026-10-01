@@ -214,6 +214,12 @@ func Load(path string) *Config {
 			_ = json.Unmarshal(b, c)
 		}
 	}
+	// memory_path kosong = pakai lokasi bawaan (relatif ke binary). Tanpa ini,
+	// config.json yang menyimpan path absolut akan mematikan memory begitu
+	// folder proyek dipindahkan atau disalin ke komputer lain.
+	if strings.TrimSpace(c.MemoryPath) == "" {
+		c.MemoryPath = defaultMemoryPath()
+	}
 
 	if v := getenv("NOC_ADDR"); v != "" {
 		c.Addr = v
