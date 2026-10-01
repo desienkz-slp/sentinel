@@ -109,8 +109,20 @@
       <div><label for="radiusKey">API Key RADIUS</label><input id="radiusKey" type="password" placeholder="••••"></div>
     </div>
     <div class="row">
-      <div><label for="mikrotikUrl">Host MikroTik</label><input id="mikrotikUrl" placeholder="http://192.168.1.10"></div>
-      <div><label for="mikrotikKey">API Key MikroTik</label><input id="mikrotikKey" type="password" placeholder="••••"></div>
+      <div><label for="mikrotikHost">Host MikroTik (tanpa skema)</label><input id="mikrotikHost" placeholder="192.168.1.10"></div>
+      <div><label for="mikrotikPort">Port (kosong = 443 TLS / 80 HTTP)</label><input id="mikrotikPort" type="number" min="1" max="65535" placeholder="443"></div>
+    </div>
+    <div class="row">
+      <div><label for="mikrotikUser">Username (user router)</label><input id="mikrotikUser" placeholder="admin"></div>
+      <div><label for="mikrotikPass">Password</label><input id="mikrotikPass" type="password" placeholder="•••• (kosongkan = tidak diubah)"></div>
+    </div>
+    <div class="row">
+      <div><label for="mikrotikTls">Koneksi aman (www-ssl / HTTPS)</label>
+        <select id="mikrotikTls"><option value="true">HTTPS (www-ssl) — disarankan</option><option value="false">HTTP (www) — hanya untuk tes</option></select>
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <div class="hint" style="margin:0">MikroTik REST = Basic Auth (user+password), bukan API key. RouterOS v7.1+, service www / www-ssl aktif.</div>
+      </div>
     </div>
     <div class="row">
       <div><label for="genieacsUrl">Host GenieACS (TR-069)</label><input id="genieacsUrl" placeholder="http://192.168.1.10"></div>
@@ -151,10 +163,13 @@ function statusIntegrasi(c) {
   const row = (nama, url, set, masked) =>
     `${nama}: <b>${set ? 'aktif' : 'nonaktif'}</b>` +
     (url ? ` · ${esc(url)}` : '') + (set && masked ? ` · ${esc(masked)}` : '');
+  const mkURL = c.mikrotik_host
+    ? `${c.mikrotik_tls ? 'https' : 'http'}://${esc(c.mikrotik_host)}${c.mikrotik_port ? ':' + c.mikrotik_port : ''}/rest`
+    : '';
   $('intStatus').innerHTML = [
     row('Billing',  c.billing_url,  c.billing_set,  c.billing_token_masked),
     row('RADIUS',   c.radius_url,   c.radius_set,   c.radius_token_masked),
-    row('MikroTik', c.mikrotik_url, c.mikrotik_set, c.mikrotik_token_masked),
+    row('MikroTik', mkURL,          c.mikrotik_set, c.mikrotik_pass_masked),
     row('GenieACS', c.genieacs_url, c.genieacs_set, c.genieacs_token_masked),
   ].join('<br>');
   setDot('Billing', !!c.billing_set, c.billing_set ? 'Billing dikonfigurasi' : 'Billing belum diset');
@@ -175,7 +190,10 @@ async function boot() {
     setDot('Codex', !!st.codex_ready, st.codex_ready ? 'Codex siap ('+c.codex_model+')' : 'Codex tidak ditemukan');
     $('billingUrl').value = c.billing_url || '';
     $('radiusUrl').value = c.radius_url || '';
-    $('mikrotikUrl').value = c.mikrotik_url || '';
+    $('mikrotikHost').value = c.mikrotik_host || '';
+    $('mikrotikPort').value = c.mikrotik_port || '';
+    $('mikrotikUser').value = c.mikrotik_user || '';
+    $('mikrotikTls').value = String(!!c.mikrotik_tls);
     $('genieacsUrl').value = c.genieacs_url || '';
     statusIntegrasi(c);
   } catch (e) { console.error(e); }
@@ -222,15 +240,18 @@ async function saveIntegrations() {
       billing_token: $('billingKey').value || undefined,
       radius_url: $('radiusUrl').value || undefined,
       radius_token: $('radiusKey').value || undefined,
-      mikrotik_url: $('mikrotikUrl').value || undefined,
-      mikrotik_token: $('mikrotikKey').value || undefined,
+      mikrotik_host: $('mikrotikHost').value || undefined,
+      mikrotik_port: parseInt($('mikrotikPort').value,10) || undefined,
+      mikrotik_user: $('mikrotikUser').value || undefined,
+      mikrotik_pass: $('mikrotikPass').value || undefined,
+      mikrotik_tls: $('mikrotikTls').value === 'true',
       genieacs_url: $('genieacsUrl').value || undefined,
       genieacs_token: $('genieacsKey').value || undefined
     })});
     statusIntegrasi(d.config);
     msg('intMsg', true, 'Tersimpan.');
     $('billingKey').value = ''; $('radiusKey').value = '';
-    $('mikrotikKey').value = ''; $('genieacsKey').value = '';
+    $('mikrotikPass').value = ''; $('genieacsKey').value = '';
   } catch(e){ msg('intMsg', false, 'Gagal: ' + e.message); }
 }
 

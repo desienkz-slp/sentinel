@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -91,6 +92,44 @@ func TestCustomHeaderName(t *testing.T) {
 	if got != "k" {
 		t.Errorf("X-API-Key = %q, mau k", got)
 	}
+}
+
+// MikroTik REST memakai HTTP Basic Auth (user:pass), bukan token.
+func TestBasicAuth(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	a := New(Config{Domain: "mikrotik", BaseURL: srv.URL, BasicUser: "admin", BasicPass: "rahasia"})
+	a.Get(context.Background(), "/x")
+	want := "Basic " + basicAuthHeader("admin", "rahasia")
+	if gotAuth != want {
+		t.Errorf("Authorization = %q, mau %q", gotAuth, want)
+	}
+}
+
+// Basic Auth menang atas token bila keduanya diisi.
+func TestBasicAuthBeatsToken(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	a := New(Config{Domain: "mikrotik", BaseURL: srv.URL, BasicUser: "admin", BasicPass: "rahasia", Token: "token-x"})
+	a.Get(context.Background(), "/x")
+	want := "Basic " + basicAuthHeader("admin", "rahasia")
+	if gotAuth != want {
+		t.Errorf("Authorization = %q, mau Basic Auth %q", gotAuth, want)
+	}
+}
+
+func basicAuthHeader(user, pass string) string {
+	return base64.StdEncoding.EncodeToString([]byte(user + ":" + pass))
 }
 
 func TestGetJSON(t *testing.T) {

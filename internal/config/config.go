@@ -58,12 +58,18 @@ type Config struct {
 	// lewat dashboard Pengaturan ke config.json (gitignored, aman). Env
 	// NOC_*_URL / NOC_*_TOKEN tetap didukung dan MENANG bila diset.
 	// Token TIDAK pernah muncul di Redacted()/API — hanya masked.
-	BillingURL    string `json:"billing_url"`
-	BillingToken  string `json:"billing_token"`
-	RadiusURL     string `json:"radius_url"`
-	RadiusToken   string `json:"radius_token"`
-	MikrotikURL   string `json:"mikrotik_url"`
-	MikrotikToken string `json:"mikrotik_token"`
+	BillingURL   string `json:"billing_url"`
+	BillingToken string `json:"billing_token"`
+	RadiusURL    string `json:"radius_url"`
+	RadiusToken  string `json:"radius_token"`
+	// MikroTik memakai HTTP Basic Auth (username+password user router),
+	// BUKAN API key. Host tanpa port + skema (mis. 192.168.1.1) — base URL
+	// http(s)://host:port/rest dibangun otomatis.
+	MikrotikHost  string `json:"mikrotik_host"`
+	MikrotikPort  int    `json:"mikrotik_port"` // 0 = default: 443 bila TLS, 80 bila tidak
+	MikrotikUser  string `json:"mikrotik_user"`
+	MikrotikPass  string `json:"mikrotik_pass"`
+	MikrotikTLS   bool   `json:"mikrotik_tls"` // www-ssl (disarankan) vs www
 	GenieACSURL   string `json:"genieacs_url"`
 	GenieACSToken string `json:"genieacs_token"`
 
@@ -368,11 +374,22 @@ func Load(path string) *Config {
 	if v := getenv("NOC_RADIUS_TOKEN"); v != "" {
 		c.RadiusToken = v
 	}
-	if v := getenv("NOC_MIKROTIK_URL"); v != "" {
-		c.MikrotikURL = v
+	if v := getenv("NOC_MIKROTIK_HOST"); v != "" {
+		c.MikrotikHost = v
 	}
-	if v := getenv("NOC_MIKROTIK_TOKEN"); v != "" {
-		c.MikrotikToken = v
+	if v := getenv("NOC_MIKROTIK_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			c.MikrotikPort = p
+		}
+	}
+	if v := getenv("NOC_MIKROTIK_USER"); v != "" {
+		c.MikrotikUser = v
+	}
+	if v := getenv("NOC_MIKROTIK_PASS"); v != "" {
+		c.MikrotikPass = v
+	}
+	if v := getenv("NOC_MIKROTIK_TLS"); v != "" {
+		c.MikrotikTLS = v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
 	}
 	if v := getenv("NOC_GENIEACS_URL"); v != "" {
 		c.GenieACSURL = v
@@ -446,15 +463,18 @@ func (c *Config) Redacted() map[string]any {
 		// Endpoint adaptor eksternal (tanpa token mentah — hanya masked).
 		"billing_url":           c.BillingURL,
 		"radius_url":            c.RadiusURL,
-		"mikrotik_url":          c.MikrotikURL,
+		"mikrotik_host":         c.MikrotikHost,
+		"mikrotik_port":         c.MikrotikPort,
+		"mikrotik_user":         c.MikrotikUser, // username bukan rahasia (tetap ditampilkan)
+		"mikrotik_tls":          c.MikrotikTLS,
 		"genieacs_url":          c.GenieACSURL,
 		"billing_set":           c.BillingURL != "" && c.BillingToken != "",
 		"radius_set":            c.RadiusURL != "" && c.RadiusToken != "",
-		"mikrotik_set":          c.MikrotikURL != "" && c.MikrotikToken != "",
+		"mikrotik_set":          c.MikrotikHost != "" && c.MikrotikUser != "",
 		"genieacs_set":          c.GenieACSURL != "" && c.GenieACSToken != "",
 		"billing_token_masked":  maskSecret(c.BillingToken),
 		"radius_token_masked":   maskSecret(c.RadiusToken),
-		"mikrotik_token_masked": maskSecret(c.MikrotikToken),
+		"mikrotik_pass_masked":  maskSecret(c.MikrotikPass),
 		"genieacs_token_masked": maskSecret(c.GenieACSToken),
 	}
 }

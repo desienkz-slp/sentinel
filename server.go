@@ -123,8 +123,11 @@ func (s *Server) routes() http.Handler {
 			BillingToken  *string `json:"billing_token"`
 			RadiusURL     *string `json:"radius_url"`
 			RadiusToken   *string `json:"radius_token"`
-			MikrotikURL   *string `json:"mikrotik_url"`
-			MikrotikToken *string `json:"mikrotik_token"`
+			MikrotikHost  *string `json:"mikrotik_host"`
+			MikrotikPort  *int    `json:"mikrotik_port"`
+			MikrotikUser  *string `json:"mikrotik_user"`
+			MikrotikPass  *string `json:"mikrotik_pass"`
+			MikrotikTLS   *bool   `json:"mikrotik_tls"`
 			GenieACSURL   *string `json:"genieacs_url"`
 			GenieACSToken *string `json:"genieacs_token"`
 		}
@@ -188,11 +191,20 @@ func (s *Server) routes() http.Handler {
 		if body.RadiusToken != nil {
 			s.cfg.RadiusToken = strings.TrimSpace(*body.RadiusToken)
 		}
-		if body.MikrotikURL != nil {
-			s.cfg.MikrotikURL = strings.TrimRight(strings.TrimSpace(*body.MikrotikURL), "/")
+		if body.MikrotikHost != nil {
+			s.cfg.MikrotikHost = strings.TrimSpace(*body.MikrotikHost)
 		}
-		if body.MikrotikToken != nil {
-			s.cfg.MikrotikToken = strings.TrimSpace(*body.MikrotikToken)
+		if body.MikrotikPort != nil {
+			s.cfg.MikrotikPort = *body.MikrotikPort
+		}
+		if body.MikrotikUser != nil {
+			s.cfg.MikrotikUser = strings.TrimSpace(*body.MikrotikUser)
+		}
+		if body.MikrotikPass != nil {
+			s.cfg.MikrotikPass = *body.MikrotikPass
+		}
+		if body.MikrotikTLS != nil {
+			s.cfg.MikrotikTLS = *body.MikrotikTLS
 		}
 		if body.GenieACSURL != nil {
 			s.cfg.GenieACSURL = strings.TrimRight(strings.TrimSpace(*body.GenieACSURL), "/")

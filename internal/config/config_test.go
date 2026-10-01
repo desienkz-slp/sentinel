@@ -187,27 +187,40 @@ func TestAdapterEndpointFromEnvOnly(t *testing.T) {
 	}
 }
 
-// Token adaptor TIDAK pernah muncul mentah di Redacted — hanya masked.
-func TestAdapterTokenNotInRedacted(t *testing.T) {
-	t.Setenv("NOC_MIKROTIK_URL", "http://mikrotik.internal")
-	t.Setenv("NOC_MIKROTIK_TOKEN", "test-token-mikrotik")
+// MikroTik memakai Basic Auth (host+port+user+pass), BUKAN API key.
+// Password tidak pernah muncul mentah di Redacted — hanya masked.
+func TestAdapterMikrotikBasicAuthNotInRedacted(t *testing.T) {
+	t.Setenv("NOC_MIKROTIK_HOST", "192.168.88.1")
+	t.Setenv("NOC_MIKROTIK_PORT", "8443")
+	t.Setenv("NOC_MIKROTIK_USER", "nocapi")
+	t.Setenv("NOC_MIKROTIK_PASS", "rahasiA-123")
+	t.Setenv("NOC_MIKROTIK_TLS", "true")
 	c := Load("")
 	r := c.Redacted()
-	if r["mikrotik_url"] != "http://mikrotik.internal" {
-		t.Errorf("mikrotik_url = %v", r["mikrotik_url"])
+	if r["mikrotik_host"] != "192.168.88.1" {
+		t.Errorf("mikrotik_host = %v", r["mikrotik_host"])
+	}
+	if r["mikrotik_port"] != 8443 {
+		t.Errorf("mikrotik_port = %v", r["mikrotik_port"])
+	}
+	if r["mikrotik_user"] != "nocapi" {
+		t.Errorf("mikrotik_user = %v", r["mikrotik_user"])
+	}
+	if r["mikrotik_tls"] != true {
+		t.Errorf("mikrotik_tls = %v, mau true", r["mikrotik_tls"])
 	}
 	if r["mikrotik_set"] != true {
 		t.Errorf("mikrotik_set = %v, mau true", r["mikrotik_set"])
 	}
-	// Pastikan token mentah tidak ada di mana pun dalam Redacted.
+	// Password mentah tidak boleh ada di mana pun dalam Redacted.
 	for k, v := range r {
-		if s, ok := v.(string); ok && s == "test-token-mikrotik" {
-			t.Errorf("token bocor di Redacted[%q]", k)
+		if s, ok := v.(string); ok && s == "rahasiA-123" {
+			t.Errorf("password bocor di Redacted[%q]", k)
 		}
 	}
-	// Masked harus berisi bullet + 4 char terakhir, bukan token utuh.
-	if masked, _ := r["mikrotik_token_masked"].(string); !strings.Contains(masked, "••••") {
-		t.Errorf("mikrotik_token_masked = %q, mau berisi bullet", masked)
+	// Masked harus berisi bullet + 4 char terakhir, bukan password utuh.
+	if masked, _ := r["mikrotik_pass_masked"].(string); !strings.Contains(masked, "••••") || !strings.HasSuffix(masked, "-123") {
+		t.Errorf("mikrotik_pass_masked = %q, mau ••••-123", masked)
 	}
 }
 

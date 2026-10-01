@@ -21,10 +21,12 @@ import (
 type Config struct {
 	Domain     string        // billing | radius | mikrotik | genieacs
 	BaseURL    string        // tanpa trailing slash
-	Token      string        // bearer token (opsional)
+	Token      string        // token (opsional, untuk HeaderName / Bearer)
 	Timeout    time.Duration // timeout per request
 	MaxRetries int           // jumlah retry (hanya untuk GET yang aman)
-	HeaderName string        // header auth (default Authorization: Bearer)
+	HeaderName string        // header auth (default Authorization: Bearer <token>)
+	BasicUser  string        // bila diisi: HTTP Basic Auth (BasicUser:BasicPass)
+	BasicPass  string        // (MikroTik REST memakai Basic Auth, bukan API key)
 }
 
 // HTTP adalah base adapter dengan client + retry + health.
@@ -134,6 +136,11 @@ func (h *HTTP) Health(ctx context.Context, healthPath string) (detail string, er
 }
 
 func (h *HTTP) setAuth(req *http.Request) {
+	// Prioritas: Basic Auth (MikroTik dll.) lebih dulu, lalu token kustom.
+	if h.cfg.BasicUser != "" {
+		req.SetBasicAuth(h.cfg.BasicUser, h.cfg.BasicPass)
+		return
+	}
 	if h.cfg.Token == "" {
 		return
 	}
