@@ -62,21 +62,34 @@ type Config struct {
 	BillingToken string `json:"billing_token"`
 	RadiusURL    string `json:"radius_url"`
 	RadiusToken  string `json:"radius_token"`
-	// MikroTik memakai HTTP Basic Auth (username+password user router),
-	// BUKAN API key. Host tanpa port + skema (mis. 192.168.1.1) — base URL
-	// http(s)://host:port/rest dibangun otomatis.
-	MikrotikHost  string `json:"mikrotik_host"`
-	MikrotikPort  int    `json:"mikrotik_port"` // 0 = default: 443 bila TLS, 80 bila tidak
-	MikrotikUser  string `json:"mikrotik_user"`
-	MikrotikPass  string `json:"mikrotik_pass"`
-	MikrotikTLS   bool   `json:"mikrotik_tls"` // www-ssl (disarankan) vs www
-	GenieACSURL   string `json:"genieacs_url"`
-	GenieACSToken string `json:"genieacs_token"`
+	// MikroTik memakai API native (protokol biner) + Basic Auth (user+password),
+	// BUKAN API key. Mendukung MULTI router: tiap entri punya nama+host+port+
+	// user+pass+tls. Entri tunggal lama (mikrotik_host dll.) tetap didukung via
+	// kompatibilitas mundur di Load().
+	MikrotikHost string `json:"mikrotik_host"`
+	MikrotikPort int    `json:"mikrotik_port"`
+	MikrotikUser string `json:"mikrotik_user"`
+	MikrotikPass string `json:"mikrotik_pass"`
+	MikrotikTLS  bool   `json:"mikrotik_tls"`
+	// MikrotikRouters adalah daftar router untuk fitur multi-MikroTik.
+	MikrotikRouters []MikrotikRouter `json:"mikrotik_routers"`
+	GenieACSURL     string           `json:"genieacs_url"`
+	GenieACSToken   string           `json:"genieacs_token"`
 
 	// path adalah lokasi file config yang sedang dipakai. Disimpan supaya
 	// perubahan dari dashboard bisa ditulis kembali ke file yang SAMA.
 	// Tanpa ini, pengaturan hanya hidup di memori dan hilang saat restart.
 	path string
+}
+
+// MikrotikRouter adalah satu router MikroTik dalam daftar multi-router.
+type MikrotikRouter struct {
+	Name string `json:"name"` // label, mis. "Router Pusat"
+	Host string `json:"host"` // IP/hostname
+	Port int    `json:"port"` // 0 = default 8728/8729
+	User string `json:"user"`
+	Pass string `json:"pass"`
+	TLS  bool   `json:"tls"`
 }
 
 // SetPath mencatat file config yang sedang dipakai, agar Save() menulis ke sana.
@@ -467,10 +480,12 @@ func (c *Config) Redacted() map[string]any {
 		"mikrotik_port":         c.MikrotikPort,
 		"mikrotik_user":         c.MikrotikUser, // username bukan rahasia (tetap ditampilkan)
 		"mikrotik_tls":          c.MikrotikTLS,
+		"mikrotik_routers":      c.redactedRouters(),
+		"mikrotik_count":        len(c.Routers()),
 		"genieacs_url":          c.GenieACSURL,
 		"billing_set":           c.BillingURL != "" && c.BillingToken != "",
 		"radius_set":            c.RadiusURL != "" && c.RadiusToken != "",
-		"mikrotik_set":          c.MikrotikHost != "" && c.MikrotikUser != "",
+		"mikrotik_set":          len(c.Routers()) > 0,
 		"genieacs_set":          c.GenieACSURL != "" && c.GenieACSToken != "",
 		"billing_token_masked":  maskSecret(c.BillingToken),
 		"radius_token_masked":   maskSecret(c.RadiusToken),
@@ -489,4 +504,41 @@ func maskSecret(s string) string {
 		return "••••"
 	}
 	return "••••" + s[len(s)-4:]
+}
+
+// Routers mengembalikan daftar router MikroTik yang terkonfigurasi. Bila
+// MikrotikRouters terisi, pakai itu; bila tidak, jatuh ke field tunggal lama
+// (kompatibilitas mundur).
+func (c *Config) Routers() []MikrotikRouter {
+	if len(c.MikrotikRouters) > 0 {
+		return c.MikrotikRouters
+	}
+	if c.MikrotikHost != "" && c.MikrotikUser != "" {
+		return []MikrotikRouter{{
+			Name: c.MikrotikHost,
+			Host: c.MikrotikHost,
+			Port: c.MikrotikPort,
+			User: c.MikrotikUser,
+			Pass: c.MikrotikPass,
+			TLS:  c.MikrotikTLS,
+		}}
+	}
+	return nil
+}
+
+// redactedRouters mengembalikan daftar router untuk UI tanpa password mentah.
+func (c *Config) redactedRouters() []map[string]any {
+	rs := c.Routers()
+	out := make([]map[string]any, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, map[string]any{
+			"name":        r.Name,
+			"host":        r.Host,
+			"port":        r.Port,
+			"user":        r.User,
+			"tls":         r.TLS,
+			"pass_masked": maskSecret(r.Pass),
+		})
+	}
+	return out
 }

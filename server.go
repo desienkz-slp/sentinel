@@ -70,8 +70,11 @@ type Server struct {
 	// Billing adapter (NETORA /api/noc/v1) — nil bila belum dikonfigurasi.
 	billing *billing.Adapter
 
-	// MikroTik adapter (RouterOS v7 REST) — nil bila belum dikonfigurasi.
+	// MikroTik adapter — tunggal (kompatibilitas mundur) untuk endpoint lama.
 	mikrotik *mikrotik.Adapter
+
+	// MikroTik pool — daftar router untuk fitur multi-MikroTik (key = nama).
+	mikrotikPool map[string]*mikrotik.Adapter
 
 	// Radius adapter (NETORA Radius UI, HTTP REST) — nil bila belum dikonfigurasi.
 	radius *radius.Adapter
@@ -131,17 +134,19 @@ func (s *Server) routes() http.Handler {
 			WAAsync     *bool     `json:"wa_async"`
 			WAGroup     *bool     `json:"wa_group"`
 			// Endpoint adaptor eksternal (URL + token; token opsional = "tidak diubah").
-			BillingURL    *string `json:"billing_url"`
-			BillingToken  *string `json:"billing_token"`
-			RadiusURL     *string `json:"radius_url"`
-			RadiusToken   *string `json:"radius_token"`
-			MikrotikHost  *string `json:"mikrotik_host"`
-			MikrotikPort  *int    `json:"mikrotik_port"`
-			MikrotikUser  *string `json:"mikrotik_user"`
-			MikrotikPass  *string `json:"mikrotik_pass"`
-			MikrotikTLS   *bool   `json:"mikrotik_tls"`
-			GenieACSURL   *string `json:"genieacs_url"`
-			GenieACSToken *string `json:"genieacs_token"`
+			BillingURL   *string `json:"billing_url"`
+			BillingToken *string `json:"billing_token"`
+			RadiusURL    *string `json:"radius_url"`
+			RadiusToken  *string `json:"radius_token"`
+			MikrotikHost *string `json:"mikrotik_host"`
+			MikrotikPort *int    `json:"mikrotik_port"`
+			MikrotikUser *string `json:"mikrotik_user"`
+			MikrotikPass *string `json:"mikrotik_pass"`
+			MikrotikTLS  *bool   `json:"mikrotik_tls"`
+			// Multi-router: daftar lengkap router (menggantikan field tunggal).
+			MikrotikRouters *[]config.MikrotikRouter `json:"mikrotik_routers"`
+			GenieACSURL     *string                  `json:"genieacs_url"`
+			GenieACSToken   *string                  `json:"genieacs_token"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
@@ -217,6 +222,36 @@ func (s *Server) routes() http.Handler {
 		}
 		if body.MikrotikTLS != nil {
 			s.cfg.MikrotikTLS = *body.MikrotikTLS
+		}
+		// Multi-router: daftar lengkap menggantikan field tunggal.
+		if body.MikrotikRouters != nil {
+			// Pertahankan password lama bila entri kirim pass kosong
+			// (UI mengosongkan field password = "jangan ubah").
+			old := map[string]string{} // key = host
+			for _, r := range s.cfg.Routers() {
+				if r.Pass != "" {
+					old[r.Host] = r.Pass
+				}
+			}
+			merged := make([]config.MikrotikRouter, 0, len(*body.MikrotikRouters))
+			for _, r := range *body.MikrotikRouters {
+				if r.Pass == "" {
+					if p, ok := old[r.Host]; ok {
+						r.Pass = p
+					}
+				}
+				merged = append(merged, r)
+			}
+			s.cfg.MikrotikRouters = merged
+			// Sinkronkan field tunggal ke router pertama (kompatibilitas).
+			if len(s.cfg.MikrotikRouters) > 0 {
+				r0 := s.cfg.MikrotikRouters[0]
+				s.cfg.MikrotikHost = r0.Host
+				s.cfg.MikrotikPort = r0.Port
+				s.cfg.MikrotikUser = r0.User
+				s.cfg.MikrotikPass = r0.Pass
+				s.cfg.MikrotikTLS = r0.TLS
+			}
 		}
 		if body.GenieACSURL != nil {
 			s.cfg.GenieACSURL = strings.TrimRight(strings.TrimSpace(*body.GenieACSURL), "/")
@@ -434,7 +469,14 @@ func (s *Server) routes() http.Handler {
 
 	// Verifikasi koneksi MikroTik (GET /system/resource) untuk dashboard.
 	mux.HandleFunc("/api/mikrotik/check", func(w http.ResponseWriter, r *http.Request) {
-		if s.mikrotik == nil {
+		// Pilih router: ?name=<nama> atau default (router pertama).
+		target := s.mikrotik
+		if name := r.URL.Query().Get("name"); name != "" && s.mikrotikPool != nil {
+			if ad, ok := s.mikrotikPool[name]; ok {
+				target = ad
+			}
+		}
+		if target == nil {
 			writeJSON(w, 200, map[string]any{
 				"ok":      false,
 				"error":   "mikrotik belum dikonfigurasi — isi Host + Username + Password di Pengaturan",
@@ -444,7 +486,7 @@ func (s *Server) routes() http.Handler {
 		}
 		ctx, cancel := timeoutCtx(r, 20*time.Second)
 		defer cancel()
-		d, err := s.mikrotik.Ping(ctx)
+		d, err := target.Ping(ctx)
 		if err != nil {
 			writeJSON(w, 200, map[string]any{
 				"ok":    false,
@@ -454,6 +496,7 @@ func (s *Server) routes() http.Handler {
 		}
 		writeJSON(w, 200, map[string]any{
 			"ok":         true,
+			"router":     target.RouterName(),
 			"base_url":   d.BaseURL,
 			"ping_ms":    d.LatencyMS,
 			"version":    d.Version,
@@ -461,6 +504,26 @@ func (s *Server) routes() http.Handler {
 			"uptime":     d.Uptime,
 			"cpu_load":   d.CPU,
 			"message":    fmt.Sprintf("mikrotik menjawab (RouterOS v%s, %s)", d.Version, d.BoardName),
+		})
+	})
+
+	// Daftar router MikroTik terkonfigurasi (untuk fitur multi-router).
+	mux.HandleFunc("/api/mikrotik/routers", func(w http.ResponseWriter, r *http.Request) {
+		rs := s.cfg.Routers()
+		out := make([]map[string]any, 0, len(rs))
+		for _, rr := range rs {
+			out = append(out, map[string]any{
+				"name":        rr.Name,
+				"host":        rr.Host,
+				"port":        rr.Port,
+				"user":        rr.User,
+				"tls":         rr.TLS,
+				"pass_masked": maskSecret(rr.Pass),
+			})
+		}
+		writeJSON(w, 200, map[string]any{
+			"routers": out,
+			"count":   len(out),
 		})
 	})
 
@@ -1010,29 +1073,45 @@ func (s *Server) syncBillingAdapter() {
 }
 
 // syncMikrotikAdapter menyelaraskan adapter MikroTik dengan cfg saat ini.
-// Dipanggil saat startup dan setiap /api/config menyimpan perubahan. Bila
-// host+user lengkap, adapter dibuat & didaftarkan (tool tetap deny-by-default
-// sampai registry enabled:true); bila tidak, adapter lama dilepas.
+// Mendukung MULTI router: membangun pool semua router dari cfg.Routers(),
+// mendaftarkan tiap adapter ke dispatcher. Adapter tunggal (s.mikrotik) dipertahankan
+// sebagai referensi router pertama untuk kompatibilitas endpoint lama.
 func (s *Server) syncMikrotikAdapter() {
-	if s.cfg.MikrotikHost != "" && s.cfg.MikrotikUser != "" {
-		if s.mikrotik != nil {
-			s.disp.Unregister(s.mikrotik)
-		}
-		s.mikrotik = mikrotik.New(mikrotik.Config{
-			Host: s.cfg.MikrotikHost,
-			Port: s.cfg.MikrotikPort,
-			User: s.cfg.MikrotikUser,
-			Pass: s.cfg.MikrotikPass,
-			TLS:  s.cfg.MikrotikTLS,
+	// Lepas semua adapter lama dari dispatcher.
+	if s.mikrotik != nil {
+		s.disp.Unregister(s.mikrotik)
+	}
+	for _, a := range s.mikrotikPool {
+		s.disp.Unregister(a)
+	}
+
+	routers := s.cfg.Routers()
+	s.mikrotikPool = make(map[string]*mikrotik.Adapter, len(routers))
+	s.mikrotik = nil
+
+	for i, r := range routers {
+		ad := mikrotik.New(mikrotik.Config{
+			Name: r.Name,
+			Host: r.Host,
+			Port: r.Port,
+			User: r.User,
+			Pass: r.Pass,
+			TLS:  r.TLS,
 		})
-		s.disp.Register(s.mikrotik)
-		log.Printf("[mikrotik] adapter RouterOS terdaftar: %s (read-only, Basic Auth)", s.cfg.MikrotikHost)
-	} else {
-		if s.mikrotik != nil {
-			s.disp.Unregister(s.mikrotik)
-			log.Printf("[mikrotik] adapter RouterOS dilepas (host/username dikosongkan)")
+		s.disp.Register(ad)
+		key := r.Name
+		if key == "" {
+			key = r.Host
 		}
-		s.mikrotik = nil
+		s.mikrotikPool[key] = ad
+		if i == 0 {
+			s.mikrotik = ad // router pertama = default
+		}
+		log.Printf("[mikrotik] router terdaftar: %s (%s:%d, read-only)", r.Name, r.Host, r.Port)
+	}
+
+	if len(routers) == 0 {
+		log.Printf("[mikrotik] adapter RouterOS dilepas (tidak ada router terkonfigurasi)")
 	}
 }
 
@@ -1082,6 +1161,18 @@ func truncateLog(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// maskSecret mengembalikan bentuk aman secret (••••abcd). Dipakai handler
+// /api/mikrotik/routers supaya password router tidak bocor ke browser.
+func maskSecret(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) <= 4 {
+		return "••••"
+	}
+	return "••••" + s[len(s)-4:]
 }
 
 func withLogging(h http.Handler) http.Handler {

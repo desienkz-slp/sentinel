@@ -29,6 +29,7 @@ import (
 
 // Config adalah parameter koneksi API native RouterOS.
 type Config struct {
+	Name string // nama router (untuk multi-router); kosong = pakai Host
 	Host string // alamat IP / hostname, mis. 192.168.171.1
 	Port int    // 0 = default: 8728 (plaintext) / 8729 (TLS)
 	User string
@@ -51,7 +52,23 @@ func New(c Config) *Adapter {
 func (a *Adapter) Domain() string { return "mikrotik" }
 
 // Name memenuhi tool.Adapter.
-func (a *Adapter) Name() string { return "MikroTik RouterOS (API native)" }
+func (a *Adapter) Name() string {
+	if a.cfg.Name != "" {
+		return a.cfg.Name + " (MikroTik)"
+	}
+	return "MikroTik RouterOS (API native)"
+}
+
+// RouterName mengembalikan nama router (untuk list multi-router).
+func (a *Adapter) RouterName() string {
+	if a.cfg.Name != "" {
+		return a.cfg.Name
+	}
+	return a.cfg.Host
+}
+
+// Host mengembalikan host router.
+func (a *Adapter) Host() string { return a.cfg.Host }
 
 // Configured memenuhi tool.Adapter.
 func (a *Adapter) Configured() bool { return a.cfg.Host != "" && a.cfg.User != "" }

@@ -111,22 +111,15 @@
       <div><label for="radiusUrl">Host RADIUS (Radius UI)</label><input id="radiusUrl" placeholder="http://192.168.1.100:3001"></div>
       <div><label for="radiusKey">API Token RADIUS (Bearer)</label><input id="radiusKey" type="password" placeholder="••••"></div>
     </div>
-    <div class="row">
-      <div><label for="mikrotikHost">Host MikroTik (tanpa skema)</label><input id="mikrotikHost" placeholder="192.168.1.10"></div>
-      <div><label for="mikrotikPort">Port (kosong = 8729 SSL / 8728 plaintext)</label><input id="mikrotikPort" type="number" min="1" max="65535" placeholder="8729"></div>
+
+    <!-- Multi MikroTik -->
+    <h3 style="margin:18px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)">Router MikroTik <span id="mkCount" style="color:var(--acc)"></span></h3>
+    <div class="hint" style="margin-top:0">Tambah beberapa router MikroTik. Tiap router punya nama, host, port, username &amp; password sendiri.</div>
+    <div id="mkList"></div>
+    <div class="btns" style="margin-top:10px">
+      <button class="ghost" onclick="mkAdd()">+ Tambah Router</button>
     </div>
-    <div class="row">
-      <div><label for="mikrotikUser">Username (user router)</label><input id="mikrotikUser" placeholder="admin"></div>
-      <div><label for="mikrotikPass">Password</label><input id="mikrotikPass" type="password" placeholder="•••• (kosongkan = tidak diubah)"></div>
-    </div>
-    <div class="row">
-      <div><label for="mikrotikTls">Koneksi aman (API-SSL)</label>
-        <select id="mikrotikTls"><option value="true">API-SSL (port 8729) — disarankan</option><option value="false">Plaintext (port 8728) — hanya untuk tes</option></select>
-      </div>
-      <div style="display:flex;align-items:flex-end">
-        <div class="hint" style="margin:0">MikroTik pakai API native (protokol biner), bukan REST /www. Auth = user+password. Port custom didukung (mis. 8118).</div>
-      </div>
-    </div>
+
     <div class="row">
       <div><label for="genieacsUrl">Host GenieACS (NBI)</label><input id="genieacsUrl" placeholder="http://192.168.1.10:7557"></div>
       <div><label for="genieacsKey">API Token GenieACS (opsional)</label><input id="genieacsKey" type="password" placeholder="•••• (biasanya kosong)"></div>
@@ -165,21 +158,93 @@ function msg(el, ok, text) {
   $(el).textContent = text;
 }
 
+// ---------- Multi MikroTik ----------
+let mkRouters = []; // array {name,host,port,user,pass,tls}
+
+function mkAdd(r) {
+  mkRouters.push(r || {name:'', host:'', port:'', user:'', pass:'', tls:false});
+  mkRender();
+}
+
+function mkDel(i) {
+  mkRouters.splice(i, 1);
+  mkRender();
+}
+
+function mkRender() {
+  const list = $('mkList');
+  $('mkCount').textContent = mkRouters.length ? `(${mkRouters.length})` : '';
+  if (!mkRouters.length) {
+    list.innerHTML = '<div class="hint">Belum ada router. Klik + Tambah Router.</div>';
+    return;
+  }
+  list.innerHTML = mkRouters.map((r, i) => `
+    <div class="mk-row" style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px;background:var(--panel2)">
+      <div class="row">
+        <div><label>Nama</label><input data-i="${i}" data-k="name" value="${esc(r.name)}" placeholder="Router Pusat"></div>
+        <div><label>Host</label><input data-i="${i}" data-k="host" value="${esc(r.host)}" placeholder="192.168.1.10"></div>
+      </div>
+      <div class="row">
+        <div><label>Port (0 = 8729/8728)</label><input data-i="${i}" data-k="port" type="number" value="${esc(String(r.port||''))}" placeholder="8729"></div>
+        <div><label>Username</label><input data-i="${i}" data-k="user" value="${esc(r.user)}" placeholder="admin"></div>
+      </div>
+      <div class="row">
+        <div><label>Password (kosongkan = tidak diubah)</label><input data-i="${i}" data-k="pass" type="password" placeholder="••••"></div>
+        <div><label>Koneksi</label>
+          <select data-i="${i}" data-k="tls">
+            <option value="false"${!r.tls?' selected':''}>Plaintext (8728)</option>
+            <option value="true"${r.tls?' selected':''}>API-SSL (8729)</option>
+          </select>
+        </div>
+      </div>
+      <div class="btns" style="margin-top:8px">
+        <button class="ghost" onclick="mkTest(${i})">Tes koneksi</button>
+        <button class="ghost" style="color:var(--bad)" onclick="mkDel(${i})">Hapus</button>
+      </div>
+    </div>`).join('');
+
+  // Baca input langsung ke state saat berubah.
+  list.querySelectorAll('input,select').forEach(el => {
+    el.addEventListener('input', () => {
+      const i = parseInt(el.dataset.i, 10);
+      const k = el.dataset.k;
+      const r = mkRouters[i];
+      if (k === 'tls') r.tls = el.value === 'true';
+      else if (k === 'port') r.port = parseInt(el.value,10) || 0;
+      else if (k === 'pass') r.pass = el.value; // password dari input (boleh kosong = tidak ubah)
+      else r[k] = el.value;
+    });
+  });
+}
+
+async function mkTest(i) {
+  const r = mkRouters[i];
+  if (!r.host || !r.user) { msg('intMsg', false, 'Isi Host dan Username dulu untuk router ' + (r.name||i+1)); return; }
+  msg('intMsg', null, `Menguji ${r.name||r.host}…`);
+  try {
+    // Tes tanpa menyimpan: pakai endpoint check via nama setelah simpan sementara.
+    // Simpan dulu semua, lalu cek.
+    await saveIntegrations(true);
+    const d = await api('/api/mikrotik/check?name=' + encodeURIComponent(r.name||r.host));
+    if (d.ok) msg('intMsg', true, `${d.router}: RouterOS v${d.version} · ${d.board_name} · ${d.ping_ms}ms`);
+    else msg('intMsg', false, `${r.name||r.host}: ` + (d.error||'gagal'));
+  } catch(e) { msg('intMsg', false, 'Gagal: ' + e.message); }
+}
+
 function statusIntegrasi(c) {
   const row = (nama, url, set, masked) =>
     `${nama}: <b>${set ? 'aktif' : 'nonaktif'}</b>` +
     (url ? ` · ${esc(url)}` : '') + (set && masked ? ` · ${esc(masked)}` : '');
-  const mkURL = c.mikrotik_host
-    ? `${c.mikrotik_tls ? 'https' : 'http'}://${esc(c.mikrotik_host)}${c.mikrotik_port ? ':' + c.mikrotik_port : ''}/rest`
-    : '';
+  const mkCount = (c.mikrotik_count || 0);
+  const mkLine = `MikroTik: <b>${mkCount ? 'aktif (' + mkCount + ' router)' : 'nonaktif'}</b>`;
   $('intStatus').innerHTML = [
     row('Billing',  c.billing_url,  c.billing_set,  c.billing_token_masked),
     row('RADIUS',   c.radius_url,   c.radius_set,   c.radius_token_masked),
-    row('MikroTik', mkURL,          c.mikrotik_set, c.mikrotik_pass_masked),
+    mkLine,
     row('GenieACS', c.genieacs_url, c.genieacs_set, c.genieacs_token_masked),
   ].join('<br>');
   setDot('Billing', !!c.billing_set, c.billing_set ? 'Billing dikonfigurasi' : 'Billing belum diset');
-  setDot('Mikrotik', !!c.mikrotik_set, c.mikrotik_set ? 'MikroTik dikonfigurasi' : 'MikroTik belum diset');
+  setDot('Mikrotik', mkCount > 0, mkCount > 0 ? `MikroTik: ${mkCount} router` : 'MikroTik belum diset');
   setDot('Radius', !!c.radius_set, c.radius_set ? 'RADIUS dikonfigurasi' : 'RADIUS belum diset');
   setDot('Genieacs', !!c.genieacs_set, c.genieacs_set ? 'GenieACS dikonfigurasi' : 'GenieACS belum diset');
 }
@@ -199,11 +264,13 @@ async function boot() {
     setDot('Codex', !!st.codex_ready, st.codex_ready ? 'Codex siap ('+c.codex_model+')' : 'Codex tidak ditemukan');
     $('billingUrl').value = c.billing_url || '';
     $('radiusUrl').value = c.radius_url || '';
-    $('mikrotikHost').value = c.mikrotik_host || '';
-    $('mikrotikPort').value = c.mikrotik_port || '';
-    $('mikrotikUser').value = c.mikrotik_user || '';
-    $('mikrotikTls').value = String(!!c.mikrotik_tls);
     $('genieacsUrl').value = c.genieacs_url || '';
+    // Load daftar router MikroTik (multi).
+    mkRouters = (c.mikrotik_routers || []).map(r => ({
+      name: r.name || '', host: r.host || '', port: r.port || 0,
+      user: r.user || '', pass: '', tls: !!r.tls
+    }));
+    mkRender();
     statusIntegrasi(c);
   } catch (e) { console.error(e); }
 }
@@ -241,27 +308,32 @@ async function saveSettings() {
   } catch(e){ msg('setMsg', false, 'Gagal: ' + e.message); }
 }
 
-async function saveIntegrations() {
-  msg('intMsg', null, 'Menyimpan…');
+async function saveIntegrations(silent) {
+  if (!silent) msg('intMsg', null, 'Menyimpan…');
   try {
+    // Bangun daftar router: password kosong = jangan ubah (kirim undefined per router).
+    const routers = mkRouters.map(r => ({
+      name: r.name, host: r.host, port: r.port || 0, user: r.user,
+      pass: r.pass || '', tls: !!r.tls
+    }));
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
       billing_url: $('billingUrl').value || undefined,
       billing_token: $('billingKey').value || undefined,
       radius_url: $('radiusUrl').value || undefined,
       radius_token: $('radiusKey').value || undefined,
-      mikrotik_host: $('mikrotikHost').value || undefined,
-      mikrotik_port: parseInt($('mikrotikPort').value,10) || undefined,
-      mikrotik_user: $('mikrotikUser').value || undefined,
-      mikrotik_pass: $('mikrotikPass').value || undefined,
-      mikrotik_tls: $('mikrotikTls').value === 'true',
+      mikrotik_routers: routers,
       genieacs_url: $('genieacsUrl').value || undefined,
       genieacs_token: $('genieacsKey').value || undefined
     })});
     statusIntegrasi(d.config);
-    msg('intMsg', true, 'Tersimpan.');
+    if (!silent) msg('intMsg', true, 'Tersimpan.');
     $('billingKey').value = ''; $('radiusKey').value = '';
-    $('mikrotikPass').value = ''; $('genieacsKey').value = '';
-  } catch(e){ msg('intMsg', false, 'Gagal: ' + e.message); }
+    $('genieacsKey').value = '';
+    // Kosongkan field password di UI (nilai sudah tersimpan server-side).
+    mkRouters.forEach(r => { r.pass = ''; });
+    mkRender();
+    return d;
+  } catch(e){ if (!silent) msg('intMsg', false, 'Gagal: ' + e.message); throw e; }
 }
 
 async function checkBilling() {

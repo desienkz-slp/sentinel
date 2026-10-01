@@ -240,3 +240,59 @@ func TestMaskSecret(t *testing.T) {
 		t.Errorf("maskSecret membocorkan prefix: %q", got)
 	}
 }
+
+// Routers(): daftar multi-router menang atas field tunggal lama.
+func TestRoutersMulti(t *testing.T) {
+	c := Default()
+	c.MikrotikRouters = []MikrotikRouter{
+		{Name: "Router Pusat", Host: "192.168.171.1", Port: 8118, User: "staff", Pass: "rahasia1", TLS: false},
+		{Name: "Router Cabang", Host: "192.168.88.1", Port: 0, User: "admin", Pass: "rahasia2", TLS: true},
+	}
+	rs := c.Routers()
+	if len(rs) != 2 {
+		t.Fatalf("Routers() = %d, mau 2", len(rs))
+	}
+	if rs[0].Name != "Router Pusat" || rs[0].Host != "192.168.171.1" {
+		t.Errorf("rs[0] = %+v", rs[0])
+	}
+	if rs[1].TLS != true {
+		t.Errorf("rs[1].TLS = %v, mau true", rs[1].TLS)
+	}
+
+	// Redacted harus masked password, tidak bocor.
+	r := c.Redacted()
+	if r["mikrotik_count"] != 2 {
+		t.Errorf("mikrotik_count = %v, mau 2", r["mikrotik_count"])
+	}
+	if r["mikrotik_set"] != true {
+		t.Errorf("mikrotik_set = %v, mau true", r["mikrotik_set"])
+	}
+	// Tidak boleh ada password mentah di Redacted.
+	jsonBytes, _ := json.Marshal(r)
+	if strings.Contains(string(jsonBytes), "rahasia1") || strings.Contains(string(jsonBytes), "rahasia2") {
+		t.Error("password router bocor di Redacted")
+	}
+	rs2, _ := r["mikrotik_routers"].([]map[string]any)
+	if len(rs2) != 2 {
+		t.Fatalf("mikrotik_routers redacted = %d, mau 2", len(rs2))
+	}
+	if !strings.Contains(rs2[0]["pass_masked"].(string), "••••") {
+		t.Errorf("pass_masked = %q, mau masked", rs2[0]["pass_masked"])
+	}
+}
+
+// Routers(): tanpa list, jatuh ke field tunggal lama.
+func TestRoutersFallbackSingle(t *testing.T) {
+	c := Default()
+	c.MikrotikHost = "192.168.171.1"
+	c.MikrotikUser = "staff"
+	c.MikrotikPass = "rahasia"
+	c.MikrotikPort = 8118
+	rs := c.Routers()
+	if len(rs) != 1 {
+		t.Fatalf("Routers() = %d, mau 1 (fallback)", len(rs))
+	}
+	if rs[0].Host != "192.168.171.1" || rs[0].Pass != "rahasia" {
+		t.Errorf("rs[0] = %+v", rs[0])
+	}
+}
