@@ -177,6 +177,25 @@ tools:
           description: Nomor pelanggan ternormalisasi (alternatif bila device_id tidak ada).
       required: []
 
+  - name: genieacs.get_devices
+    domain: genieacs
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: genieacs
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+    description: Daftar semua device di GenieACS (opsional filter online/offline).
+    parameters:
+      type: object
+      properties:
+        status:
+          type: string
+          description: 'online / offline (opsional; kosong = semua).'
+      required: []
+
   - name: mikrotik.disconnect_pppoe
     domain: mikrotik
     version: 1.0.0

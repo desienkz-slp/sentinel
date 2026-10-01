@@ -62,6 +62,7 @@
   <div class="pill"><span class="dot" id="dotBilling"></span><span id="txtBilling">Billing…</span></div>
   <div class="pill"><span class="dot" id="dotMikrotik"></span><span id="txtMikrotik">MikroTik…</span></div>
   <div class="pill"><span class="dot" id="dotRadius"></span><span id="txtRadius">RADIUS…</span></div>
+  <div class="pill"><span class="dot" id="dotGenieacs"></span><span id="txtGenieacs">GenieACS…</span></div>
 </header>
 
 <main>
@@ -127,14 +128,15 @@
       </div>
     </div>
     <div class="row">
-      <div><label for="genieacsUrl">Host GenieACS (TR-069)</label><input id="genieacsUrl" placeholder="http://192.168.1.10"></div>
-      <div><label for="genieacsKey">API Key GenieACS</label><input id="genieacsKey" type="password" placeholder="••••"></div>
+      <div><label for="genieacsUrl">Host GenieACS (NBI)</label><input id="genieacsUrl" placeholder="http://192.168.1.10:7557"></div>
+      <div><label for="genieacsKey">API Token GenieACS (opsional)</label><input id="genieacsKey" type="password" placeholder="•••• (biasanya kosong)"></div>
     </div>
     <div class="btns">
       <button onclick="saveIntegrations()">Simpan Integrasi</button>
       <button class="ghost" onclick="checkBilling()">Tes koneksi Billing</button>
       <button class="ghost" onclick="checkMikrotik()">Tes koneksi MikroTik</button>
       <button class="ghost" onclick="checkRadius()">Tes koneksi RADIUS</button>
+      <button class="ghost" onclick="checkGenieacs()">Tes koneksi GenieACS</button>
     </div>
     <div class="hint" id="intMsg"></div>
     <div class="status" id="intStatus"></div>
@@ -179,6 +181,7 @@ function statusIntegrasi(c) {
   setDot('Billing', !!c.billing_set, c.billing_set ? 'Billing dikonfigurasi' : 'Billing belum diset');
   setDot('Mikrotik', !!c.mikrotik_set, c.mikrotik_set ? 'MikroTik dikonfigurasi' : 'MikroTik belum diset');
   setDot('Radius', !!c.radius_set, c.radius_set ? 'RADIUS dikonfigurasi' : 'RADIUS belum diset');
+  setDot('Genieacs', !!c.genieacs_set, c.genieacs_set ? 'GenieACS dikonfigurasi' : 'GenieACS belum diset');
 }
 
 async function boot() {
@@ -304,6 +307,21 @@ async function checkRadius() {
       msg('intMsg', false, 'RADIUS GAGAL: ' + (d.error || 'tidak terhubung'));
     }
   } catch(e){ setDot('Radius', false, 'RADIUS error'); msg('intMsg', false, 'Gagal: ' + e.message); }
+}
+
+async function checkGenieacs() {
+  msg('intMsg', null, 'Menguji koneksi GenieACS…');
+  setDot('Genieacs', false, 'menguji…');
+  try {
+    const d = await api('/api/genieacs/check');
+    if (d.ok) {
+      setDot('Genieacs', true, `GenieACS OK (${d.ping_ms}ms)`);
+      msg('intMsg', true, `GenieACS OK: ${d.total_devices} device · ${d.online_devices} online · ${d.ping_ms}ms`);
+    } else {
+      setDot('Genieacs', false, 'GenieACS gagal');
+      msg('intMsg', false, 'GenieACS GAGAL: ' + (d.error || 'tidak terhubung'));
+    }
+  } catch(e){ setDot('Genieacs', false, 'GenieACS error'); msg('intMsg', false, 'Gagal: ' + e.message); }
 }
 
 async function pingLLM() {

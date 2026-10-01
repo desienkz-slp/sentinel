@@ -20,6 +20,7 @@ import (
 	"ainoc/internal/correlation"
 	"ainoc/internal/dedupe"
 	"ainoc/internal/diag"
+	"ainoc/internal/genieacs"
 	"ainoc/internal/health"
 	"ainoc/internal/incident"
 	"ainoc/internal/learning"
@@ -74,6 +75,9 @@ type Server struct {
 
 	// Radius adapter (NETORA Radius UI, HTTP REST) — nil bila belum dikonfigurasi.
 	radius *radius.Adapter
+
+	// GenieACS adapter (TR-069 NBI) — nil bila belum dikonfigurasi.
+	genieacs *genieacs.Adapter
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -224,6 +228,7 @@ func (s *Server) routes() http.Handler {
 		s.syncBillingAdapter()
 		s.syncMikrotikAdapter()
 		s.syncRadiusAdapter()
+		s.syncGenieACSAdapter()
 		// Tulis ke disk. Tanpa ini pengaturan hanya hidup di memori dan hilang
 		// saat aplikasi di-restart — tombol "Simpan" jadi tidak ada artinya.
 		if err := s.cfg.Save(); err != nil {
@@ -488,6 +493,36 @@ func (s *Server) routes() http.Handler {
 			"user_count":          d.UserCount,
 			"db_size_mb":          d.DBSizeMB,
 			"message":             fmt.Sprintf("radius menjawab (cpu %s%%, %d user)", d.CPULoad, d.UserCount),
+		})
+	})
+
+	// Verifikasi koneksi GenieACS (GET /devices) untuk dashboard.
+	mux.HandleFunc("/api/genieacs/check", func(w http.ResponseWriter, r *http.Request) {
+		if s.genieacs == nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":      false,
+				"error":   "genieacs belum dikonfigurasi — isi Host NBI di Pengaturan",
+				"message": "genieacs belum dikonfigurasi",
+			})
+			return
+		}
+		ctx, cancel := timeoutCtx(r, 20*time.Second)
+		defer cancel()
+		d, err := s.genieacs.Ping(ctx)
+		if err != nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":    false,
+				"error": err.Error(),
+			})
+			return
+		}
+		writeJSON(w, 200, map[string]any{
+			"ok":             true,
+			"base_url":       d.BaseURL,
+			"ping_ms":        d.LatencyMS,
+			"total_devices":  d.TotalDevices,
+			"online_devices": d.OnlineDevices,
+			"message":        fmt.Sprintf("genieacs menjawab (%d device, %d online)", d.TotalDevices, d.OnlineDevices),
 		})
 	})
 
@@ -1019,6 +1054,25 @@ func (s *Server) syncRadiusAdapter() {
 			log.Printf("[radius] adapter Radius UI dilepas (host/API token dikosongkan)")
 		}
 		s.radius = nil
+	}
+}
+
+// syncGenieACSAdapter menyelaraskan adapter GenieACS dengan cfg saat ini.
+// Bila URL NBI diisi, adapter dibuat & didaftarkan (tool deny-by-default).
+func (s *Server) syncGenieACSAdapter() {
+	if s.cfg.GenieACSURL != "" {
+		if s.genieacs != nil {
+			s.disp.Unregister(s.genieacs)
+		}
+		s.genieacs = genieacs.New(s.cfg.GenieACSURL, s.cfg.GenieACSToken)
+		s.disp.Register(s.genieacs)
+		log.Printf("[genieacs] adapter NBI terdaftar: %s (read-only)", s.cfg.GenieACSURL)
+	} else {
+		if s.genieacs != nil {
+			s.disp.Unregister(s.genieacs)
+			log.Printf("[genieacs] adapter NBI dilepas (host dikosongkan)")
+		}
+		s.genieacs = nil
 	}
 }
 

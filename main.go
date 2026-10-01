@@ -183,6 +183,8 @@ func main() {
 	srv.syncMikrotikAdapter()
 	// Selaraskan RadiusAdapter (host+API token dari env/config).
 	srv.syncRadiusAdapter()
+	// Selaraskan GenieACSAdapter (host NBI dari env/config).
+	srv.syncGenieACSAdapter()
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
