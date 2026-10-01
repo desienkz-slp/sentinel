@@ -73,6 +73,8 @@ Gateway mengirim field "reply" kembali ke chat  ◄── perilaku bawaan webhoo
 | **Dashboard** | `web/index.html` di-embed ke binary; streaming langkah live (SSE) |
 | **REST API** | `/api/*` — lihat tabel di bawah |
 | **Agen** | Loop OODA + function calling; maks `max_steps` langkah per sesi |
+| **Workflow engine** | `workflows/*.yaml` dieksekusi **deterministik** untuk keluhan (lihat "Workflow deterministik" di bawah) |
+| **Adaptor eksternal** | Billing NETORA `/api/noc/v1` · RADIUS UI · MikroTik (API native) · GenieACS (NBI) — semua read-only, deny-by-default |
 | **9 tool jaringan** | `ping`, `traceroute`, `dns`, `tcp`, `http`, `radius`, `interface`, `service`, `system` |
 | **WhatsApp** | Gateway Node/Baileys di-vendor di `wa-gateway/`, dikelola Go |
 | **Supervisor** | Menjalankan, memantau, dan me-restart gateway otomatis |
@@ -160,6 +162,33 @@ CACHE & ISOLASI
 Panel **Standar Konteks & Sesi** di dashboard menampilkan versi standar, rasio cache
 hit/miss, dan tabel percakapan aktif per nomor. Standar bisa diganti tanpa build ulang
 lewat `NOC_STANDARD_DOC=/path/standar.md`.
+
+### Workflow deterministik (blueprint §13)
+
+Untuk **keluhan** (intent `COMPLAINT`), bukan LLM yang mengimprovisasi langkah — melainkan
+**kode Go** yang mengeksekusi workflow `workflows/customer-internet-down.yaml` secara deterministik:
+
+```
+keluhan masuk (intent=COMPLAINT)
+   │
+   ├─ 1. resolve_identity          (nomor pengirim sudah dinormalisasi 628xxx)
+   ├─ 2. billing.get_customer      → status akun
+   ├─ 3. radius.get_session        → status autentikasi PPP
+   ├─ 4. mikrotik.get_pppoe_status → status sesi PPPoE
+   ├─ 5. genieacs.get_device_state → status ONT/CPE
+   │
+   └─ 6. correlate_and_diagnose    (kode mengorelasikan bukti lintas sistem)
+        → diagnosis + keyakinan + area utama
+```
+
+- **Urutan langkah dikontrol kode**, bukan model. AI (LLM) hanya dipakai **di akhir** untuk
+  menyusun balasan manusiawi dari bukti yang sudah terkumpul.
+- Setiap pemanggilan tool tetap lewat **dispatcher** (`registry → policy → adapter`) yang
+  deny-by-default: tool yang nonaktif (`enabled:false`) atau ditolak policy **tidak pernah
+  dijalankan**, dan dicatat sebagai `UNKNOWN` (tidak ditebak).
+- Bila tidak ada workflow cocok (sapaan/info), sistem jatuh ke loop LLM biasa.
+
+Lihat `internal/agent/workflow.go` (eksekutor) dan `internal/workflow/` (definisi + loader).
 
 ---
 

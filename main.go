@@ -124,6 +124,9 @@ func main() {
 	// bisa dipresentasikan ke LLM dan dipanggil lewat gerbang keamanan.
 	engine.Reg = reg
 	engine.Disp = disp
+	// Hubungkan workflow engine: kode deterministik yang mengontrol urutan langkah
+	// diagnosis saat ada keluhan (blueprint §13).
+	engine.Wkf = wkf
 
 	// ---- Blueprint upgrade: health, cache, dedupe, db ----
 	// Semua opsional: sistem tetap jalan walau database belum menyala.

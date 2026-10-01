@@ -23,6 +23,7 @@ import (
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
 	"ainoc/internal/tool"
+	"ainoc/internal/workflow"
 )
 
 type Step struct {
@@ -88,6 +89,10 @@ type Engine struct {
 	// Bila nil, agent hanya memakai probe jaringan bawaan (diag).
 	Reg  *registry.Registry
 	Disp *tool.Dispatcher
+	// Wkf menghubungkan agent ke workflow engine deterministik (blueprint §13).
+	// Bila ada workflow cocok untuk intent keluhan, KODE yang mengontrol urutan
+	// langkah — AI tidak mengimprovisasi tiap langkah operasional.
+	Wkf *workflow.Registry
 
 	mu      sync.Mutex
 	reports []Report
@@ -301,6 +306,48 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	// Ini yang membuat standar tetap sama untuk model apa pun: model tidak bisa
 	// memaksa probe pada sapaan/informasi walaupun ia "berhalusinasi".
 	bolehProbe := standard.BolehProbe(klas.Intent)
+
+	// ---- WORKFLOW DETERMINISTIK (blueprint §13) ----
+	// Bila ada workflow cocok untuk intent keluhan, KODE yang mengontrol urutan
+	// langkah (identity -> billing -> radius -> mikrotik -> genieacs -> correlate).
+	// AI TIDAK mengimprovisasi langkah operasional. LLM hanya menyusun balasan.
+	// (Dijalankan SETELAH gerbang keras: hanya COMPLAINT yang boleh menyentuh
+	// workflow; sapaan/info tidak pernah memicu probe.)
+	if bolehProbe && e.Wkf != nil {
+		if def, ok := e.Wkf.ForIntent(string(klas.Intent)); ok {
+			add(Step{Kind: "intent", Text: fmt.Sprintf(
+				"standar v%s: intent=%s -> workflow %s (deterministik)", standard.Version, klas.Intent, def.Name)})
+			h := e.runWorkflow(ctx, klas.Key, target, def, add)
+			rep.Steps = append(rep.Steps, h.Steps...)
+			used := map[string]int{}
+			if h.RanAnyTool {
+				for _, s := range h.Steps {
+					if s.Kind == "tool" {
+						used[s.Tool]++
+					}
+				}
+			}
+			// LLM menyusun balasan manusiawi dari bukti (bukan memutuskan langkah).
+			rep.Balasan, rep.Answer = e.buildWorkflowBalasan(klas.Key, query, h)
+			rep.Answer, rep.Verdict, rep.Confidence = parseVerdict(rep.Answer)
+			if rep.Balasan == "" {
+				rep.Balasan = rep.Answer
+			}
+			rep.Engine = "workflow"
+			rep.ElapsedMS = time.Since(start).Milliseconds()
+			if rep.Target == "" {
+				rep.Target = probedTarget(rep.Steps)
+			}
+			// Eskalasi ke Codex bila keyakinan rendah (analisis senior).
+			if e.shouldEscalate(rep, used) {
+				e.escalate(ctx, &rep)
+			}
+			e.catat(klas, konteks, rep)
+			e.simpan(rep)
+			return rep
+		}
+	}
+
 	tools := e.Diag.Tools()
 	// Tambahkan tool eksternal yang aktif (registry) bila ada dan diizinkan.
 	if e.Reg != nil && bolehProbe {

@@ -28,6 +28,18 @@ type Step struct {
 	AllowedTools     []string `yaml:"allowed_tools,omitempty" json:"allowed_tools,omitempty"`
 	TimeoutMS        int      `yaml:"timeout_ms,omitempty" json:"timeout_ms,omitempty"`
 	Description      string   `yaml:"description,omitempty" json:"description,omitempty"`
+	// Params adalah argumen tool dengan template ${var} yang di-resolve saat
+	// eksekusi (mis. ${identity_id}, ${device_id}). Diisi dari YAML.
+	Params map[string]any `yaml:"params,omitempty" json:"params,omitempty"`
+	// ExpectedOutputs menandai variabel yang harus dihasilkan langkah ini.
+	ExpectedOutputs map[string]string `yaml:"expected_outputs,omitempty" json:"expected_outputs,omitempty"`
+	// InputEvidenceFromSteps: langkah ini memakai bukti dari langkah-langkah tsb.
+	InputEvidenceFromSteps []int `yaml:"input_evidence_from_steps,omitempty" json:"input_evidence_from_steps,omitempty"`
+	// Logic untuk langkah non-tool (mis. correlate) — penjelasan saja.
+	Logic string `yaml:"logic,omitempty" json:"logic,omitempty"`
+	// Output menandai hasil yang diharapkan (mis. root_cause: string).
+	Output      map[string]string `yaml:"output,omitempty" json:"output,omitempty"`
+	RetryPolicy string            `yaml:"retry_policy,omitempty" json:"retry_policy,omitempty"`
 }
 
 // Definition adalah satu workflow.
@@ -38,6 +50,14 @@ type Definition struct {
 	Trigger     string `yaml:"trigger" json:"trigger"`
 	Mode        string `yaml:"mode,omitempty" json:"mode,omitempty"`
 	Steps       []Step `yaml:"steps" json:"steps"`
+	// PolicyChecks: gerbang yang diwajibkan sebelum tool call / rekomendasi.
+	PolicyChecks map[string][]string `yaml:"policy_checks,omitempty" json:"policy_checks,omitempty"`
+	// Audit menandai workflow ini wajib diaudit.
+	Audit bool `yaml:"audit,omitempty" json:"audit,omitempty"`
+	// IdempotencyRequiredForActions menandai aksi WRITE butuh idempotency.
+	IdempotencyRequiredForActions bool `yaml:"idempotency_required_for_actions,omitempty" json:"idempotency_required_for_actions,omitempty"`
+	// VerificationPlan memetakan kejadian -> langkah verifikasi.
+	VerificationPlan map[string]string `yaml:"verification_plan,omitempty" json:"verification_plan,omitempty"`
 }
 
 type workflowDoc struct {
@@ -47,6 +67,11 @@ type workflowDoc struct {
 	Trigger     string `yaml:"trigger"`
 	Mode        string `yaml:"mode"`
 	Steps       []Step `yaml:"steps"`
+	// Field tambahan (v1.1) — dibaca agar workflow bisa dieksekusi.
+	PolicyChecks                  map[string][]string `yaml:"policy_checks"`
+	Audit                         bool                `yaml:"audit"`
+	IdempotencyRequiredForActions bool                `yaml:"idempotency_required_for_actions"`
+	VerificationPlan              map[string]string   `yaml:"verification_plan"`
 }
 
 // Registry menyimpan workflow yang dimuat.
@@ -76,12 +101,16 @@ func Load(path string) (*Registry, error) {
 		return nil, fmt.Errorf("workflow tanpa name")
 	}
 	def := Definition{
-		Name:        d.Name,
-		Description: d.Description,
-		Version:     d.Version,
-		Trigger:     strings.ToUpper(strings.TrimSpace(d.Trigger)),
-		Mode:        d.Mode,
-		Steps:       d.Steps,
+		Name:                          d.Name,
+		Description:                   d.Description,
+		Version:                       d.Version,
+		Trigger:                       strings.ToUpper(strings.TrimSpace(d.Trigger)),
+		Mode:                          d.Mode,
+		Steps:                         d.Steps,
+		PolicyChecks:                  d.PolicyChecks,
+		Audit:                         d.Audit,
+		IdempotencyRequiredForActions: d.IdempotencyRequiredForActions,
+		VerificationPlan:              d.VerificationPlan,
 	}
 	r.byName[d.Name] = def
 	if def.Trigger != "" {
@@ -132,6 +161,23 @@ func (r *Registry) Get(name string) (Definition, bool) {
 func (r *Registry) ForTrigger(intent string) (Definition, bool) {
 	d, ok := r.byTrigger[strings.ToUpper(strings.TrimSpace(intent))]
 	return d, ok
+}
+
+// intentTriggerMap memetakan intent standar (package standard) ke trigger
+// workflow. Package workflow TIDAK mengimpor standard (hindari siklus); pemetaan
+// dipanggil oleh agent yang memang tahu kedua package.
+var intentTriggerMap = map[string]string{
+	"COMPLAINT": "CUSTOMER_INTERNET_DOWN",
+}
+
+// ForIntent mengembalikan workflow untuk intent standar (mis. "COMPLAINT").
+// Bila tidak ada workflow cocok, ok=false — agent jatuh ke loop LLM biasa.
+func (r *Registry) ForIntent(intent string) (Definition, bool) {
+	tr, ok := intentTriggerMap[strings.ToUpper(strings.TrimSpace(intent))]
+	if !ok {
+		return Definition{}, false
+	}
+	return r.ForTrigger(tr)
 }
 
 // Names mengembalikan daftar nama workflow (untuk dashboard).
