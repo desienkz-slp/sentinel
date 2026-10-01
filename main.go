@@ -110,6 +110,15 @@ func main() {
 	engine.Inc = inc
 	engine.Aud = aud
 
+	// Tool dispatcher: registry -> policy -> adapter. Tanpa adapter terdaftar,
+	// tidak ada tool eksternal yang bisa dipanggil (deny-by-default).
+	disp := tool.New(reg, pol, 8*time.Second)
+
+	// Hubungkan registry + dispatcher ke agent supaya tool eksternal yang aktif
+	// bisa dipresentasikan ke LLM dan dipanggil lewat gerbang keamanan.
+	engine.Reg = reg
+	engine.Disp = disp
+
 	// ---- Blueprint upgrade: health, cache, dedupe, db ----
 	// Semua opsional: sistem tetap jalan walau database belum menyala.
 	hreg := health.New()
@@ -128,10 +137,6 @@ func main() {
 	dbcfg := db.Default()
 	_ = dbcfg
 	_ = cc
-
-	// Tool dispatcher: registry -> policy -> adapter. Tanpa adapter terdaftar,
-	// tidak ada tool eksternal yang bisa dipanggil (deny-by-default).
-	disp := tool.New(reg, pol, 8*time.Second)
 
 	// WhatsApp Gateway di-vendor di wa-gateway/. Bila ada, Go yang mengelolanya
 	// supaya cukup satu perintah start untuk seluruh aplikasi.

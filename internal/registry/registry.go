@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 
+	"ainoc/internal/llm"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -52,6 +54,10 @@ type Tool struct {
 	Approval       string     `yaml:"approval" json:"approval,omitempty"`
 	Verification   string     `yaml:"verification" json:"verification,omitempty"`
 	Rollback       string     `yaml:"rollback" json:"rollback,omitempty"`
+	Description    string     `yaml:"description" json:"description,omitempty"`
+	// Parameters adalah skema argumen (JSON Schema) untuk function-calling LLM.
+	// Contoh: {type: object, properties: {identity: {type: string}}, required: [identity]}.
+	Parameters map[string]any `yaml:"parameters" json:"parameters,omitempty"`
 }
 
 type registryDoc struct {
@@ -139,4 +145,29 @@ func (r *Registry) Count() (int, int) {
 		}
 	}
 	return len(r.tools), active
+}
+
+// LLMTool mengembalikan tool dalam format function-calling LLM (llm.Tool).
+// Hanya tool yang Enabled yang boleh dipresentasikan ke model.
+func (r *Registry) LLMTools() []llm.Tool {
+	out := make([]llm.Tool, 0)
+	for _, name := range r.order {
+		t := r.tools[name]
+		if !t.Enabled {
+			continue
+		}
+		params := t.Parameters
+		if params == nil {
+			params = map[string]any{"type": "object", "properties": map[string]any{}}
+		}
+		out = append(out, llm.Tool{
+			Type: "function",
+			Function: llm.Function{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  params,
+			},
+		})
+	}
+	return out
 }

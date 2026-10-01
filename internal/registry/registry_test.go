@@ -84,3 +84,62 @@ tools:
 		t.Errorf("All() harus mengembalikan tool nonaktif juga: %+v", all)
 	}
 }
+
+func TestLLMToolsOnlyEnabled(t *testing.T) {
+	p := writeReg(t, `version: 1.0.0
+tools:
+  - name: billing.get_customer
+    domain: billing
+    enabled: true
+    permission: READ
+    risk: LOW
+    description: ambil data pelanggan
+    parameters:
+      type: object
+      properties:
+        identity: {type: string}
+      required: [identity]
+  - name: mikrotik.disconnect
+    domain: mikrotik
+    enabled: false
+    permission: WRITE
+    risk: MEDIUM
+`)
+	r := Load(p)
+	got := r.LLMTools()
+	if len(got) != 1 {
+		t.Fatalf("LLMTools = %d, mau 1 (hanya yang enabled)", len(got))
+	}
+	if got[0].Function.Name != "billing.get_customer" {
+		t.Errorf("name = %s", got[0].Function.Name)
+	}
+	if got[0].Function.Description != "ambil data pelanggan" {
+		t.Errorf("description = %s", got[0].Function.Description)
+	}
+	if got[0].Function.Parameters["type"] != "object" {
+		t.Errorf("parameters type = %v", got[0].Function.Parameters["type"])
+	}
+}
+
+func TestLLMToolsDefaultParamsWhenMissing(t *testing.T) {
+	p := writeReg(t, `version: 1.0.0
+tools:
+  - name: radius.get_session
+    domain: radius
+    enabled: true
+    permission: READ
+    risk: LOW
+`)
+	r := Load(p)
+	got := r.LLMTools()
+	if len(got) != 1 {
+		t.Fatalf("LLMTools = %d, mau 1", len(got))
+	}
+	params := got[0].Function.Parameters
+	if params == nil {
+		t.Fatal("parameters tidak boleh nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("default params type = %v, mau object", params["type"])
+	}
+}

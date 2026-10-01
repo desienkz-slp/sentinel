@@ -1,6 +1,10 @@
 version: 1.0.0
 # Registry entries are declarations, not permission grants. Disabled tools may
 # not be presented to the model or invoked by workflows.
+#
+# Set enabled:true ONLY after the real endpoint + least-privilege credentials
+# are supplied via NOC_*_URL / NOC_*_TOKEN. The adapter layer reads those env
+# vars; nothing here stores secrets.
 tools:
   - name: billing.get_customer
     domain: billing
@@ -12,6 +16,14 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
+    description: Ambil data akun/status pelanggan dari sistem billing.
+    parameters:
+      type: object
+      properties:
+        identity:
+          type: string
+          description: Nomor telepon ternormalisasi (628xxx) atau ID pelanggan.
+      required: [identity]
 
   - name: radius.get_session
     domain: radius
@@ -23,6 +35,14 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
+    description: Ambil status sesi autentikasi RADIUS untuk sebuah pelanggan.
+    parameters:
+      type: object
+      properties:
+        identity:
+          type: string
+          description: Nomor telepon ternormalisasi (628xxx) atau username PPPoE.
+      required: [identity]
 
   - name: mikrotik.get_pppoe_status
     domain: mikrotik
@@ -34,6 +54,14 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
+    description: Ambil status sesi PPPoE (aktif/putus) dari router MikroTik.
+    parameters:
+      type: object
+      properties:
+        identity:
+          type: string
+          description: Username PPPoE atau nomor pelanggan ternormalisasi.
+      required: [identity]
 
   - name: genieacs.get_device_state
     domain: genieacs
@@ -45,6 +73,17 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
+    description: Ambil status perangkat ONT/CPE (online/offline, sinyal) dari GenieACS.
+    parameters:
+      type: object
+      properties:
+        device_id:
+          type: string
+          description: Serial number atau ID perangkat CPE/ONT.
+        identity:
+          type: string
+          description: Nomor pelanggan ternormalisasi (alternatif bila device_id tidak ada).
+      required: []
 
   - name: mikrotik.disconnect_pppoe
     domain: mikrotik
@@ -57,3 +96,14 @@ tools:
     approval: required
     verification: mikrotik.get_pppoe_status
     rollback: escalate
+    description: Putuskan sesi PPPoE yang stale (butuh persetujuan operator).
+    parameters:
+      type: object
+      properties:
+        identity:
+          type: string
+          description: Username PPPoE atau nomor pelanggan ternormalisasi.
+        idempotency_key:
+          type: string
+          description: Kunci idempotensi untuk mencegah pemutusan ganda.
+      required: [identity, idempotency_key]

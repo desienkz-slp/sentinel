@@ -147,3 +147,59 @@ func TestMemoryPathAbsolutDihormati(t *testing.T) {
 		t.Errorf("MemoryPath = %q, mau %q (path eksplisit harus dihormati)", c.MemoryPath, abs)
 	}
 }
+
+// Endpoint adaptor eksternal HANYA dibaca dari env, dan token tidak boleh
+// terserialisasi ke file config (keamanan).
+func TestAdapterEndpointFromEnvOnly(t *testing.T) {
+	t.Setenv("NOC_BILLING_URL", "http://billing.internal")
+	t.Setenv("NOC_BILLING_TOKEN", "test-token-billing")
+	t.Setenv("NOC_RADIUS_URL", "http://radius.internal")
+	t.Setenv("NOC_RADIUS_TOKEN", "test-token-radius")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := Load(path)
+
+	if c.BillingURL != "http://billing.internal" {
+		t.Errorf("BillingURL = %q, mau dari env", c.BillingURL)
+	}
+	if c.BillingToken != "test-token-billing" {
+		t.Errorf("BillingToken tidak terbaca dari env")
+	}
+	if c.RadiusToken != "test-token-radius" {
+		t.Errorf("RadiusToken tidak terbaca dari env")
+	}
+
+	// Token TIDAK boleh bocor saat disimpan ke file.
+	c.WAAllowlist = []string{"628111"}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(path)
+	if strings.Contains(string(raw), "test-token-billing") || strings.Contains(string(raw), "test-token-radius") {
+		t.Error("token adaptor bocor ke config.json saat Save")
+	}
+}
+
+// Redacted tidak boleh memaparkan token adaptor.
+func TestAdapterTokenNotInRedacted(t *testing.T) {
+	t.Setenv("NOC_MIKROTIK_URL", "http://mikrotik.internal")
+	t.Setenv("NOC_MIKROTIK_TOKEN", "test-token-mikrotik")
+	c := Load("")
+	r := c.Redacted()
+	if r["mikrotik_url"] != "http://mikrotik.internal" {
+		t.Errorf("mikrotik_url = %v", r["mikrotik_url"])
+	}
+	if r["mikrotik_set"] != true {
+		t.Errorf("mikrotik_set = %v, mau true", r["mikrotik_set"])
+	}
+	// Pastikan token mentah tidak ada di mana pun dalam Redacted.
+	for k, v := range r {
+		if s, ok := v.(string); ok && s == "test-token-mikrotik" {
+			t.Errorf("token bocor di Redacted[%q]", k)
+		}
+	}
+}

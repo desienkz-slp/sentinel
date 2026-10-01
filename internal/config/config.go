@@ -53,6 +53,19 @@ type Config struct {
 	IncidentPath string `json:"incident_path"`
 	AuditPath    string `json:"audit_path"`
 
+	// ---- Endpoint adaptor eksternal (Billing/RADIUS/MikroTik/GenieACS) ----
+	// Semua kosong = adaptor tidak aktif (deny-by-default). Isi hanya lewat env
+	// (NOC_*_URL / NOC_*_TOKEN), JANGAN lewat config.json, supaya kredensial
+	// tidak pernah tertulis ke file yang bisa ter-commit.
+	BillingURL    string `json:"billing_url"`
+	BillingToken  string `json:"-"` // tidak pernah diserialisasi ke JSON
+	RadiusURL     string `json:"radius_url"`
+	RadiusToken   string `json:"-"`
+	MikrotikURL   string `json:"mikrotik_url"`
+	MikrotikToken string `json:"-"`
+	GenieACSURL   string `json:"genieacs_url"`
+	GenieACSToken string `json:"-"`
+
 	// path adalah lokasi file config yang sedang dipakai. Disimpan supaya
 	// perubahan dari dashboard bisa ditulis kembali ke file yang SAMA.
 	// Tanpa ini, pengaturan hanya hidup di memori dan hilang saat restart.
@@ -341,6 +354,15 @@ func Load(path string) *Config {
 	if v := getenv("NOC_AUDIT_PATH"); v != "" {
 		c.AuditPath = v
 	}
+	// Endpoint adaptor eksternal — hanya dari env, JANGAN dari config.json.
+	c.BillingURL = getenv("NOC_BILLING_URL")
+	c.BillingToken = getenv("NOC_BILLING_TOKEN")
+	c.RadiusURL = getenv("NOC_RADIUS_URL")
+	c.RadiusToken = getenv("NOC_RADIUS_TOKEN")
+	c.MikrotikURL = getenv("NOC_MIKROTIK_URL")
+	c.MikrotikToken = getenv("NOC_MIKROTIK_TOKEN")
+	c.GenieACSURL = getenv("NOC_GENIEACS_URL")
+	c.GenieACSToken = getenv("NOC_GENIEACS_TOKEN")
 	if v := getenv("NOC_WA_DIR"); v != "" {
 		c.WADir = v
 	}
@@ -404,5 +426,14 @@ func (c *Config) Redacted() map[string]any {
 		"workflow_dir":  c.WorkflowDir,
 		"incident_path": c.IncidentPath,
 		"audit_path":    c.AuditPath,
+		// Endpoint adaptor eksternal (tanpa token). URL kosong = adaptor nonaktif.
+		"billing_url":  c.BillingURL,
+		"radius_url":   c.RadiusURL,
+		"mikrotik_url": c.MikrotikURL,
+		"genieacs_url": c.GenieACSURL,
+		"billing_set":  c.BillingURL != "" && c.BillingToken != "",
+		"radius_set":   c.RadiusURL != "" && c.RadiusToken != "",
+		"mikrotik_set": c.MikrotikURL != "" && c.MikrotikToken != "",
+		"genieacs_set": c.GenieACSURL != "" && c.GenieACSToken != "",
 	}
 }

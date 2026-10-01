@@ -19,8 +19,10 @@ import (
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
 	"ainoc/internal/memory"
+	"ainoc/internal/registry"
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
+	"ainoc/internal/tool"
 )
 
 type Step struct {
@@ -82,6 +84,10 @@ type Engine struct {
 	Learn *learning.Store
 	Inc   *incident.Store
 	Aud   *audit.Store
+	// Reg & Disp menghubungkan agent ke tool eksternal (Billing/RADIUS/dll).
+	// Bila nil, agent hanya memakai probe jaringan bawaan (diag).
+	Reg  *registry.Registry
+	Disp *tool.Dispatcher
 
 	mu      sync.Mutex
 	reports []Report
@@ -296,6 +302,10 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	// memaksa probe pada sapaan/informasi walaupun ia "berhalusinasi".
 	bolehProbe := standard.BolehProbe(klas.Intent)
 	tools := e.Diag.Tools()
+	// Tambahkan tool eksternal yang aktif (registry) bila ada dan diizinkan.
+	if e.Reg != nil && bolehProbe {
+		tools = append(tools, e.Reg.LLMTools()...)
+	}
 	if !bolehProbe {
 		tools = nil
 		add(Step{Kind: "intent", Text: fmt.Sprintf(
@@ -364,6 +374,28 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 		for _, tc := range msg.ToolCalls {
 			args := map[string]any{}
 			_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+
+			// Rutekan: tool eksternal (registry) vs probe jaringan bawaan (diag).
+			if e.Disp != nil && e.Reg != nil {
+				if _, isExternal := e.Reg.Get(tc.Function.Name); isExternal {
+					rres := e.Disp.Invoke(ctx, tc.Function.Name, args)
+					usedTools[tc.Function.Name]++
+					add(Step{
+						Kind: "tool", Tool: rres.Tool, Target: firstString(args, "identity", "device_id", "target"),
+						Output: rres.Output.Text, OK: rres.OK, DurationMS: rres.LatencyMS,
+					})
+					payload, _ := json.Marshal(map[string]any{
+						"tool": rres.Tool, "ok": rres.OK, "decision": rres.Decision,
+						"output": rres.Output.Text, "error": rres.Error,
+						"request_id": rres.RequestID, "duration_ms": rres.LatencyMS,
+					})
+					msgs = append(msgs, llm.Message{
+						Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name, Content: string(payload),
+					})
+					continue
+				}
+			}
+
 			tgt := firstString(args, "target", "name")
 			usedTools[tc.Function.Name]++
 
