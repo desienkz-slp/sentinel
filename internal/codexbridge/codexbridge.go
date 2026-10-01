@@ -195,9 +195,13 @@ func (b *Bridge) endpointOverrides() []string {
 	if b.BaseURL == "" {
 		return nil
 	}
+	// Nama provider bersifat INTERNAL & arbitrer: flag -c model_providers.<nama>
+	// mendefinisikan provider inline, tanpa perlu ada di config.toml. Gunakan
+	// nama tetap yang netral (bukan "9router" yang menyesatkan). Operator bisa
+	// override via NOC_CODEX_PROVIDER bila butuh nama spesifik.
 	provider := b.Provider
 	if provider == "" {
-		provider = "9router" // default: sama dengan contoh config.toml user
+		provider = "noc-codex"
 	}
 	out := []string{
 		"-c", "model_provider=" + provider,

@@ -106,14 +106,14 @@ func TestEndpointOverrides(t *testing.T) {
 	// Terisi -> urutan -c benar, termasuk header auth.
 	b = New("codex", "m", "danger-full-access", 5)
 	b.BaseURL = "http://127.0.0.1:20128/v1/"
-	b.Provider = "9router"
+	b.Provider = "custom-router"
 	b.APIKey = "sk-abc123"
 	got := b.endpointOverrides()
 	want := []string{
-		"-c", "model_provider=9router",
-		"-c", "model_providers.9router.base_url=http://127.0.0.1:20128/v1", // slash dibuang
-		"-c", "model_providers.9router.wire_api=responses",
-		"-c", "model_providers.9router.http_headers.Authorization=Bearer sk-abc123",
+		"-c", "model_provider=custom-router",
+		"-c", "model_providers.custom-router.base_url=http://127.0.0.1:20128/v1", // slash dibuang
+		"-c", "model_providers.custom-router.wire_api=responses",
+		"-c", "model_providers.custom-router.http_headers.Authorization=Bearer sk-abc123",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("override = %d arg, mau %d: %v", len(got), len(want), got)
@@ -124,12 +124,12 @@ func TestEndpointOverrides(t *testing.T) {
 		}
 	}
 
-	// Provider default 9router bila kosong; tanpa key -> tanpa header auth.
+	// Provider default netral (noc-codex) bila kosong; tanpa key -> tanpa header auth.
 	b = New("codex", "m", "danger-full-access", 5)
 	b.BaseURL = "http://x/v1"
 	got = b.endpointOverrides()
-	if got[1] != "model_provider=9router" {
-		t.Errorf("provider default harus 9router, dapat %q", got[1])
+	if got[1] != "model_provider=noc-codex" {
+		t.Errorf("provider default harus noc-codex, dapat %q", got[1])
 	}
 	for _, a := range got {
 		if strings.Contains(a, "Authorization") {

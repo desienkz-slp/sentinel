@@ -125,10 +125,7 @@
         </select>
       </div>
     </div>
-    <div class="row">
-      <div><label for="sCodexProvider">Provider (opsional)</label><input id="sCodexProvider" placeholder="9router (kosong = pakai config.toml)"></div>
-      <div style="display:flex;align-items:flex-end"><div class="hint" style="margin:0">Pilih tipe komunikasi native model — sama seperti Conversation.</div></div>
-    </div>
+    <div class="hint">Pilih tipe komunikasi native model — sama seperti Conversation.</div>
     <div class="hint" id="setMsgB"></div>
     <div class="btns">
       <button class="ghost" onclick="loadModels('b')">Cek daftar model</button>
@@ -315,7 +312,6 @@ async function boot() {
     const c = st.config;
     $('sBase').value = c.llm_base_url; 
     $('sSteps').value = c.max_steps;
-    $('sCodexProvider').value = c.codex_provider || '';
     $('sCodexBase').value = c.codex_base_url || '';
     // Isi dropdown model dengan nilai tersimpan dulu (opsi lengkap dimuat
     // via tombol "Cek daftar model" atau otomatis di bawah).
@@ -397,7 +393,6 @@ async function saveSettings() {
       max_steps: parseInt($('sSteps').value,10)||undefined,
       codex_model: $('sCodex').value,
       codex_base_url: $('sCodexBase').value || undefined,
-      codex_provider: $('sCodexProvider').value || undefined,
       codex_api_key: $('sCodexKey').value || undefined,
       codex_wire_api: $('sCodexWire').value
     })});
@@ -414,7 +409,7 @@ async function saveSettings() {
 
 function updateCodexStatus(c) {
   if (c.codex_base_url) {
-    $('stCodexEp').textContent = `${c.codex_provider || '9router'} @ ${c.codex_base_url}`;
+    $('stCodexEp').textContent = `override @ ${c.codex_base_url}`;
   } else {
     $('stCodexEp').textContent = 'pakai ~/.codex/config.toml';
   }
