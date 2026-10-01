@@ -74,7 +74,7 @@
   <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WhatsApp…</span></div>
   <div class="spacer"></div>
   <div class="pill" id="pillModel">model: —</div>
-  <button class="ghost" style="width:auto" onclick="toggleSettings()">⚙ Pengaturan</button>
+  <a class="pill" href="/settings.html" style="text-decoration:none;color:var(--dim)">⚙ Pengaturan</a>
 </header>
 
 <main>
@@ -108,52 +108,6 @@
           <button class="ghost" onclick="runProbe()">Jalankan probe</button>
         </div>
       </details>
-
-      <div id="settings" class="hidden" style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
-        <h2>Pengaturan Runtime AI</h2>
-        <div class="row">
-          <div><label for="sBase">Base URL (OpenAI-compatible)</label><input id="sBase"></div>
-          <div><label for="sKey">API Key (kosongkan bila sudah tersimpan)</label><input id="sKey" type="password" placeholder="•••• (tidak ditampilkan)"></div>
-        </div>
-        <div class="row">
-          <div><label for="sModel">Model default</label><input id="sModel"></div>
-          <div><label for="sSteps">Maks langkah per sesi</label><input id="sSteps" type="number" min="1" max="20"></div>
-        </div>
-        <div class="row">
-          <div><label for="sCodex">Model Codex (eskalasi)</label><input id="sCodex"></div>
-          <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan</button></div>
-        </div>
-        <div class="btns">
-          <button class="ghost" onclick="pingLLM()">Tes koneksi LLM (completion nyata)</button>
-          <button class="ghost" onclick="codexSelftest()">Tes Codex CLI</button>
-        </div>
-        <div class="hint" id="setMsg"></div>
-
-        <h2 style="margin-top:22px">Integrasi Sistem (Billing · RADIUS · MikroTik · GenieACS)</h2>
-        <div class="hint">Isi host + API key untuk tiap sistem. Kosongkan host untuk menonaktifkan. Kredensial disimpan lokal (tidak pernah dikirim ke browser lain).</div>
-
-        <div class="row" style="margin-top:12px">
-          <div><label for="billingUrl">Host Billing (NETORA)</label><input id="billingUrl" placeholder="http://192.168.1.10"></div>
-          <div><label for="billingKey">API Key Billing (X-NOC-API-Key)</label><input id="billingKey" type="password" placeholder="•••• (kosongkan = tidak diubah)"></div>
-        </div>
-        <div class="row">
-          <div><label for="radiusUrl">Host RADIUS</label><input id="radiusUrl" placeholder="http://192.168.1.10"></div>
-          <div><label for="radiusKey">API Key RADIUS</label><input id="radiusKey" type="password" placeholder="••••"></div>
-        </div>
-        <div class="row">
-          <div><label for="mikrotikUrl">Host MikroTik</label><input id="mikrotikUrl" placeholder="http://192.168.1.10"></div>
-          <div><label for="mikrotikKey">API Key MikroTik</label><input id="mikrotikKey" type="password" placeholder="••••"></div>
-        </div>
-        <div class="row">
-          <div><label for="genieacsUrl">Host GenieACS (TR-069)</label><input id="genieacsUrl" placeholder="http://192.168.1.10"></div>
-          <div><label for="genieacsKey">API Key GenieACS</label><input id="genieacsKey" type="password" placeholder="••••"></div>
-        </div>
-        <div class="btns">
-          <button onclick="saveIntegrations()">Simpan Integrasi</button>
-          <button class="ghost" onclick="checkBilling()">Tes koneksi Billing</button>
-        </div>
-        <div class="hint" id="intMsg"></div>
-      </div>
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -264,8 +218,7 @@ async function boot() {
   try {
     const st = await api('/api/status');
     const c = st.config;
-    $('sBase').value = c.llm_base_url; $('sModel').value = c.llm_model;
-    $('sSteps').value = c.max_steps; $('sCodex').value = c.codex_model;
+    window._model = c.llm_model;
     $('pillModel').textContent = 'model: ' + c.llm_model;
     setDot('Codex', st.codex_ready, st.codex_ready ? 'Codex siap ('+c.codex_model+')' : 'Codex tidak ditemukan');
     if (!c.llm_key_set) setDot('LLM', false, 'API key belum ada');
@@ -273,15 +226,6 @@ async function boot() {
     $('sWAList').value = (c.wa_allowlist||[]).join(',');
     $('sWAGroup').value = String(!!c.wa_group);
     $('sWAAsync').value = String(!!c.wa_async);
-    // Integrasi sistem (billing/radius/mikrotik/genieacs).
-    $('billingUrl').value = c.billing_url || '';
-    $('radiusUrl').value = c.radius_url || '';
-    $('mikrotikUrl').value = c.mikrotik_url || '';
-    $('genieacsUrl').value = c.genieacs_url || '';
-    $('intMsg').textContent = 'Tersimpan: Billing ' + (c.billing_set ? `aktif (${c.billing_token_masked||'••••'})` : 'belum diset') +
-      ' · RADIUS ' + (c.radius_set ? `aktif (${c.radius_token_masked||'••••'})` : 'belum diset') +
-      ' · MikroTik ' + (c.mikrotik_set ? `aktif (${c.mikrotik_token_masked||'••••'})` : 'belum diset') +
-      ' · GenieACS ' + (c.genieacs_set ? `aktif (${c.genieacs_token_masked||'••••'})` : 'belum diset');
   } catch (e) { console.error(e); }
   tools = await api('/api/tools').catch(()=>[]);
   $('toolBtns').innerHTML = tools.map(t => `<button title="${esc(t.description)}" onclick="pickTool('${t.name}')">${t.name}</button>`).join('');
@@ -457,79 +401,14 @@ function setDot(which, ok, text) {
 async function loadModels() {
   try {
     const d = await api('/api/models');
-    const cur = $('mdl').value || $('sModel').value;
+    const cur = $('mdl').value;
     const nice = ['ag/gemini','cx/gpt','grip/gpt','grip/deepseek','grip/glm','grip/qwen'];
     const sorted = d.models.slice().sort((a,b)=>{
       const ra = nice.findIndex(p=>a.startsWith(p)), rb = nice.findIndex(p=>b.startsWith(p));
       return (ra<0?99:ra)-(rb<0?99:rb) || a.localeCompare(b);
     });
     $('mdl').innerHTML = sorted.map(m=>`<option${m===cur?' selected':''}>${m}</option>`).join('');
-  } catch(e) { $('mdl').innerHTML = '<option>'+esc($('sModel').value)+'</option>'; }
-}
-
-function toggleSettings(){ $('settings').classList.toggle('hidden'); }
-
-async function saveSettings() {
-  try {
-    const d = await api('/api/config', {method:'POST', body: JSON.stringify({
-      llm_base_url: $('sBase').value, llm_api_key: $('sKey').value || undefined,
-      llm_model: $('sModel').value, max_steps: parseInt($('sSteps').value,10)||undefined,
-      codex_model: $('sCodex').value
-    })});
-    $('setMsg').textContent = 'Tersimpan. Model aktif: ' + d.config.llm_model;
-    $('pillModel').textContent = 'model: ' + d.config.llm_model;
-    $('sKey').value = '';
-    await loadModels();
-  } catch(e){ $('setMsg').textContent = 'Gagal: ' + e.message; }
-}
-
-async function saveIntegrations() {
-  try {
-    const d = await api('/api/config', {method:'POST', body: JSON.stringify({
-      billing_url: $('billingUrl').value || undefined,
-      billing_token: $('billingKey').value || undefined,
-      radius_url: $('radiusUrl').value || undefined,
-      radius_token: $('radiusKey').value || undefined,
-      mikrotik_url: $('mikrotikUrl').value || undefined,
-      mikrotik_token: $('mikrotikKey').value || undefined,
-      genieacs_url: $('genieacsUrl').value || undefined,
-      genieacs_token: $('genieacsKey').value || undefined
-    })});
-    const c = d.config;
-    $('intMsg').textContent = 'Tersimpan: Billing ' + (c.billing_set ? `aktif (${c.billing_token_masked||'••••'})` : 'belum diset') +
-      ' · RADIUS ' + (c.radius_set ? `aktif (${c.radius_token_masked||'••••'})` : 'belum diset') +
-      ' · MikroTik ' + (c.mikrotik_set ? `aktif (${c.mikrotik_token_masked||'••••'})` : 'belum diset') +
-      ' · GenieACS ' + (c.genieacs_set ? `aktif (${c.genieacs_token_masked||'••••'})` : 'belum diset');
-    $('billingKey').value = ''; $('radiusKey').value = '';
-    $('mikrotikKey').value = ''; $('genieacsKey').value = '';
-  } catch(e){ $('intMsg').textContent = 'Gagal: ' + e.message; }
-}
-
-async function checkBilling() {
-  $('intMsg').textContent = 'Menguji koneksi Billing…';
-  try {
-    const d = await api('/api/billing/check');
-    $('intMsg').textContent = d.ok
-      ? `Billing OK: ${d.base_url}/api/noc/v1 · ${d.ping_ms}ms · total pelanggan: ${d.total_customers}`
-      : 'Billing GAGAL: ' + (d.error || 'tidak terhubung');
-  } catch(e){ $('intMsg').textContent = 'Gagal: ' + e.message; }
-}
-
-async function pingLLM() {
-  setDot('LLM', false, 'menguji…');
-  try {
-    const d = await api('/api/llm/ping');
-    setDot('LLM', true, `LLM OK (${d.latency_ms}ms · ${d.model})`);
-  } catch(e) { setDot('LLM', false, 'LLM gagal: ' + e.message.slice(0,80)); }
-}
-
-async function codexSelftest() {
-  setDot('Codex', false, 'Codex: menguji…');
-  try {
-    const d = await api('/api/codex', {method:'POST', body: JSON.stringify({task:'Balas persis: CODEX_OK'})});
-    setDot('Codex', d.ok, d.ok ? `Codex OK (${d.elapsed_ms}ms)` : 'Codex gagal: ' + (d.err||'').slice(0,60));
-    if (d.ok) addStep({kind:'answer', text:'Codex: ' + d.output});
-  } catch(e) { setDot('Codex', false, 'Codex error'); }
+  } catch(e) { $('mdl').innerHTML = '<option>gagal memuat model</option>'; }
 }
 
 function addStep(s) {
@@ -605,7 +484,7 @@ function showReport(r) {
     (r.escalated?' · <span style="color:#a855f7">dieskalasi ke Codex</span>':'') +
     ` · ${r.elapsed_ms}ms` + (r.error?` · <span style="color:var(--bad)">${esc(r.error)}</span>`:'');
   $('answer').textContent = r.answer || r.escalation || '';
-  $('pillModel').textContent = 'model: ' + $('sModel').value;
+  $('pillModel').textContent = 'model: ' + (window._model || '—');
 }
 
 async function refreshHistory() {
