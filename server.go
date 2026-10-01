@@ -15,7 +15,9 @@ import (
 	"ainoc/internal/audit"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
+	"ainoc/internal/dedupe"
 	"ainoc/internal/diag"
+	"ainoc/internal/health"
 	"ainoc/internal/incident"
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
@@ -50,6 +52,10 @@ type Server struct {
 	wkf *workflow.Registry
 	inc *incident.Store
 	aud *audit.Store
+
+	// Blueprint upgrade: health, dedupe.
+	hreg *health.Registry
+	ded  *dedupe.Store
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -65,6 +71,16 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		// Health endpoint mengembalikan status dependensi + agregat.
+		if s.hreg != nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":      true,
+				"service": "ai-noc-go",
+				"time":    time.Now(),
+				"health":  s.hreg.Summary(),
+			})
+			return
+		}
 		writeJSON(w, 200, map[string]any{"ok": true, "service": "ai-noc-go", "time": time.Now()})
 	})
 
@@ -441,6 +457,22 @@ func (s *Server) routes() http.Handler {
 		if msg.Message == "" {
 			writeJSON(w, 200, wa.Reply{Accepted: false, MessageID: msg.MessageID, Note: "pesan kosong"})
 			return
+		}
+
+		// Dedup: pesan yang sama dari nomor sama dalam 2 menit dianggap ganda
+		// (webhook dobel, reconnect, pelanggan kirim dua kali) — proses hanya
+		// sekali supaya tidak membuat insiden/balasan ganda. (blueprint §30)
+		if s.ded != nil {
+			fp := dedupe.Fingerprint("wa", id, msg.Message)
+			if s.ded.Seen(fp) {
+				log.Printf("[WA] duplikat diabaikan: %s (%s)", id, truncateLog(msg.Message, 40))
+				writeJSON(w, 200, wa.Reply{
+					Accepted:  false,
+					MessageID: msg.MessageID,
+					Note:      "duplikat (pesan sama baru saja diproses)",
+				})
+				return
+			}
 		}
 
 		// Pesan dari grup WhatsApp diabaikan secara bawaan. Ini disaring di sini,

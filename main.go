@@ -22,9 +22,14 @@ import (
 
 	"ainoc/internal/agent"
 	"ainoc/internal/audit"
+	"ainoc/internal/cache"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
+	"ainoc/internal/db"
+	"ainoc/internal/dedupe"
 	"ainoc/internal/diag"
+	"ainoc/internal/health"
+	"ainoc/internal/healthcheck"
 	"ainoc/internal/incident"
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
@@ -104,6 +109,25 @@ func main() {
 	engine.Inc = inc
 	engine.Aud = aud
 
+	// ---- Blueprint upgrade: health, cache, dedupe, db ----
+	// Semua opsional: sistem tetap jalan walau database belum menyala.
+	hreg := health.New()
+	hreg.Set("llm", health.StatusUnknown, "belum dicek", 0)
+	hreg.Set("whatsapp", health.StatusUnknown, "belum dicek", 0)
+	hreg.Set("postgres", health.StatusUnknown, "belum dicek", 0)
+	hreg.Set("redis", health.StatusUnknown, "belum dicek", 0)
+
+	// Cache dedup untuk webhook WhatsApp (cegah pesan duplikat ganda).
+	ded := dedupe.New(2*time.Minute, 10000)
+	// Cache umum (bisa dipakai nanti oleh adaptor eksternal).
+	cc := cache.New(time.Duration(cfg.CacheTTLMin) * time.Minute)
+
+	// Konfigurasi DB (PostgreSQL + Redis). Belum terkoneksi sampai infra
+	// dinyalakan; kehadirannya dicatat di health registry.
+	dbcfg := db.Default()
+	_ = dbcfg
+	_ = cc
+
 	// WhatsApp Gateway di-vendor di wa-gateway/. Bila ada, Go yang mengelolanya
 	// supaya cukup satu perintah start untuk seluruh aplikasi.
 	var sup *supervisor.Manager
@@ -117,7 +141,25 @@ func main() {
 	}
 	waclient := wa.New(waBase, cfg.WATimeout)
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud}
+	// Probe kesehatan nyata: cek LLM, WhatsApp, Postgres, Redis berkala.
+	probe := &healthcheck.Probe{
+		Reg:       hreg,
+		LLM:       client,
+		LLMURL:    cfg.LLMBaseURL,
+		WAURL:     waBase,
+		PGAddr:    dbcfg.PGHost + ":" + dbcfg.PGPort,
+		RedisAddr: dbcfg.RedisAddr,
+	}
+	go func() {
+		probe.Run(context.Background())
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			probe.Run(context.Background())
+		}
+	}()
+
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

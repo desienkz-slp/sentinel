@@ -22,7 +22,10 @@ const DB_HOST = process.env.DB_HOST || '127.0.0.1';
 const DB_PORT = parseInt(process.env.DB_PORT || '5432', 10);
 const DB_NAME = process.env.DB_NAME || 'noc_sentinel';
 const DB_USER = process.env.DB_USER || 'noc_admin';
-const DB_PASS = process.env.DB_PASS || 'noc_sentinel_secret_2026';
+// Tanpa password default: koneksi DB gateway harus dikonfigurasi eksplisit.
+// Fallback kosong membuat pool gagal menginisialisasi (bukan memakai kredensial
+// lemah), yang aman karena DB ini opsional bagi fungsi WhatsApp.
+const DB_PASS = process.env.DB_PASS || '';
 
 /**
  * Tentukan identitas pengirim (nomor telepon) dari sebuah pesan WhatsApp.
