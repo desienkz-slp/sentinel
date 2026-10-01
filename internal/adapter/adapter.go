@@ -58,6 +58,9 @@ func (h *HTTP) Configured() bool {
 // Domain mengembalikan nama domain.
 func (h *HTTP) Domain() string { return h.cfg.Domain }
 
+// BaseURL mengembalikan endpoint yang sedang dipakai (untuk tampilan status).
+func (h *HTTP) BaseURL() string { return h.cfg.BaseURL }
+
 // Get melakukan HTTP GET dengan retry + backoff (aman untuk read-only).
 func (h *HTTP) Get(ctx context.Context, path string) ([]byte, error) {
 	url := strings.TrimRight(h.cfg.BaseURL, "/") + path

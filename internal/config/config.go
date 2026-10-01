@@ -54,17 +54,18 @@ type Config struct {
 	AuditPath    string `json:"audit_path"`
 
 	// ---- Endpoint adaptor eksternal (Billing/RADIUS/MikroTik/GenieACS) ----
-	// Semua kosong = adaptor tidak aktif (deny-by-default). Isi hanya lewat env
-	// (NOC_*_URL / NOC_*_TOKEN), JANGAN lewat config.json, supaya kredensial
-	// tidak pernah tertulis ke file yang bisa ter-commit.
+	// Semua kosong = adaptor tidak aktif (deny-by-default). URL + token disimpan
+	// lewat dashboard Pengaturan ke config.json (gitignored, aman). Env
+	// NOC_*_URL / NOC_*_TOKEN tetap didukung dan MENANG bila diset.
+	// Token TIDAK pernah muncul di Redacted()/API — hanya masked.
 	BillingURL    string `json:"billing_url"`
-	BillingToken  string `json:"-"` // tidak pernah diserialisasi ke JSON
+	BillingToken  string `json:"billing_token"`
 	RadiusURL     string `json:"radius_url"`
-	RadiusToken   string `json:"-"`
+	RadiusToken   string `json:"radius_token"`
 	MikrotikURL   string `json:"mikrotik_url"`
-	MikrotikToken string `json:"-"`
+	MikrotikToken string `json:"mikrotik_token"`
 	GenieACSURL   string `json:"genieacs_url"`
-	GenieACSToken string `json:"-"`
+	GenieACSToken string `json:"genieacs_token"`
 
 	// path adalah lokasi file config yang sedang dipakai. Disimpan supaya
 	// perubahan dari dashboard bisa ditulis kembali ke file yang SAMA.
@@ -354,15 +355,31 @@ func Load(path string) *Config {
 	if v := getenv("NOC_AUDIT_PATH"); v != "" {
 		c.AuditPath = v
 	}
-	// Endpoint adaptor eksternal — hanya dari env, JANGAN dari config.json.
-	c.BillingURL = getenv("NOC_BILLING_URL")
-	c.BillingToken = getenv("NOC_BILLING_TOKEN")
-	c.RadiusURL = getenv("NOC_RADIUS_URL")
-	c.RadiusToken = getenv("NOC_RADIUS_TOKEN")
-	c.MikrotikURL = getenv("NOC_MIKROTIK_URL")
-	c.MikrotikToken = getenv("NOC_MIKROTIK_TOKEN")
-	c.GenieACSURL = getenv("NOC_GENIEACS_URL")
-	c.GenieACSToken = getenv("NOC_GENIEACS_TOKEN")
+	// Endpoint adaptor eksternal — config.json menyimpan, env MENANG bila diset.
+	if v := getenv("NOC_BILLING_URL"); v != "" {
+		c.BillingURL = v
+	}
+	if v := getenv("NOC_BILLING_TOKEN"); v != "" {
+		c.BillingToken = v
+	}
+	if v := getenv("NOC_RADIUS_URL"); v != "" {
+		c.RadiusURL = v
+	}
+	if v := getenv("NOC_RADIUS_TOKEN"); v != "" {
+		c.RadiusToken = v
+	}
+	if v := getenv("NOC_MIKROTIK_URL"); v != "" {
+		c.MikrotikURL = v
+	}
+	if v := getenv("NOC_MIKROTIK_TOKEN"); v != "" {
+		c.MikrotikToken = v
+	}
+	if v := getenv("NOC_GENIEACS_URL"); v != "" {
+		c.GenieACSURL = v
+	}
+	if v := getenv("NOC_GENIEACS_TOKEN"); v != "" {
+		c.GenieACSToken = v
+	}
 	if v := getenv("NOC_WA_DIR"); v != "" {
 		c.WADir = v
 	}
@@ -426,14 +443,30 @@ func (c *Config) Redacted() map[string]any {
 		"workflow_dir":  c.WorkflowDir,
 		"incident_path": c.IncidentPath,
 		"audit_path":    c.AuditPath,
-		// Endpoint adaptor eksternal (tanpa token). URL kosong = adaptor nonaktif.
-		"billing_url":  c.BillingURL,
-		"radius_url":   c.RadiusURL,
-		"mikrotik_url": c.MikrotikURL,
-		"genieacs_url": c.GenieACSURL,
-		"billing_set":  c.BillingURL != "" && c.BillingToken != "",
-		"radius_set":   c.RadiusURL != "" && c.RadiusToken != "",
-		"mikrotik_set": c.MikrotikURL != "" && c.MikrotikToken != "",
-		"genieacs_set": c.GenieACSURL != "" && c.GenieACSToken != "",
+		// Endpoint adaptor eksternal (tanpa token mentah — hanya masked).
+		"billing_url":           c.BillingURL,
+		"radius_url":            c.RadiusURL,
+		"mikrotik_url":          c.MikrotikURL,
+		"genieacs_url":          c.GenieACSURL,
+		"billing_set":           c.BillingURL != "" && c.BillingToken != "",
+		"radius_set":            c.RadiusURL != "" && c.RadiusToken != "",
+		"mikrotik_set":          c.MikrotikURL != "" && c.MikrotikToken != "",
+		"genieacs_set":          c.GenieACSURL != "" && c.GenieACSToken != "",
+		"billing_token_masked":  maskSecret(c.BillingToken),
+		"radius_token_masked":   maskSecret(c.RadiusToken),
+		"mikrotik_token_masked": maskSecret(c.MikrotikToken),
+		"genieacs_token_masked": maskSecret(c.GenieACSToken),
 	}
+}
+
+// maskSecret mengembalikan bentuk aman sebuah secret untuk ditampilkan ke UI:
+// kosong bila kosong, "••••abcd" (4 karakter terakhir) bila ada.
+func maskSecret(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) <= 4 {
+		return "••••"
+	}
+	return "••••" + s[len(s)-4:]
 }

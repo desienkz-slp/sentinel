@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -13,6 +14,7 @@ import (
 
 	"ainoc/internal/agent"
 	"ainoc/internal/audit"
+	"ainoc/internal/billing"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/correlation"
@@ -61,6 +63,9 @@ type Server struct {
 
 	// Blueprint upgrade: tool dispatcher (registry -> policy -> adapter).
 	disp *tool.Dispatcher
+
+	// Billing adapter (NETORA /api/noc/v1) — nil bila belum dikonfigurasi.
+	billing *billing.Adapter
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -113,6 +118,15 @@ func (s *Server) routes() http.Handler {
 			WAAutoReply *bool     `json:"wa_auto_reply"`
 			WAAsync     *bool     `json:"wa_async"`
 			WAGroup     *bool     `json:"wa_group"`
+			// Endpoint adaptor eksternal (URL + token; token opsional = "tidak diubah").
+			BillingURL    *string `json:"billing_url"`
+			BillingToken  *string `json:"billing_token"`
+			RadiusURL     *string `json:"radius_url"`
+			RadiusToken   *string `json:"radius_token"`
+			MikrotikURL   *string `json:"mikrotik_url"`
+			MikrotikToken *string `json:"mikrotik_token"`
+			GenieACSURL   *string `json:"genieacs_url"`
+			GenieACSToken *string `json:"genieacs_token"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
@@ -160,6 +174,34 @@ func (s *Server) routes() http.Handler {
 		if body.WAGroup != nil {
 			s.cfg.WAGroup = *body.WAGroup
 		}
+		// ---- Endpoint adaptor eksternal (URL + token). ----
+		// Token kosong = "jangan diubah"; URL boleh dikosongkan untuk menonaktifkan.
+		if body.BillingURL != nil {
+			s.cfg.BillingURL = strings.TrimRight(strings.TrimSpace(*body.BillingURL), "/")
+		}
+		if body.BillingToken != nil {
+			s.cfg.BillingToken = strings.TrimSpace(*body.BillingToken)
+		}
+		if body.RadiusURL != nil {
+			s.cfg.RadiusURL = strings.TrimRight(strings.TrimSpace(*body.RadiusURL), "/")
+		}
+		if body.RadiusToken != nil {
+			s.cfg.RadiusToken = strings.TrimSpace(*body.RadiusToken)
+		}
+		if body.MikrotikURL != nil {
+			s.cfg.MikrotikURL = strings.TrimRight(strings.TrimSpace(*body.MikrotikURL), "/")
+		}
+		if body.MikrotikToken != nil {
+			s.cfg.MikrotikToken = strings.TrimSpace(*body.MikrotikToken)
+		}
+		if body.GenieACSURL != nil {
+			s.cfg.GenieACSURL = strings.TrimRight(strings.TrimSpace(*body.GenieACSURL), "/")
+		}
+		if body.GenieACSToken != nil {
+			s.cfg.GenieACSToken = strings.TrimSpace(*body.GenieACSToken)
+		}
+		// Setelah URL/token berubah, daftarkan ulang BillingAdapter bila lengkap.
+		s.syncBillingAdapter()
 		// Tulis ke disk. Tanpa ini pengaturan hanya hidup di memori dan hilang
 		// saat aplikasi di-restart — tombol "Simpan" jadi tidak ada artinya.
 		if err := s.cfg.Save(); err != nil {
@@ -330,6 +372,36 @@ func (s *Server) routes() http.Handler {
 		writeJSON(w, 200, map[string]any{
 			"semua": s.reg.All(),
 			"aktif": aktif,
+		})
+	})
+
+	// Verifikasi koneksi billing (health + uji lookup kering).
+	// Dipakai operator untuk memastikan host + API key benar.
+	mux.HandleFunc("/api/billing/check", func(w http.ResponseWriter, r *http.Request) {
+		if s.billing == nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":      false,
+				"error":   "billing belum dikonfigurasi — isi Host + API Key di Pengaturan",
+				"message": "billing belum dikonfigurasi",
+			})
+			return
+		}
+		ctx, cancel := timeoutCtx(r, 20*time.Second)
+		defer cancel()
+		d, err := s.billing.Ping(ctx)
+		if err != nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":    false,
+				"error": err.Error(),
+			})
+			return
+		}
+		writeJSON(w, 200, map[string]any{
+			"ok":              true,
+			"base_url":        d.BaseURL,
+			"ping_ms":         d.LatencyMS,
+			"total_customers": d.TotalCustomers,
+			"message":         fmt.Sprintf("billing menjawab (total pelanggan: %d)", d.TotalCustomers),
 		})
 	})
 
@@ -792,6 +864,27 @@ func toView(rep agent.Report) wa.ReportView {
 		Answer:     rep.Answer,
 		Balasan:    rep.Balasan,
 		IsChat:     strings.Contains(rep.Engine, "tanpa pengecekan"),
+	}
+}
+
+// syncBillingAdapter menyelaraskan adapter billing dengan cfg saat ini.
+// Dipanggil saat startup (dari main) dan setiap kali /api/config menyimpan
+// perubahan endpoint. Bila URL+token lengkap, adapter dibuat & didaftarkan ke
+// dispatcher; bila tidak, adapter lama dilepas (tool tetap deny-by-default).
+func (s *Server) syncBillingAdapter() {
+	if s.cfg.BillingURL != "" && s.cfg.BillingToken != "" {
+		if s.billing != nil {
+			s.disp.Unregister(s.billing) // ganti endpoint lama
+		}
+		s.billing = billing.New(s.cfg.BillingURL, s.cfg.BillingToken)
+		s.disp.Register(s.billing)
+		log.Printf("[billing] adapter NETORA terdaftar: %s/api/noc/v1 (read-only)", s.cfg.BillingURL)
+	} else {
+		if s.billing != nil {
+			s.disp.Unregister(s.billing)
+			log.Printf("[billing] adapter NETORA dilepas (host/API key dikosongkan)")
+		}
+		s.billing = nil
 	}
 }
 

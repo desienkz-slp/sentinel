@@ -148,8 +148,8 @@ func TestMemoryPathAbsolutDihormati(t *testing.T) {
 	}
 }
 
-// Endpoint adaptor eksternal HANYA dibaca dari env, dan token tidak boleh
-// terserialisasi ke file config (keamanan).
+// Endpoint adaptor eksternal dibaca dari env (env MENANG) ATAU dari config.json
+// (disimpan lewat dashboard Pengaturan). Token TIDAK pernah muncul di Redacted().
 func TestAdapterEndpointFromEnvOnly(t *testing.T) {
 	t.Setenv("NOC_BILLING_URL", "http://billing.internal")
 	t.Setenv("NOC_BILLING_TOKEN", "test-token-billing")
@@ -173,18 +173,21 @@ func TestAdapterEndpointFromEnvOnly(t *testing.T) {
 		t.Errorf("RadiusToken tidak terbaca dari env")
 	}
 
-	// Token TIDAK boleh bocor saat disimpan ke file.
+	// Token boleh disimpan ke config.json (gitignored) — yang penting TIDAK
+	// muncul di Redacted(). config.json sendiri di-.gitignore, aman.
 	c.WAAllowlist = []string{"628111"}
 	if err := c.Save(); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := os.ReadFile(path)
-	if strings.Contains(string(raw), "test-token-billing") || strings.Contains(string(raw), "test-token-radius") {
-		t.Error("token adaptor bocor ke config.json saat Save")
+	// Verifikasi Redacted tidak membocorkan token mentah.
+	for k, v := range c.Redacted() {
+		if s, ok := v.(string); ok && (s == "test-token-billing" || s == "test-token-radius") {
+			t.Errorf("token bocor di Redacted[%q]", k)
+		}
 	}
 }
 
-// Redacted tidak boleh memaparkan token adaptor.
+// Token adaptor TIDAK pernah muncul mentah di Redacted — hanya masked.
 func TestAdapterTokenNotInRedacted(t *testing.T) {
 	t.Setenv("NOC_MIKROTIK_URL", "http://mikrotik.internal")
 	t.Setenv("NOC_MIKROTIK_TOKEN", "test-token-mikrotik")
@@ -201,5 +204,26 @@ func TestAdapterTokenNotInRedacted(t *testing.T) {
 		if s, ok := v.(string); ok && s == "test-token-mikrotik" {
 			t.Errorf("token bocor di Redacted[%q]", k)
 		}
+	}
+	// Masked harus berisi bullet + 4 char terakhir, bukan token utuh.
+	if masked, _ := r["mikrotik_token_masked"].(string); !strings.Contains(masked, "••••") {
+		t.Errorf("mikrotik_token_masked = %q, mau berisi bullet", masked)
+	}
+}
+
+// maskSecret: kosong untuk kosong, bullet untuk nilai pendek, bullet+4char untuk panjang.
+func TestMaskSecret(t *testing.T) {
+	if maskSecret("") != "" {
+		t.Errorf("maskSecret kosong = %q, mau kosong", maskSecret(""))
+	}
+	if maskSecret("ab") != "••••" {
+		t.Errorf("maskSecret pendek = %q, mau ••••", maskSecret("ab"))
+	}
+	got := maskSecret("a3f2e1c9d8b7a6f5")
+	if !strings.HasPrefix(got, "••••") || !strings.HasSuffix(got, "a6f5") {
+		t.Errorf("maskSecret = %q, mau ••••a6f5", got)
+	}
+	if strings.Contains(got, "a3f2e1") {
+		t.Errorf("maskSecret membocorkan prefix: %q", got)
 	}
 }

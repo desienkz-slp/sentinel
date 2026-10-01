@@ -17,7 +17,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -118,13 +117,8 @@ func main() {
 
 	// Daftarkan BillingAdapter (read-only) bila endpoint + API key tersedia.
 	// Tool tetap tidak aktif sampai registry.yaml menandai enabled:true.
-	if cfg.BillingURL != "" && cfg.BillingToken != "" {
-		ba := billing.New(cfg.BillingURL, cfg.BillingToken)
-		disp.Register(ba)
-		log.Printf("[billing] adapter NETORA terdaftar: %s/api/noc/v1 (read-only)", strings.TrimRight(cfg.BillingURL, "/"))
-	} else {
-		log.Printf("[billing] adapter NETORA nonaktif (NOC_BILLING_URL / NOC_BILLING_TOKEN belum diset)")
-	}
+	// (Registrasi sebenarnya dilakukan lewat syncBillingAdapter setelah srv dibuat.)
+	_ = billing.New
 
 	// Hubungkan registry + dispatcher ke agent supaya tool eksternal yang aktif
 	// bisa dipresentasikan ke LLM dan dipanggil lewat gerbang keamanan.
@@ -182,6 +176,9 @@ func main() {
 	}()
 
 	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, disp: disp}
+
+	// Selaraskan BillingAdapter dengan config saat ini (URL+token dari env/config).
+	srv.syncBillingAdapter()
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

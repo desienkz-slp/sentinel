@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"ainoc/internal/adapter"
 	"ainoc/internal/tool"
@@ -109,17 +110,39 @@ func (a *Adapter) ToolNames() []string { return []string{"billing.get_customer"}
 
 // Health memenuhi tool.Adapter: probe dengan GET /customers?per_page=1.
 func (a *Adapter) Health(ctx context.Context) (string, error) {
-	if !a.Configured() {
-		return "", fmt.Errorf("billing belum dikonfigurasi (set NOC_BILLING_URL + NOC_BILLING_TOKEN)")
-	}
-	var out customersResponse
-	if err := a.http.GetJSON(ctx, "/customers?per_page=1", &out); err != nil {
+	d, err := a.Ping(ctx)
+	if err != nil {
 		return "", err
 	}
-	if out.Status != "success" {
-		return "", fmt.Errorf("respons tidak success: %s", out.Status)
+	return fmt.Sprintf("billing menjawab (total pelanggan: %d)", d.TotalCustomers), nil
+}
+
+// PingResult adalah hasil verifikasi koneksi billing untuk dashboard.
+type PingResult struct {
+	BaseURL        string `json:"base_url"`
+	LatencyMS      int64  `json:"ping_ms"`
+	TotalCustomers int    `json:"total_customers"`
+}
+
+// Ping memverifikasi koneksi + auth terhadap NETORA dan mengembalikan detail
+// yang bisa langsung ditampilkan operator (tanpa membocorkan token).
+func (a *Adapter) Ping(ctx context.Context) (PingResult, error) {
+	if !a.Configured() {
+		return PingResult{}, fmt.Errorf("billing belum dikonfigurasi (set host + API key)")
 	}
-	return fmt.Sprintf("billing menjawab (total pelanggan: %d)", out.Meta.Total), nil
+	start := time.Now()
+	var out customersResponse
+	if err := a.http.GetJSON(ctx, "/customers?per_page=1", &out); err != nil {
+		return PingResult{}, err
+	}
+	if out.Status != "success" {
+		return PingResult{}, fmt.Errorf("respons tidak success: %s", out.Status)
+	}
+	return PingResult{
+		BaseURL:        a.http.BaseURL(),
+		LatencyMS:      time.Since(start).Milliseconds(),
+		TotalCustomers: out.Meta.Total,
+	}, nil
 }
 
 // Invoke memenuhi tool.Adapter.

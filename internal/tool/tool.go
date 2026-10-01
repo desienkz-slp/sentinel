@@ -88,6 +88,14 @@ func (d *Dispatcher) Register(a Adapter) {
 	}
 }
 
+// Unregister melepas seluruh tool milik adapter (dipanggil saat konfigurasi
+// adaptor dikosongkan lewat Pengaturan).
+func (d *Dispatcher) Unregister(a Adapter) {
+	for _, name := range a.ToolNames() {
+		delete(d.adapters, name)
+	}
+}
+
 // Adapters mengembalikan daftar domain yang terdaftar (terurut).
 func (d *Dispatcher) Adapters() []string {
 	seen := map[string]bool{}
