@@ -21,15 +21,20 @@ import (
 	"time"
 
 	"ainoc/internal/agent"
+	"ainoc/internal/audit"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
+	"ainoc/internal/incident"
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
 	"ainoc/internal/memory"
+	"ainoc/internal/policy"
+	"ainoc/internal/registry"
 	"ainoc/internal/session"
 	"ainoc/internal/supervisor"
 	"ainoc/internal/wa"
+	"ainoc/internal/workflow"
 )
 
 // portFromURL mengambil port dari base URL gateway (fallback bila gagal).
@@ -82,6 +87,23 @@ func main() {
 	learn := learning.New()
 	engine := agent.New(cfg, client, runner, bridge, sesi, mem, learn)
 
+	// ---- Blueprint upgrade: policy, registry, workflow, incident, audit ----
+	// Semua deny-by-default. Policy & registry memuat file YAML; workflow dimuat
+	// dari direktori; incident & audit dipersist ke JSON (PostgreSQL menyusul).
+	pol := policy.Load(cfg.PolicyPath)
+	reg := registry.Load(cfg.RegistryPath)
+	wkf, wfErr := workflow.LoadDir(cfg.WorkflowDir)
+	if wfErr != nil {
+		log.Printf("[workflow] gagal memuat: %v (lanjut tanpa workflow)", wfErr)
+	}
+	inc := incident.New(cfg.IncidentPath, 500)
+	aud := audit.New(cfg.AuditPath, 2000)
+
+	// Hubungkan incident & audit ke engine supaya tiap diagnosis otomatis
+	// terdokumentasi (blueprint: "Document the incident").
+	engine.Inc = inc
+	engine.Aud = aud
+
 	// WhatsApp Gateway di-vendor di wa-gateway/. Bila ada, Go yang mengelolanya
 	// supaya cukup satu perintah start untuk seluruh aplikasi.
 	var sup *supervisor.Manager
@@ -95,7 +117,7 @@ func main() {
 	}
 	waclient := wa.New(waBase, cfg.WATimeout)
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

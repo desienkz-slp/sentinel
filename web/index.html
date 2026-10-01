@@ -197,6 +197,12 @@
         <tbody id="hist"><tr><td colspan="5" style="color:var(--dim)">Belum ada insiden.</td></tr></tbody>
       </table>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Blueprint NOC <span class="pill" id="bpMode" style="font-size:11px;padding:3px 8px">—</span></h2>
+      <div class="hint" id="bpStat">memuat…</div>
+      <div class="hint">Tool registry &amp; policy engine — semua tool eksternal <b>deny-by-default</b> sampai endpoint &amp; kredensial nyata diberikan.</div>
+    </div>
   </section>
 
   <section>
@@ -527,8 +533,26 @@ async function refreshHistory() {
   } catch(e) {}
 }
 
+// Muat ringkasan blueprint (policy mode + registry + workflow).
+async function refreshBlueprint() {
+  try {
+    const b = await api('/api/blueprint');
+    $('bpMode').textContent = b.mode || '—';
+    const t = b.tools || {};
+    const wf = (b.workflow || []).join(', ') || '—';
+    $('bpStat').innerHTML =
+      `mode: <b>${esc(b.mode)}</b> · tool: <b>${t.aktif}/${t.total}</b> aktif` +
+      ` · workflow: <b>${esc(wf)}</b>` +
+      ` · insiden: <b>${b.incident}</b> · audit: <b>${b.audit}</b>`;
+  } catch(e) {
+    $('bpStat').textContent = 'gagal memuat: ' + e.message;
+  }
+}
+
 boot();
 setInterval(refreshHistory, 15000);
+setInterval(refreshBlueprint, 15000);
+refreshBlueprint();
 </script>
 </body>
 </html>

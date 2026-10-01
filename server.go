@@ -12,16 +12,21 @@ import (
 	"time"
 
 	"ainoc/internal/agent"
+	"ainoc/internal/audit"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
+	"ainoc/internal/incident"
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
 	"ainoc/internal/memory"
+	"ainoc/internal/policy"
+	"ainoc/internal/registry"
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
 	"ainoc/internal/supervisor"
 	"ainoc/internal/wa"
+	"ainoc/internal/workflow"
 )
 
 //go:embed web/*
@@ -38,6 +43,13 @@ type Server struct {
 	sesi   *session.Store
 	mem    *memory.Store
 	learn  *learning.Store
+
+	// Blueprint upgrade: policy, registry, workflow, incident, audit.
+	pol *policy.Engine
+	reg *registry.Registry
+	wkf *workflow.Registry
+	inc *incident.Store
+	aud *audit.Store
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -246,6 +258,69 @@ func (s *Server) routes() http.Handler {
 			"statistik": s.learn.Stats(),
 			"signature": s.learn.Semua(),
 		})
+	})
+
+	// ---- Blueprint upgrade: policy, registry, workflow, incident, audit ----
+
+	// Ringkasan komponen blueprint (untuk dashboard).
+	mux.HandleFunc("/api/blueprint", func(w http.ResponseWriter, r *http.Request) {
+		totalTools, activeTools := s.reg.Count()
+		writeJSON(w, 200, map[string]any{
+			"mode":          s.pol.Mode(),
+			"tools":         map[string]int{"total": totalTools, "aktif": activeTools},
+			"workflow":      s.wkf.Names(),
+			"incident":      s.inc.Len(),
+			"audit":         s.aud.Len(),
+			"policy_path":   s.cfg.PolicyPath,
+			"registry_path": s.cfg.RegistryPath,
+		})
+	})
+
+	// Evaluasi kebijakan untuk satu usulan tindakan (dry, tidak mengeksekusi).
+	mux.HandleFunc("/api/policy/decide", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]string{"error": "gunakan POST"})
+			return
+		}
+		var req policy.Request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		res := s.pol.Decide(req)
+		// Catat ke audit (keputusan kebijakan adalah tindakan penting).
+		s.aud.Record(audit.Entry{
+			EventType:  "policy_decision",
+			Actor:      "policy",
+			EntityType: "tool",
+			EntityID:   req.Tool,
+			After:      map[string]any{"decision": res.Decision, "rule_id": res.RuleID},
+			Note:       "evaluasi kebijakan (tidak mengeksekusi apa pun)",
+		})
+		writeJSON(w, 200, res)
+	})
+
+	// Daftar tool terdaftar (aktif + nonaktif) untuk dashboard.
+	mux.HandleFunc("/api/registry", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{
+			"semua": s.reg.All(),
+			"aktif": s.reg.Enabled(),
+		})
+	})
+
+	// Riwayat insiden terstruktur.
+	mux.HandleFunc("/api/incidents", func(w http.ResponseWriter, r *http.Request) {
+		identity := strings.TrimSpace(r.URL.Query().Get("nomor"))
+		if identity != "" {
+			writeJSON(w, 200, s.inc.ForIdentity(identity))
+			return
+		}
+		writeJSON(w, 200, s.inc.Recent(100))
+	})
+
+	// Jejak audit (append-only).
+	mux.HandleFunc("/api/audit", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, s.aud.Recent(100))
 	})
 
 	// Simpan memory ke disk sekarang (tanpa menunggu berkala).

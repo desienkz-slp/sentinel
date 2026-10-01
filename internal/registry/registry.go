@@ -1,0 +1,142 @@
+// Package registry mengimplementasikan Tool Discovery & Registry dari blueprint.
+//
+// Tujuan: model HANYA boleh melihat tool yang terdaftar, aktif, dan berizin.
+// Tool yang enabled:false TIDAK boleh dipresentasikan ke model maupun dijalankan
+// oleh workflow — ini gerbang keamanan sebelum adaptor API eksternal ada.
+//
+// Semua tool WRITE (Billing/RADIUS/MikroTik/GenieACS) dideklarasikan tapi
+// disabled:false sampai endpoint + kredensial nyata diberikan oleh operator.
+package registry
+
+import (
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Permission & Risk menyalin enum paket policy supaya registry mandiri
+// (menghindari import siklik bila policy nanti memakai registry).
+type Permission string
+
+const (
+	PermRead    Permission = "READ"
+	PermWrite   Permission = "WRITE"
+	PermAdmin   Permission = "ADMIN"
+	PermUnknown Permission = "UNKNOWN"
+)
+
+type Risk string
+
+const (
+	RiskLow    Risk = "LOW"
+	RiskMedium Risk = "MEDIUM"
+	RiskHigh   Risk = "HIGH"
+)
+
+// Tool adalah satu entri katalog.
+type Tool struct {
+	Name           string     `yaml:"name" json:"name"`
+	Domain         string     `yaml:"domain" json:"domain"`
+	Version        string     `yaml:"version" json:"version"`
+	Enabled        bool       `yaml:"enabled" json:"enabled"`
+	Permission     Permission `yaml:"permission" json:"permission"`
+	Risk           Risk       `yaml:"risk" json:"risk"`
+	Scope          string     `yaml:"scope" json:"scope,omitempty"`
+	SourceOfTruth  string     `yaml:"source_of_truth" json:"source_of_truth,omitempty"`
+	TimeoutSeconds int        `yaml:"timeout_seconds" json:"timeout_seconds,omitempty"`
+	Retry          string     `yaml:"retry" json:"retry,omitempty"`
+	Idempotency    string     `yaml:"idempotency" json:"idempotency,omitempty"`
+	Approval       string     `yaml:"approval" json:"approval,omitempty"`
+	Verification   string     `yaml:"verification" json:"verification,omitempty"`
+	Rollback       string     `yaml:"rollback" json:"rollback,omitempty"`
+}
+
+type registryDoc struct {
+	Version string `yaml:"version"`
+	Tools   []Tool `yaml:"tools"`
+}
+
+// Registry adalah katalog tool yang dimuat dari file.
+type Registry struct {
+	tools map[string]Tool
+	order []string
+}
+
+// Load membaca registry YAML. File hilang/tak terbaca -> registry kosong
+// (tidak ada tool yang diekspos; aman).
+func Load(path string) *Registry {
+	r := &Registry{tools: map[string]Tool{}}
+	if path == "" {
+		return r
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return r
+	}
+	var d registryDoc
+	if yaml.Unmarshal(b, &d) != nil {
+		return r
+	}
+	for _, t := range d.Tools {
+		name := strings.TrimSpace(t.Name)
+		if name == "" {
+			continue
+		}
+		r.tools[name] = t
+		r.order = append(r.order, name)
+	}
+	sort.Strings(r.order)
+	return r
+}
+
+// Get mengembalikan tool berdasarkan nama (found=false bila tidak ada).
+func (r *Registry) Get(name string) (Tool, bool) {
+	t, ok := r.tools[name]
+	return t, ok
+}
+
+// Enabled mengembalikan tool yang aktif saja (untuk dipresentasikan ke model).
+func (r *Registry) Enabled() []Tool {
+	var out []Tool
+	for _, name := range r.order {
+		if t := r.tools[name]; t.Enabled {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// All mengembalikan seluruh tool terdaftar (aktif + nonaktif), untuk dashboard.
+func (r *Registry) All() []Tool {
+	out := make([]Tool, 0, len(r.order))
+	for _, name := range r.order {
+		out = append(out, r.tools[name])
+	}
+	return out
+}
+
+// CanInvoke melaporkan apakah tool boleh dipanggil: harus terdaftar DAN aktif.
+func (r *Registry) CanInvoke(name string) (Tool, error) {
+	t, ok := r.tools[name]
+	if !ok {
+		return Tool{}, fmt.Errorf("tool %q tidak terdaftar", name)
+	}
+	if !t.Enabled {
+		return Tool{}, fmt.Errorf("tool %q nonaktif (belum diaktifkan)", name)
+	}
+	return t, nil
+}
+
+// Count mengembalikan (total, aktif).
+func (r *Registry) Count() (int, int) {
+	active := 0
+	for _, t := range r.tools {
+		if t.Enabled {
+			active++
+		}
+	}
+	return len(r.tools), active
+}

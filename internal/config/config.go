@@ -43,6 +43,16 @@ type Config struct {
 	// Kosong = pakai data/memory.json di samping binary.
 	MemoryPath string `json:"memory_path"`
 
+	// ---- Blueprint upgrade: policy, registry, workflow, incident, audit ----
+	// Semua path kosong = pakai lokasi bawaan relatif ke binary. Komponen ini
+	// deny-by-default: tanpa file policy/registry, tidak ada tool eksternal
+	// maupun mutasi yang aktif.
+	PolicyPath   string `json:"policy_path"`
+	RegistryPath string `json:"registry_path"`
+	WorkflowDir  string `json:"workflow_dir"`
+	IncidentPath string `json:"incident_path"`
+	AuditPath    string `json:"audit_path"`
+
 	// path adalah lokasi file config yang sedang dipakai. Disimpan supaya
 	// perubahan dari dashboard bisa ditulis kembali ke file yang SAMA.
 	// Tanpa ini, pengaturan hanya hidup di memori dan hilang saat restart.
@@ -125,22 +135,60 @@ func Default() *Config {
 		CacheTTLMin: 10,
 		SesiTTLMin:  120,
 		MemoryPath:  defaultMemoryPath(),
+
+		// Blueprint upgrade: deny-by-default, path relatif ke binary.
+		PolicyPath:   defaultPolicyPath(),
+		RegistryPath: defaultRegistryPath(),
+		WorkflowDir:  defaultWorkflowDir(),
+		IncidentPath: defaultIncidentPath(),
+		AuditPath:    defaultAuditPath(),
 	}
 }
 
 // defaultMemoryPath menentukan lokasi memory.json.
 func defaultMemoryPath() string {
+	return filepath.Join(dataDir(), "memory.json")
+}
+
+// defaultDataDir mengembalikan folder data/ relatif ke binary (bukan CWD),
+// supaya lokasi konsisten walau aplikasi dijalankan dari folder berbeda.
+func defaultDataDir() string {
+	return dataDir()
+}
+
+// dataDir menghitung folder data/ di samping binary atau root proyek.
+func dataDir() string {
 	if exe, err := os.Executable(); err == nil {
 		base := filepath.Dir(exe)
-		// bin/ai-noc-go.exe -> simpan di <root>/data/memory.json
 		root := filepath.Dir(base)
 		if filepath.Base(base) == "bin" {
-			return filepath.Join(root, "data", "memory.json")
+			return filepath.Join(root, "data")
 		}
-		return filepath.Join(base, "data", "memory.json")
+		return filepath.Join(base, "data")
 	}
-	return filepath.Join("data", "memory.json")
+	return filepath.Join("data")
 }
+
+// defaultPolicyPath, dll. mengembalikan path bawaan untuk komponen blueprint.
+// Semua relatif ke root proyek (di samping binary), bukan CWD.
+func projectRoot() string {
+	if exe, err := os.Executable(); err == nil {
+		base := filepath.Dir(exe)
+		if filepath.Base(base) == "bin" {
+			return filepath.Dir(base)
+		}
+		return base
+	}
+	return "."
+}
+
+func defaultPolicyPath() string {
+	return filepath.Join(projectRoot(), "policies", "default-policy.yaml")
+}
+func defaultRegistryPath() string { return filepath.Join(projectRoot(), "tools", "registry.yaml") }
+func defaultWorkflowDir() string  { return filepath.Join(projectRoot(), "workflows") }
+func defaultIncidentPath() string { return filepath.Join(dataDir(), "incidents.json") }
+func defaultAuditPath() string    { return filepath.Join(dataDir(), "audit.json") }
 
 // resolveWADir mencari folder gateway WA: eksplisit -> di samping exe -> CWD.
 func resolveWADir(explicit string) string {
@@ -220,6 +268,22 @@ func Load(path string) *Config {
 	if strings.TrimSpace(c.MemoryPath) == "" {
 		c.MemoryPath = defaultMemoryPath()
 	}
+	// Path komponen blueprint yang kosong = pakai lokasi bawaan.
+	if strings.TrimSpace(c.PolicyPath) == "" {
+		c.PolicyPath = defaultPolicyPath()
+	}
+	if strings.TrimSpace(c.RegistryPath) == "" {
+		c.RegistryPath = defaultRegistryPath()
+	}
+	if strings.TrimSpace(c.WorkflowDir) == "" {
+		c.WorkflowDir = defaultWorkflowDir()
+	}
+	if strings.TrimSpace(c.IncidentPath) == "" {
+		c.IncidentPath = defaultIncidentPath()
+	}
+	if strings.TrimSpace(c.AuditPath) == "" {
+		c.AuditPath = defaultAuditPath()
+	}
 
 	if v := getenv("NOC_ADDR"); v != "" {
 		c.Addr = v
@@ -261,6 +325,21 @@ func Load(path string) *Config {
 	c.SesiTTLMin = atoi(getenv("NOC_SESI_TTL_MIN"), c.SesiTTLMin)
 	if v := getenv("NOC_MEMORY_PATH"); v != "" {
 		c.MemoryPath = v
+	}
+	if v := getenv("NOC_POLICY_PATH"); v != "" {
+		c.PolicyPath = v
+	}
+	if v := getenv("NOC_REGISTRY_PATH"); v != "" {
+		c.RegistryPath = v
+	}
+	if v := getenv("NOC_WORKFLOW_DIR"); v != "" {
+		c.WorkflowDir = v
+	}
+	if v := getenv("NOC_INCIDENT_PATH"); v != "" {
+		c.IncidentPath = v
+	}
+	if v := getenv("NOC_AUDIT_PATH"); v != "" {
+		c.AuditPath = v
 	}
 	if v := getenv("NOC_WA_DIR"); v != "" {
 		c.WADir = v
@@ -320,5 +399,10 @@ func (c *Config) Redacted() map[string]any {
 		"cache_ttl_min": c.CacheTTLMin,
 		"sesi_ttl_min":  c.SesiTTLMin,
 		"memory_path":   c.MemoryPath,
+		"policy_path":   c.PolicyPath,
+		"registry_path": c.RegistryPath,
+		"workflow_dir":  c.WorkflowDir,
+		"incident_path": c.IncidentPath,
+		"audit_path":    c.AuditPath,
 	}
 }

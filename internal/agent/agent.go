@@ -11,9 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"ainoc/internal/audit"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
+	"ainoc/internal/incident"
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
 	"ainoc/internal/memory"
@@ -78,6 +80,8 @@ type Engine struct {
 	Sesi  *session.Store
 	Mem   *memory.Store
 	Learn *learning.Store
+	Inc   *incident.Store
+	Aud   *audit.Store
 
 	mu      sync.Mutex
 	reports []Report
@@ -453,6 +457,47 @@ func (e *Engine) catat(klas HasilKlasifikasi, konteks KonteksAI, rep Report) {
 			Signature: string(konteks.Signature), Intent: string(klas.Intent),
 			Verdict: rep.Verdict, Confidence: rep.Confidence,
 			Target: rep.Target, Probes: probes, Engine: rep.Engine,
+		})
+	}
+
+	// --- INCIDENT STORE: rekam insiden terstruktur (blueprint §28, §31) ---
+	if e.Inc != nil {
+		inc := incident.Incident{
+			ID:         rep.ID,
+			Status:     incident.StatusInvestigating,
+			Source:     "whatsapp",
+			Identity:   klas.Key,
+			Intent:     string(klas.Intent),
+			Query:      truncate(rep.Query, 200),
+			Target:     rep.Target,
+			Verdict:    rep.Verdict,
+			Confidence: rep.Confidence,
+			StartedAt:  rep.StartedAt,
+			RequestID:  rep.ID,
+		}
+		if len(probes) == 0 {
+			inc.Status = incident.StatusClosed // sapaan/info: bukan gangguan nyata
+		}
+		if rep.Error != "" {
+			inc.Status = incident.StatusUnknown
+		}
+		e.Inc.Add(inc)
+	}
+
+	// --- AUDIT: rekam keputusan diagnosa (append-only) ---
+	if e.Aud != nil {
+		e.Aud.Record(audit.Entry{
+			EventType:  "diagnosis",
+			Actor:      "agent",
+			EntityType: "incident",
+			EntityID:   rep.ID,
+			After: map[string]any{
+				"verdict":    rep.Verdict,
+				"confidence": rep.Confidence,
+				"engine":     rep.Engine,
+				"probes":     probes,
+			},
+			Note: "diagnosis selesai",
 		})
 	}
 

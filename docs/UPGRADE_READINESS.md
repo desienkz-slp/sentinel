@@ -15,10 +15,39 @@
 | Basic diagnostics | Whitelisted ping, DNS, TCP, HTTP, traceroute, RADIUS/interface/service/system probes | Ready |
 | Per-sender history/cache | In-process session and file-backed memory | Transitional |
 | LLM gateway | OpenAI-compatible LLM client through 9Router | Ready |
-| Incident storage / audit | JSON memory only | Upgrade required |
-| Policies / approvals | Not yet enforced for operational mutations | Upgrade required |
+| **Policy engine** | `internal/policy` — deny-by-default, risk gates, mode gates | **Implemented (COPILOT)** |
+| **Tool registry** | `internal/registry` — declared-but-disabled, `CanInvoke` gate | **Implemented** |
+| **Workflow engine** | `internal/workflow` — deterministic step definitions from YAML | **Implemented** |
+| **Incident store** | `internal/incident` — structured incident records (JSON-backed) | **Implemented** |
+| **Audit log** | `internal/audit` — append-only, monotonic IDs | **Implemented** |
 | API adapters | None for Billing/RADIUS/GenieACS/MikroTik | Awaiting endpoint contracts |
 | Redis/PostgreSQL/pgvector | Infrastructure definition included; services not yet provisioned | Prepared |
+
+## Implemented (this pass)
+
+### Security core (deny-by-default, verified live)
+
+- `internal/policy` — Policy/Risk engine. Rule match → permission default → risk gate → mode gate. Loaded from `policies/default-policy.yaml`.
+- `internal/registry` — Tool catalog. `CanInvoke` refuses anything not registered or not enabled. Loaded from `tools/registry.yaml` (5 tools declared, **0 active**).
+- `internal/workflow` — deterministic workflow definitions loaded from `workflows/*.yaml`.
+- `internal/incident` — structured incident store; every diagnosis auto-records an incident (`data/incidents.json`).
+- `internal/audit` — append-only audit log with monotonic IDs (`data/audit.json`).
+
+### New endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/blueprint` | Policy mode, tool counts, workflow names, incident/audit counts |
+| `POST /api/policy/decide` | Evaluate one proposed action (dry, never executes) |
+| `GET /api/registry` | All tools + enabled tools |
+| `GET /api/incidents` | Structured incident history (`?nomor=` filters) |
+| `GET /api/audit` | Append-only audit trail |
+
+### Verified decisions (live)
+
+- `WRITE` + `multi_customer` → **DENY** (rule `deny-mass-actions`)
+- `READ` + `single_customer` → **ALLOW** (rule `readonly-diagnostics`)
+- Every WhatsApp diagnosis now auto-documents to incident + audit.
 
 ## Upgrade Stages
 
