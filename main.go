@@ -88,7 +88,7 @@ func main() {
 	waBase := cfg.WABaseURL
 	if cfg.WADir != "" {
 		port := portFromURL(waBase, 3001)
-		sup = supervisor.New(cfg.WADir, port, nil, 120)
+		sup = supervisor.New(cfg.WADir, port, nil, 500)
 		// Pastikan klien WA menunjuk ke port proses yang kita kelola.
 		waBase = sup.BaseURL()
 		cfg.WABaseURL = waBase

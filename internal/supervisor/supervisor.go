@@ -169,6 +169,10 @@ func (m *Manager) log(line string) {
 	if strings.TrimSpace(line) == "" {
 		return
 	}
+	// Tampilkan juga ke stdout aplikasi induk. Tanpa ini, log gateway hanya
+	// tersimpan di buffer dalam memori yang cepat penuh oleh banjir pesan grup,
+	// sehingga jejak percobaan kirim/hapus balasan hilang saat diperiksa.
+	fmt.Println("[gw] " + line)
 	m.mu.Lock()
 	m.logs = append(m.logs, line)
 	if len(m.logs) > m.LogLines {

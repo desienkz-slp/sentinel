@@ -301,6 +301,12 @@ class SessionManager {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
+          // Seluruh pemrosesan satu pesan dibungkus try/catch. Tanpa ini, satu
+          // exception (mis. field yang tidak ada di versi baileys baru) membuat
+          // SELURUH pesan dalam batch dilewati diam-diam: pesan masuk tercatat
+          // di log, tetapi tidak pernah diteruskan ke webhook dan tidak ada
+          // pesan error sama sekali. Itulah gejala "bot tidak membalas".
+          try {
           // Abaikan status broadcast.
           if (msg.key.remoteJid === 'status@broadcast') continue;
 
@@ -401,6 +407,14 @@ class SessionManager {
 
           // Dispatch to n8n webhook and fallback orchestrator
           await webhookDispatcher.dispatchInbound(this.lastIncoming, this);
+          } catch (msgErr) {
+            // Jangan biarkan satu pesan bermasalah membatalkan sisanya, dan
+            // JANGAN telan errornya: inilah satu-satunya jejak saat pesan masuk
+            // tapi tidak pernah diproses lebih lanjut.
+            console.error(`[WA-ERROR] gagal memproses pesan ${msg?.key?.id || '?'}: ${msgErr?.message}`);
+            console.error(msgErr?.stack || '');
+            this.addLog(`Gagal memproses pesan ${msg?.key?.id || '?'}: ${msgErr?.message}`, 'ERROR');
+          }
         }
       });
 
@@ -473,11 +487,38 @@ class SessionManager {
       throw new Error(`Cannot send message: Gateway is ${this.status}`);
     }
 
-    // Format target JID properly (Preserve @lid, @s.whatsapp.net, @g.us)
+    // Format target JID properly (Preserve @s.whatsapp.net, @g.us)
     let jid = String(to).trim();
     if (!jid.includes('@')) {
       const cleanNumber = jid.replace(/[^0-9]/g, '');
       jid = `${cleanNumber}@s.whatsapp.net`;
+    }
+
+    // PENTING: jangan kirim ke JID @lid. Pengiriman ke @lid gagal karena
+    // WhatsApp memerlukan nomor telepon (PN) sebagai tujuan. Bila tujuan
+    // berupa LID yang sudah kita kenali nomornya, ubah ke nomor telepon.
+    if (jid.endsWith('@lid')) {
+      const lid = jid.split('@')[0];
+      const nomor = this.lidToPhone.get(lid);
+      if (nomor) {
+        console.log(`[WA-OUTBOUND] tujuan @lid ${jid} -> dialihkan ke nomor ${nomor}@s.whatsapp.net`);
+        jid = `${nomor}@s.whatsapp.net`;
+      } else {
+        // Belum tahu nomornya: coba resolver resmi baileys.
+        try {
+          const pn = await this.sock?.signalRepository?.lidMapping?.getPNForLID(jid);
+          if (pn) {
+            const n = String(pn).split('@')[0].split(':')[0];
+            this.lidToPhone.set(lid, n);
+            console.log(`[WA-OUTBOUND] tujuan @lid ${jid} -> ${n}@s.whatsapp.net (resolver resmi)`);
+            jid = `${n}@s.whatsapp.net`;
+          } else {
+            console.log(`[WA-OUTBOUND] PERINGATAN: ${jid} tidak bisa diresolusi ke nomor telepon; mengirim apa adanya (kemungkinan gagal)`);
+          }
+        } catch (e) {
+          console.log(`[WA-OUTBOUND] PERINGATAN: resolusi ${jid} gagal (${e.message}); mengirim apa adanya`);
+        }
+      }
     }
 
     const timestamp = new Date().toISOString();

@@ -45,7 +45,24 @@ class WebhookDispatcher {
 
       // If n8n returns a direct reply in body, dispatch back to WhatsApp
       if (resp.data && resp.data.reply && sessionManager) {
-        await sessionManager.sendMessage(payload.chat_id, resp.data.reply);
+        sessionManager.addLog(`Balasan diterima dari AI-NOC (${resp.data.reply.length} chars) -> mengirim ke ${payload.chat_id}`);
+        try {
+          await sessionManager.sendMessage(payload.chat_id, resp.data.reply);
+        } catch (sendErr) {
+          // Jangan telan error kirim: tanpa log ini, pesan yang gagal terkirim
+          // tampak seperti "bot tidak membalas" padahal balasannya sudah dibuat.
+          console.error(`[Webhook] GAGAL mengirim balasan ke ${payload.chat_id}: ${sendErr.message}`);
+          sessionManager.addLog(`GAGAL mengirim balasan ke ${payload.chat_id}: ${sendErr.message}`, 'ERROR');
+          return { success: false, via: 'n8n', status: resp.status, error: sendErr.message };
+        }
+      } else if (resp.data) {
+        // Server menerima pesan tetapi tidak menyertakan balasan. Ini penyebab
+        // paling umum "tidak dibalas": pesan ditolak allowlist, diabaikan
+        // sebagai pesan grup, atau auto-reply dimatikan.
+        sessionManager?.addLog(
+          `Tidak ada balasan untuk ${payload.chat_id} (accepted=${resp.data.accepted}, note=${resp.data.note || '-'})`,
+          'WARN'
+        );
       }
 
       return { success: true, via: 'n8n', status: resp.status, data: resp.data };
