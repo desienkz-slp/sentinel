@@ -56,10 +56,13 @@ func TestParseAllowlist(t *testing.T) {
 	}
 }
 
-func TestIdentityPrefersChatID(t *testing.T) {
+// Identity mengutamakan SENDER (nomor telepon hasil resolusi gateway), bukan
+// chat_id. WhatsApp kini mengirim sebagian chat sebagai @lid; memakai chat_id
+// membuat nomor tidak cocok dengan allowlist sehingga pesan pelanggan ditolak.
+func TestIdentityUtamakanSender(t *testing.T) {
 	m := InboundMessage{ChatID: "628111@s.whatsapp.net", Sender: "628111"}
-	if m.Identity() != "628111@s.whatsapp.net" {
-		t.Errorf("Identity = %q", m.Identity())
+	if m.Identity() != "628111" {
+		t.Errorf("Identity = %q, mau %q (sender)", m.Identity(), "628111")
 	}
 	m2 := InboundMessage{Sender: "628222"}
 	if m2.Identity() != "628222" {
@@ -212,5 +215,69 @@ func TestSendWithoutGateway(t *testing.T) {
 	}
 	if _, err := c2.Send(nil, "628111", "   "); err == nil {
 		t.Error("Send() harus menolak pesan kosong")
+	}
+}
+
+// Identity harus memakai nomor telepon, bukan @lid. Bug nyata: pesan masuk
+// dengan chat_id=111111111111111@lid (LID) dan sender=628111222333 (nomor
+// hasil resolusi gateway). Memakai ChatID membuat nomor tidak cocok dengan
+// allowlist sehingga pesan pelanggan ikut ditolak.
+func TestIdentityUtamakanNomorBukanLID(t *testing.T) {
+	m := InboundMessage{
+		ChatID: "111111111111111@lid",
+		Sender: "628111222333",
+	}
+	if got := m.Identity(); got != "628111222333" {
+		t.Errorf("Identity()=%q, mau nomor telepon 628111222333 (bukan LID)", got)
+	}
+}
+
+// Pesan dari nomor biasa (tanpa LID) tetap memakai sender.
+func TestIdentityNomorBiasa(t *testing.T) {
+	m := InboundMessage{ChatID: "628111222333@s.whatsapp.net", Sender: "628111222333"}
+	if got := m.Identity(); got != "628111222333" {
+		t.Errorf("Identity()=%q, mau 628111222333", got)
+	}
+}
+
+// Bila sender kosong, pakai chat_id selama bukan LID.
+func TestIdentityFallbackChatID(t *testing.T) {
+	m := InboundMessage{ChatID: "628999888777@s.whatsapp.net"}
+	if got := m.Identity(); got != "628999888777@s.whatsapp.net" {
+		t.Errorf("Identity()=%q, mau chat_id", got)
+	}
+}
+
+// Bila keduanya LID, kembalikan apa adanya supaya tetap tercatat di log
+// (jangan mengembalikan string kosong yang membuat pesan tak bisa dilacak).
+func TestIdentityKeduanyaLID(t *testing.T) {
+	m := InboundMessage{ChatID: "222222222222222@lid", Sender: "222222222222222@lid"}
+	if got := m.Identity(); got == "" {
+		t.Error("Identity() kosong; harus mengembalikan LID apa adanya")
+	}
+}
+
+func TestIsLID(t *testing.T) {
+	cases := map[string]bool{
+		"111111111111111@lid":         true,
+		"222222222222222@LID":         true, // huruf besar tetap dikenali
+		"628123456789@s.whatsapp.net": false,
+		"628123456789":                false,
+		"120363000000000000@g.us":     false,
+		"":                            false,
+	}
+	for in, mau := range cases {
+		if got := IsLID(in); got != mau {
+			t.Errorf("IsLID(%q)=%v, mau %v", in, got, mau)
+		}
+	}
+}
+
+// Allowlist harus cocok dengan nomor hasil resolusi, walau chat datang @lid.
+func TestAllowlistCocokDenganNomorHasilResolusi(t *testing.T) {
+	allow := []string{"628111222333"}
+	m := InboundMessage{ChatID: "111111111111111@lid", Sender: "628111222333"}
+	if !Allowed(allow, m.Identity()) {
+		t.Error("pesan dari nomor terdaftar ditolak karena identitas memakai LID")
 	}
 }

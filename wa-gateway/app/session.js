@@ -24,6 +24,56 @@ const DB_NAME = process.env.DB_NAME || 'noc_sentinel';
 const DB_USER = process.env.DB_USER || 'noc_admin';
 const DB_PASS = process.env.DB_PASS || 'noc_sentinel_secret_2026';
 
+/**
+ * Tentukan identitas pengirim (nomor telepon) dari sebuah pesan WhatsApp.
+ *
+ * WhatsApp kini mengirim sebagian pesan dengan identitas @lid (Linked ID):
+ * deretan angka panjang, BUKAN nomor telepon. Kalau LID dipakai apa adanya,
+ * nomor tidak cocok dengan allowlist dan pesan pelanggan ikut ditolak.
+ *
+ * Nomor telepon asli tersedia di participantPn (grup) / senderPn (pribadi),
+ * yang diisi baileys dari atribut stanza sender_pn / participant_pn.
+ *
+ * @param {object} key   msg.key dari baileys
+ * @param {object} opsi  { nomorGateway, petaLid } — untuk pesan dari diri
+ *                       sendiri dan pemetaan LID yang sudah pernah tercatat
+ * @returns {{nomor: string, lid: string, sumber: string, jid: string}}
+ */
+function resolusiIdentitas(key = {}, opsi = {}) {
+  const petaLid = opsi.petaLid || new Map();
+  const nomorGateway = opsi.nomorGateway || '';
+  const jid = key.remoteJid || '';
+
+  // Pisahkan nomor dari JID: "628xx@s.whatsapp.net" -> "628xx"
+  const bersihkan = (v) => String(v || '').split('@')[0].split(':')[0];
+
+  const lidAsli = key.senderLid || key.participantLid || '';
+  const pnAsli = key.participantPn || key.senderPn || '';
+
+  let nomor = bersihkan(pnAsli);
+  let sumber = 'pn';
+
+  if (!nomor) {
+    if (key.fromMe && nomorGateway) {
+      // Pesan dari diri sendiri ("pesan tersimpan"/catatan operator): tidak ada
+      // senderPn, jadi pakai nomor gateway sendiri supaya dikenali operator.
+      nomor = bersihkan(nomorGateway);
+      sumber = 'gateway';
+    } else {
+      nomor = bersihkan(key.participant || jid);
+      sumber = 'jid';
+    }
+  }
+
+  // Masih berupa LID? Pakai pemetaan yang pernah tercatat.
+  if (nomor && petaLid.has(nomor)) {
+    nomor = petaLid.get(nomor);
+    sumber = 'peta';
+  }
+
+  return { nomor, lid: bersihkan(lidAsli), sumber, jid };
+}
+
 class SessionManager {
   constructor() {
     this.sock = null;
@@ -42,6 +92,11 @@ class SessionManager {
     // "balasan kita sendiri" dari "pesan yang operator ketik sendiri".
     // Tanpa ini, memproses pesan fromMe akan membuat loop balasan tak berujung.
     this.sentIds = new Map(); // id -> timestamp (ms)
+    // Pemetaan LID (Linked ID) -> nomor telepon asli. WhatsApp memakai LID
+    // untuk sebagian pengirim; tanpa pemetaan ini, pesan mereka tidak bisa
+    // dicocokkan dengan allowlist dan ikut ditolak.
+    this.lidToPhone = new Map(); // lid -> nomor telepon
+    this.phoneNumber = null; // nomor gateway sendiri (diisi saat sesi tersambung)
     this.recentLogs = [];
     this.dbPool = null;
 
@@ -280,7 +335,50 @@ class SessionManager {
           if (!text.trim()) continue;
 
           const senderJid = msg.key.remoteJid || '';
-          const senderPhone = (msg.key.participant || senderJid).split('@')[0].split(':')[0];
+
+          // Resolusi identitas: ubah @lid (Linked ID) menjadi nomor telepon.
+          // Tanpa ini, pesan dari pelanggan yang dikirim WhatsApp sebagai @lid
+          // tidak cocok dengan allowlist dan ikut ditolak.
+          const ident = resolusiIdentitas(msg.key, {
+            nomorGateway: this.phone,
+            petaLid: this.lidToPhone
+          });
+          let senderPhone = ident.nomor;
+
+          // Bila hasilnya masih berupa LID, tanyakan ke resolver RESMI baileys
+          // (getPNForLID) — ini membaca pemetaan dari sesi WhatsApp sendiri,
+          // bukan menebak dari bentuk angka. Hanya tersedia di baileys v7+.
+          const masihLid = ident.sumber === 'jid' && senderJid.endsWith('@lid');
+          if (masihLid) {
+            const lidJid = senderJid;
+            try {
+              const pn = await this.sock?.signalRepository?.lidMapping?.getPNForLID(lidJid);
+              if (pn) {
+                const nomorAsli = String(pn).split('@')[0].split(':')[0];
+                if (nomorAsli) {
+                  senderPhone = nomorAsli;
+                  console.log(`[WA-LID] resolver resmi: ${lidJid} -> ${nomorAsli}`);
+                }
+              } else {
+                console.log(`[WA-LID] resolver resmi tidak mengenal ${lidJid}`);
+              }
+            } catch (e) {
+              console.log(`[WA-LID] resolver resmi gagal untuk ${lidJid}: ${e.message}`);
+            }
+          }
+
+          // Catat pemetaan LID -> nomor telepon supaya pesan berikutnya dari
+          // pengirim yang sama tetap dikenali tanpa perlu tanya ulang.
+          if (ident.lid && senderPhone && ident.lid !== senderPhone) {
+            this.lidToPhone.set(ident.lid, senderPhone);
+          }
+
+          // Diagnostik: tampilkan field identitas mentah untuk pesan @lid,
+          // supaya pemetaannya bisa diverifikasi langsung dari log.
+          if (senderJid.endsWith('@lid') || ident.lid) {
+            console.log(`[WA-LID] remote_jid=${senderJid} senderPn=${msg.key.senderPn || '-'} participantPn=${msg.key.participantPn || '-'} senderLid=${msg.key.senderLid || '-'} -> nomor=${senderPhone || 'TIDAK DIKETAHUI'} (sumber=${ident.sumber})`);
+          }
+
           const senderName = msg.pushName || senderPhone;
           const msgId = msg.key.id || `msg_${Date.now()}`;
           const timestamp = new Date(Number(msg.messageTimestamp) * 1000 || Date.now()).toISOString();

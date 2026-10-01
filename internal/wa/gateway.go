@@ -31,12 +31,33 @@ type InboundMessage struct {
 	Type       string `json:"type"`
 }
 
-// Identity mengembalikan id yang dipakai untuk allowlist (chat_id diutamakan).
+// Identity mengembalikan identitas pengirim untuk keperluan allowlist, sesi,
+// cache, dan memory.
+//
+// PENTING: utamakan Sender (nomor telepon hasil resolusi gateway), bukan
+// ChatID. WhatsApp kini mengirim sebagian chat sebagai @lid (Linked ID) —
+// deretan angka panjang yang BUKAN nomor telepon. Memakai ChatID membuat nomor
+// tidak cocok dengan allowlist sehingga pesan pelanggan ikut ditolak.
 func (m InboundMessage) Identity() string {
-	if strings.TrimSpace(m.ChatID) != "" {
-		return strings.TrimSpace(m.ChatID)
+	if s := strings.TrimSpace(m.Sender); s != "" && !IsLID(s) {
+		return s
 	}
-	return strings.TrimSpace(m.Sender)
+	// ChatID adalah nomor telepon asli (bukan LID) — pakai itu.
+	if c := strings.TrimSpace(m.ChatID); c != "" && !IsLID(c) {
+		return c
+	}
+	// Keduanya LID/tidak diketahui: kirim apa adanya supaya tetap tercatat
+	// dan bisa didiagnosis dari log.
+	if s := strings.TrimSpace(m.Sender); s != "" {
+		return s
+	}
+	return strings.TrimSpace(m.ChatID)
+}
+
+// IsLID melaporkan apakah identitas berupa @lid (Linked ID) — deretan angka
+// panjang yang bukan nomor telepon.
+func IsLID(v string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(v)), "@lid")
 }
 
 // Reply adalah respons yang kita kembalikan ke gateway.
