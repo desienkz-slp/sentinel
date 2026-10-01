@@ -181,6 +181,8 @@ func main() {
 	srv.syncBillingAdapter()
 	// Selaraskan MikrotikAdapter (host+user+pass dari env/config).
 	srv.syncMikrotikAdapter()
+	// Selaraskan RadiusAdapter (host+API token dari env/config).
+	srv.syncRadiusAdapter()
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

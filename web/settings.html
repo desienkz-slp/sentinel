@@ -61,6 +61,7 @@
   <div class="pill"><span class="dot" id="dotCodex"></span><span id="txtCodex">Codex…</span></div>
   <div class="pill"><span class="dot" id="dotBilling"></span><span id="txtBilling">Billing…</span></div>
   <div class="pill"><span class="dot" id="dotMikrotik"></span><span id="txtMikrotik">MikroTik…</span></div>
+  <div class="pill"><span class="dot" id="dotRadius"></span><span id="txtRadius">RADIUS…</span></div>
 </header>
 
 <main>
@@ -106,8 +107,8 @@
       <div><label for="billingKey">API Key Billing (X-NOC-API-Key)</label><input id="billingKey" type="password" placeholder="•••• (kosongkan = tidak diubah)"></div>
     </div>
     <div class="row">
-      <div><label for="radiusUrl">Host RADIUS</label><input id="radiusUrl" placeholder="http://192.168.1.10"></div>
-      <div><label for="radiusKey">API Key RADIUS</label><input id="radiusKey" type="password" placeholder="••••"></div>
+      <div><label for="radiusUrl">Host RADIUS (Radius UI)</label><input id="radiusUrl" placeholder="http://192.168.1.100:3001"></div>
+      <div><label for="radiusKey">API Token RADIUS (Bearer)</label><input id="radiusKey" type="password" placeholder="••••"></div>
     </div>
     <div class="row">
       <div><label for="mikrotikHost">Host MikroTik (tanpa skema)</label><input id="mikrotikHost" placeholder="192.168.1.10"></div>
@@ -133,6 +134,7 @@
       <button onclick="saveIntegrations()">Simpan Integrasi</button>
       <button class="ghost" onclick="checkBilling()">Tes koneksi Billing</button>
       <button class="ghost" onclick="checkMikrotik()">Tes koneksi MikroTik</button>
+      <button class="ghost" onclick="checkRadius()">Tes koneksi RADIUS</button>
     </div>
     <div class="hint" id="intMsg"></div>
     <div class="status" id="intStatus"></div>
@@ -176,6 +178,7 @@ function statusIntegrasi(c) {
   ].join('<br>');
   setDot('Billing', !!c.billing_set, c.billing_set ? 'Billing dikonfigurasi' : 'Billing belum diset');
   setDot('Mikrotik', !!c.mikrotik_set, c.mikrotik_set ? 'MikroTik dikonfigurasi' : 'MikroTik belum diset');
+  setDot('Radius', !!c.radius_set, c.radius_set ? 'RADIUS dikonfigurasi' : 'RADIUS belum diset');
 }
 
 async function boot() {
@@ -286,6 +289,21 @@ async function checkMikrotik() {
       msg('intMsg', false, 'MikroTik GAGAL: ' + (d.error || 'tidak terhubung'));
     }
   } catch(e){ setDot('Mikrotik', false, 'MikroTik error'); msg('intMsg', false, 'Gagal: ' + e.message); }
+}
+
+async function checkRadius() {
+  msg('intMsg', null, 'Menguji koneksi RADIUS…');
+  setDot('Radius', false, 'menguji…');
+  try {
+    const d = await api('/api/radius/check');
+    if (d.ok) {
+      setDot('Radius', true, `RADIUS OK (${d.ping_ms}ms)`);
+      msg('intMsg', true, `RADIUS OK: cpu ${d.cpu_load}% · ${d.user_count} user · ${d.ping_ms}ms`);
+    } else {
+      setDot('Radius', false, 'RADIUS gagal');
+      msg('intMsg', false, 'RADIUS GAGAL: ' + (d.error || 'tidak terhubung'));
+    }
+  } catch(e){ setDot('Radius', false, 'RADIUS error'); msg('intMsg', false, 'Gagal: ' + e.message); }
 }
 
 async function pingLLM() {

@@ -35,14 +35,49 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
-    description: Ambil status sesi autentikasi RADIUS untuk sebuah pelanggan.
+    description: Ambil status sesi aktif PPP dari Radius UI (ip, durasi, traffic).
     parameters:
       type: object
       properties:
         identity:
           type: string
-          description: Nomor telepon ternormalisasi (628xxx) atau username PPPoE.
-      required: [identity]
+          description: Username PPP (opsional; kosong = semua sesi aktif).
+      required: []
+
+  - name: radius.get_user
+    domain: radius
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: radius
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+    description: Ambil data user PPP (profil, NAS, status) dari Radius UI.
+    parameters:
+      type: object
+      properties:
+        identity:
+          type: string
+          description: Username PPP (opsional; kosong = semua user).
+      required: []
+
+  - name: radius.get_system_stats
+    domain: radius
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: radius
+    timeout_seconds: 8
+    retry: safe_get
+    verification: response_contract
+    description: Statistik server Radius UI (CPU/RAM/db/jumlah user).
+    parameters:
+      type: object
+      properties: {}
+      required: []
 
   - name: mikrotik.get_pppoe_status
     domain: mikrotik

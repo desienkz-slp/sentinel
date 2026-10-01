@@ -27,6 +27,7 @@ import (
 	"ainoc/internal/memory"
 	"ainoc/internal/mikrotik"
 	"ainoc/internal/policy"
+	"ainoc/internal/radius"
 	"ainoc/internal/registry"
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
@@ -70,6 +71,9 @@ type Server struct {
 
 	// MikroTik adapter (RouterOS v7 REST) — nil bila belum dikonfigurasi.
 	mikrotik *mikrotik.Adapter
+
+	// Radius adapter (NETORA Radius UI, HTTP REST) — nil bila belum dikonfigurasi.
+	radius *radius.Adapter
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -219,6 +223,7 @@ func (s *Server) routes() http.Handler {
 		// Setelah URL/token berubah, daftarkan ulang adapter bila lengkap.
 		s.syncBillingAdapter()
 		s.syncMikrotikAdapter()
+		s.syncRadiusAdapter()
 		// Tulis ke disk. Tanpa ini pengaturan hanya hidup di memori dan hilang
 		// saat aplikasi di-restart — tombol "Simpan" jadi tidak ada artinya.
 		if err := s.cfg.Save(); err != nil {
@@ -451,6 +456,38 @@ func (s *Server) routes() http.Handler {
 			"uptime":     d.Uptime,
 			"cpu_load":   d.CPU,
 			"message":    fmt.Sprintf("mikrotik menjawab (RouterOS v%s, %s)", d.Version, d.BoardName),
+		})
+	})
+
+	// Verifikasi koneksi Radius UI (GET /api/system/stats) untuk dashboard.
+	mux.HandleFunc("/api/radius/check", func(w http.ResponseWriter, r *http.Request) {
+		if s.radius == nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":      false,
+				"error":   "radius belum dikonfigurasi — isi Host + API Token di Pengaturan",
+				"message": "radius belum dikonfigurasi",
+			})
+			return
+		}
+		ctx, cancel := timeoutCtx(r, 20*time.Second)
+		defer cancel()
+		d, err := s.radius.Ping(ctx)
+		if err != nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":    false,
+				"error": err.Error(),
+			})
+			return
+		}
+		writeJSON(w, 200, map[string]any{
+			"ok":                  true,
+			"base_url":            d.BaseURL,
+			"ping_ms":             d.LatencyMS,
+			"cpu_load":            d.CPULoad,
+			"memory_used_percent": d.MemUsed,
+			"user_count":          d.UserCount,
+			"db_size_mb":          d.DBSizeMB,
+			"message":             fmt.Sprintf("radius menjawab (cpu %s%%, %d user)", d.CPULoad, d.UserCount),
 		})
 	})
 
@@ -961,6 +998,27 @@ func (s *Server) syncMikrotikAdapter() {
 			log.Printf("[mikrotik] adapter RouterOS dilepas (host/username dikosongkan)")
 		}
 		s.mikrotik = nil
+	}
+}
+
+// syncRadiusAdapter menyelaraskan adapter Radius UI dengan cfg saat ini.
+// Dipanggil saat startup dan setiap /api/config menyimpan perubahan. Bila
+// URL+token lengkap, adapter dibuat & didaftarkan (tool deny-by-default sampai
+// registry enabled:true); bila tidak, adapter lama dilepas.
+func (s *Server) syncRadiusAdapter() {
+	if s.cfg.RadiusURL != "" && s.cfg.RadiusToken != "" {
+		if s.radius != nil {
+			s.disp.Unregister(s.radius)
+		}
+		s.radius = radius.New(s.cfg.RadiusURL, s.cfg.RadiusToken)
+		s.disp.Register(s.radius)
+		log.Printf("[radius] adapter Radius UI terdaftar: %s (read-only, Bearer)", s.cfg.RadiusURL)
+	} else {
+		if s.radius != nil {
+			s.disp.Unregister(s.radius)
+			log.Printf("[radius] adapter Radius UI dilepas (host/API token dikosongkan)")
+		}
+		s.radius = nil
 	}
 }
 
