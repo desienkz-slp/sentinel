@@ -74,7 +74,8 @@ type Config struct {
 	// MikrotikRouters adalah daftar router untuk fitur multi-MikroTik.
 	MikrotikRouters []MikrotikRouter `json:"mikrotik_routers"`
 	GenieACSURL     string           `json:"genieacs_url"`
-	GenieACSToken   string           `json:"genieacs_token"`
+	// Catatan: GenieACS NBI tidak punya token auth (keamanan via jaringan).
+	// Tidak ada field token — hanya host.
 
 	// path adalah lokasi file config yang sedang dipakai. Disimpan supaya
 	// perubahan dari dashboard bisa ditulis kembali ke file yang SAMA.
@@ -407,9 +408,6 @@ func Load(path string) *Config {
 	if v := getenv("NOC_GENIEACS_URL"); v != "" {
 		c.GenieACSURL = v
 	}
-	if v := getenv("NOC_GENIEACS_TOKEN"); v != "" {
-		c.GenieACSToken = v
-	}
 	if v := getenv("NOC_WA_DIR"); v != "" {
 		c.WADir = v
 	}
@@ -474,23 +472,22 @@ func (c *Config) Redacted() map[string]any {
 		"incident_path": c.IncidentPath,
 		"audit_path":    c.AuditPath,
 		// Endpoint adaptor eksternal (tanpa token mentah — hanya masked).
-		"billing_url":           c.BillingURL,
-		"radius_url":            c.RadiusURL,
-		"mikrotik_host":         c.MikrotikHost,
-		"mikrotik_port":         c.MikrotikPort,
-		"mikrotik_user":         c.MikrotikUser, // username bukan rahasia (tetap ditampilkan)
-		"mikrotik_tls":          c.MikrotikTLS,
-		"mikrotik_routers":      c.redactedRouters(),
-		"mikrotik_count":        len(c.Routers()),
-		"genieacs_url":          c.GenieACSURL,
-		"billing_set":           c.BillingURL != "" && c.BillingToken != "",
-		"radius_set":            c.RadiusURL != "" && c.RadiusToken != "",
-		"mikrotik_set":          len(c.Routers()) > 0,
-		"genieacs_set":          c.GenieACSURL != "" && c.GenieACSToken != "",
-		"billing_token_masked":  maskSecret(c.BillingToken),
-		"radius_token_masked":   maskSecret(c.RadiusToken),
-		"mikrotik_pass_masked":  maskSecret(c.MikrotikPass),
-		"genieacs_token_masked": maskSecret(c.GenieACSToken),
+		"billing_url":          c.BillingURL,
+		"radius_url":           c.RadiusURL,
+		"mikrotik_host":        c.MikrotikHost,
+		"mikrotik_port":        c.MikrotikPort,
+		"mikrotik_user":        c.MikrotikUser, // username bukan rahasia (tetap ditampilkan)
+		"mikrotik_tls":         c.MikrotikTLS,
+		"mikrotik_routers":     c.redactedRouters(),
+		"mikrotik_count":       len(c.Routers()),
+		"genieacs_url":         c.GenieACSURL,
+		"billing_set":          c.BillingURL != "" && c.BillingToken != "",
+		"radius_set":           c.RadiusURL != "" && c.RadiusToken != "",
+		"mikrotik_set":         len(c.Routers()) > 0,
+		"genieacs_set":         c.GenieACSURL != "",
+		"billing_token_masked": maskSecret(c.BillingToken),
+		"radius_token_masked":  maskSecret(c.RadiusToken),
+		"mikrotik_pass_masked": maskSecret(c.MikrotikPass),
 	}
 }
 

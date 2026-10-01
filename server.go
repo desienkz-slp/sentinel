@@ -146,7 +146,6 @@ func (s *Server) routes() http.Handler {
 			// Multi-router: daftar lengkap router (menggantikan field tunggal).
 			MikrotikRouters *[]config.MikrotikRouter `json:"mikrotik_routers"`
 			GenieACSURL     *string                  `json:"genieacs_url"`
-			GenieACSToken   *string                  `json:"genieacs_token"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
@@ -255,9 +254,6 @@ func (s *Server) routes() http.Handler {
 		}
 		if body.GenieACSURL != nil {
 			s.cfg.GenieACSURL = strings.TrimRight(strings.TrimSpace(*body.GenieACSURL), "/")
-		}
-		if body.GenieACSToken != nil {
-			s.cfg.GenieACSToken = strings.TrimSpace(*body.GenieACSToken)
 		}
 		// Setelah URL/token berubah, daftarkan ulang adapter bila lengkap.
 		s.syncBillingAdapter()
@@ -1144,7 +1140,7 @@ func (s *Server) syncGenieACSAdapter() {
 		if s.genieacs != nil {
 			s.disp.Unregister(s.genieacs)
 		}
-		s.genieacs = genieacs.New(s.cfg.GenieACSURL, s.cfg.GenieACSToken)
+		s.genieacs = genieacs.New(s.cfg.GenieACSURL, "")
 		s.disp.Register(s.genieacs)
 		log.Printf("[genieacs] adapter NBI terdaftar: %s (read-only)", s.cfg.GenieACSURL)
 	} else {

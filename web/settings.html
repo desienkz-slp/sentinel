@@ -122,7 +122,7 @@
 
     <div class="row">
       <div><label for="genieacsUrl">Host GenieACS (NBI)</label><input id="genieacsUrl" placeholder="http://192.168.1.10:7557"></div>
-      <div><label for="genieacsKey">API Token GenieACS (opsional)</label><input id="genieacsKey" type="password" placeholder="•••• (biasanya kosong)"></div>
+      <div style="display:flex;align-items:flex-end"><div class="hint" style="margin:0">GenieACS NBI tanpa token auth — cukup host. Keamanan via jaringan internal.</div></div>
     </div>
     <div class="btns">
       <button onclick="saveIntegrations()">Simpan Integrasi</button>
@@ -251,7 +251,7 @@ function statusIntegrasi(c) {
     row('Billing',  c.billing_url,  c.billing_set,  c.billing_token_masked),
     row('RADIUS',   c.radius_url,   c.radius_set,   c.radius_token_masked),
     mkLine,
-    row('GenieACS', c.genieacs_url, c.genieacs_set, c.genieacs_token_masked),
+    row('GenieACS', c.genieacs_url, c.genieacs_set, null),
   ].join('<br>');
   setDot('Billing', !!c.billing_set, c.billing_set ? 'Billing dikonfigurasi' : 'Billing belum diset');
   setDot('Mikrotik', mkCount > 0, mkCount > 0 ? `MikroTik: ${mkCount} router` : 'MikroTik belum diset');
@@ -332,13 +332,11 @@ async function saveIntegrations(silent) {
       radius_url: $('radiusUrl').value || undefined,
       radius_token: $('radiusKey').value || undefined,
       mikrotik_routers: routers,
-      genieacs_url: $('genieacsUrl').value || undefined,
-      genieacs_token: $('genieacsKey').value || undefined
+      genieacs_url: $('genieacsUrl').value || undefined
     })});
     statusIntegrasi(d.config);
     if (!silent) msg('intMsg', true, 'Tersimpan.');
     $('billingKey').value = ''; $('radiusKey').value = '';
-    $('genieacsKey').value = '';
     // Kosongkan field password di UI (nilai sudah tersimpan server-side).
     mkRouters.forEach(r => { r.pass = ''; });
     mkRender();
