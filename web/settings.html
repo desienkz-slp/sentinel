@@ -77,8 +77,7 @@
     <div class="row">
       <div>
         <label for="sModel">Model</label>
-        <input id="sModel" list="modelListA" placeholder="ag/gemini-3.8-flash-high">
-        <datalist id="modelListA"></datalist>
+        <select id="sModel"></select>
       </div>
       <div style="display:flex;align-items:flex-end"><button class="ghost" onclick="loadModels('a')">Cek daftar model</button></div>
     </div>
@@ -102,8 +101,7 @@
     <div class="row">
       <div>
         <label for="sCodex">Model</label>
-        <input id="sCodex" list="modelListB" placeholder="cx/gpt-5.6-terra">
-        <datalist id="modelListB"></datalist>
+        <select id="sCodex"></select>
       </div>
       <div><label for="sCodexProvider">Provider (opsional)</label><input id="sCodexProvider" placeholder="9router"></div>
     </div>
@@ -291,10 +289,14 @@ async function boot() {
   try {
     const st = await api('/api/status');
     const c = st.config;
-    $('sBase').value = c.llm_base_url; $('sModel').value = c.llm_model;
-    $('sSteps').value = c.max_steps; $('sCodex').value = c.codex_model;
+    $('sBase').value = c.llm_base_url; 
+    $('sSteps').value = c.max_steps;
     $('sCodexProvider').value = c.codex_provider || '';
     $('sCodexBase').value = c.codex_base_url || '';
+    // Isi dropdown model dengan nilai tersimpan dulu (opsi lengkap dimuat
+    // via tombol "Cek daftar model" atau otomatis di bawah).
+    setSelectValue('sModel', c.llm_model);
+    setSelectValue('sCodex', c.codex_model);
     $('stBase').textContent = c.llm_base_url || '—';
     $('stModel').textContent = c.llm_model || '—';
     $('stSteps').textContent = c.max_steps || '—';
@@ -319,8 +321,7 @@ async function boot() {
 async function loadModels(ep) {
   const isA = ep !== 'b';
   const msgEl = isA ? 'setMsgA' : 'setMsgB';
-  const listEl = isA ? 'modelListA' : 'modelListB';
-  const fieldEl = isA ? 'sModel' : 'sCodex';
+  const selId = isA ? 'sModel' : 'sCodex';
   msg(msgEl, null, `Memuat daftar model (${isA ? 'Conversation' : 'Reasoning'})…`);
   try {
     const d = await api('/api/models?endpoint=' + (isA ? 'a' : 'b'));
@@ -329,9 +330,32 @@ async function loadModels(ep) {
       const ra = nice.findIndex(p=>a.startsWith(p)), rb = nice.findIndex(p=>b.startsWith(p));
       return (ra<0?99:ra)-(rb<0?99:rb) || a.localeCompare(b);
     });
-    $(listEl).innerHTML = sorted.map(m=>`<option value="${esc(m)}">`).join('');
-    msg(msgEl, true, `${sorted.length} model dimuat — klik field "Model" lalu pilih dari dropdown.`);
+    populateSelect(selId, sorted, $(selId).value);
+    msg(msgEl, true, `${sorted.length} model dimuat — pilih dari dropdown.`);
   } catch(e){ msg(msgEl, false, 'Gagal memuat model: ' + e.message); }
+}
+
+// populateSelect mengisi <select> dengan opsi, mempertahankan nilai terpilih
+// (bila ada) atau memilih opsi pertama.
+function populateSelect(id, models, keep) {
+  const sel = $(id);
+  const prev = keep || sel.value || '';
+  sel.innerHTML = models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  if (prev && models.includes(prev)) {
+    sel.value = prev;
+  }
+}
+
+// setSelectValue memastikan sebuah <select> menampilkan nilai tertentu, menambah
+// opsi sementara bila belum ada (supaya nilai tersimpan selalu terlihat).
+function setSelectValue(id, value) {
+  const sel = $(id);
+  if (!value) { sel.innerHTML = '<option value="">— pilih model —</option>'; return; }
+  const exists = [...sel.options].some(o => o.value === value);
+  if (!exists) {
+    sel.innerHTML = `<option value="${esc(value)}">${esc(value)}</option>`;
+  }
+  sel.value = value;
 }
 
 async function saveSettings() {
