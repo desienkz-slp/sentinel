@@ -196,7 +196,12 @@ async function api(path, opts={}) {
 }
 
 function setDot(which, ok, text) {
-  $('dot'+which).className = 'dot ' + (ok ? 'on' : 'off');
+  const dot = $('dot'+which);
+  if (ok === null) {
+    dot.className = 'dot'; // netral/abu-abu = sedang menguji
+  } else {
+    dot.className = 'dot ' + (ok ? 'on' : 'off');
+  }
   $('txt'+which).textContent = text;
 }
 
@@ -306,6 +311,46 @@ function statusIntegrasi(c) {
   setDot('Genieacs', !!c.genieacs_set, c.genieacs_set ? 'GenieACS dikonfigurasi' : 'GenieACS belum diset');
 }
 
+// refreshHeaderStatus menjalankan probe koneksi NYATA ke semua sistem dan
+// memperbarui dot di header sesuai hasil sebenarnya (bukan sekadar "terkonfigurasi").
+async function refreshHeaderStatus() {
+  // LLM
+  setDot('LLM', null, 'menguji…');
+  api('/api/llm/ping').then(d => {
+    setDot('LLM', true, `LLM OK (${d.latency_ms}ms)`);
+  }).catch(e => {
+    setDot('LLM', false, 'LLM gagal');
+  });
+
+  // Billing
+  setDot('Billing', null, 'menguji…');
+  api('/api/billing/check').then(d => {
+    if (d.ok) setDot('Billing', true, `Billing OK (${d.total_customers} plg)`);
+    else setDot('Billing', false, 'Billing gagal');
+  }).catch(() => setDot('Billing', false, 'Billing gagal'));
+
+  // MikroTik
+  setDot('Mikrotik', null, 'menguji…');
+  api('/api/mikrotik/check').then(d => {
+    if (d.ok) setDot('Mikrotik', true, `MikroTik OK (v${d.version})`);
+    else setDot('Mikrotik', false, 'MikroTik gagal');
+  }).catch(() => setDot('Mikrotik', false, 'MikroTik gagal'));
+
+  // RADIUS
+  setDot('Radius', null, 'menguji…');
+  api('/api/radius/check').then(d => {
+    if (d.ok) setDot('Radius', true, `RADIUS OK (${d.user_count} user)`);
+    else setDot('Radius', false, 'RADIUS gagal');
+  }).catch(() => setDot('Radius', false, 'RADIUS gagal'));
+
+  // GenieACS
+  setDot('Genieacs', null, 'menguji…');
+  api('/api/genieacs/check').then(d => {
+    if (d.ok) setDot('Genieacs', true, `GenieACS OK (${d.total_devices} dev)`);
+    else setDot('Genieacs', false, 'GenieACS gagal');
+  }).catch(() => setDot('Genieacs', false, 'GenieACS gagal'));
+}
+
 async function boot() {
   try {
     const st = await api('/api/status');
@@ -341,6 +386,8 @@ async function boot() {
     // Tahan error: bila gagal, dropdown tetap menampilkan nilai tersimpan.
     loadModels('a').catch(() => {});
     loadModels('b').catch(() => {});
+    // Perbarui dot header dengan status koneksi NYATA (probe semua sistem).
+    refreshHeaderStatus();
   } catch (e) { console.error(e); }
 }
 
