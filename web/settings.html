@@ -84,6 +84,14 @@
     </div>
     <div class="row">
       <div><label for="sCodex">Model Codex (eskalasi)</label><input id="sCodex" placeholder="cx/gpt-5.6-terra"></div>
+      <div><label for="sCodexProvider">Provider Codex (opsional)</label><input id="sCodexProvider" placeholder="9router (kosong = pakai config.toml)"></div>
+    </div>
+    <div class="row">
+      <div><label for="sCodexBase">Base URL Codex (opsional)</label><input id="sCodexBase" placeholder="http://127.0.0.1:20128/v1 (kosong = pakai config.toml)"></div>
+      <div><label for="sCodexKey">API Key Codex (opsional, kosongkan bila sudah tersimpan)</label><input id="sCodexKey" type="password" placeholder="••••"></div>
+    </div>
+    <div class="hint">Endpoint Codex bersifat opsional: kosongkan semua = Codex memakai <code>~/.codex/config.toml</code> sendiri. Bila diisi, diteruskan sebagai override per-invoke (tanpa menimpa file Anda).</div>
+    <div class="row">
       <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan</button></div>
     </div>
     <div class="btns">
@@ -96,6 +104,7 @@
       Tersimpan: base URL <b id="stBase">—</b> · model <b id="stModel">—</b> ·
       maks langkah <b id="stSteps">—</b> · codex <b id="stCodex">—</b> ·
       LLM key <b id="stKey">—</b>
+      <br>Codex endpoint: <b id="stCodexEp">—</b> · codex key <b id="stCodexKey">—</b>
     </div>
   </section>
 
@@ -265,11 +274,14 @@ async function boot() {
     const c = st.config;
     $('sBase').value = c.llm_base_url; $('sModel').value = c.llm_model;
     $('sSteps').value = c.max_steps; $('sCodex').value = c.codex_model;
+    $('sCodexProvider').value = c.codex_provider || '';
+    $('sCodexBase').value = c.codex_base_url || '';
     $('stBase').textContent = c.llm_base_url || '—';
     $('stModel').textContent = c.llm_model || '—';
     $('stSteps').textContent = c.max_steps || '—';
     $('stCodex').textContent = c.codex_model || '—';
     $('stKey').textContent = c.llm_key_set ? 'tersimpan (••••)' : 'belum ada';
+    updateCodexStatus(c);
     setDot('LLM', false, c.llm_key_set ? 'LLM belum dites' : 'API key belum ada');
     setDot('Codex', !!st.codex_ready, st.codex_ready ? 'Codex siap ('+c.codex_model+')' : 'Codex tidak ditemukan');
     $('billingUrl').value = c.billing_url || '';
@@ -306,16 +318,29 @@ async function saveSettings() {
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
       llm_base_url: $('sBase').value, llm_api_key: $('sKey').value || undefined,
       llm_model: $('sModel').value, max_steps: parseInt($('sSteps').value,10)||undefined,
-      codex_model: $('sCodex').value
+      codex_model: $('sCodex').value,
+      codex_base_url: $('sCodexBase').value || undefined,
+      codex_provider: $('sCodexProvider').value || undefined,
+      codex_api_key: $('sCodexKey').value || undefined
     })});
     const c = d.config;
     $('stBase').textContent = c.llm_base_url; $('stModel').textContent = c.llm_model;
     $('stSteps').textContent = c.max_steps; $('stCodex').textContent = c.codex_model;
     $('stKey').textContent = c.llm_key_set ? 'tersimpan (••••)' : 'belum ada';
-    $('sKey').value = '';
+    $('sKey').value = ''; $('sCodexKey').value = '';
+    updateCodexStatus(c);
     msg('setMsg', true, 'Tersimpan. Model aktif: ' + c.llm_model);
     setDot('LLM', false, 'tersimpan — belum dites');
   } catch(e){ msg('setMsg', false, 'Gagal: ' + e.message); }
+}
+
+function updateCodexStatus(c) {
+  if (c.codex_base_url) {
+    $('stCodexEp').textContent = `${c.codex_provider || '9router'} @ ${c.codex_base_url}`;
+  } else {
+    $('stCodexEp').textContent = 'pakai ~/.codex/config.toml';
+  }
+  $('stCodexKey').textContent = c.codex_key_set ? 'tersimpan (••••)' : 'dari config.toml';
 }
 
 async function saveIntegrations(silent) {

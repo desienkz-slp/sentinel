@@ -28,6 +28,12 @@ type Bridge struct {
 	Sandbox    string
 	Timeout    time.Duration
 	WorkingDir string
+	// Endpoint override (opsional). Kosong = pakai ~/.codex/config.toml.
+	// Bila diisi, diteruskan sebagai -c key=value per-invoke (tidak menimpa
+	// config.toml user). Provider = nama model_providers di config.toml.
+	BaseURL  string
+	Provider string
+	APIKey   string
 }
 
 func New(codexPath, model, sandbox string, timeoutSec int) *Bridge {
@@ -131,6 +137,9 @@ func (b *Bridge) Run(ctx context.Context, task string) Result {
 	}
 
 	args := []string{"exec", "--skip-git-repo-check", "--sandbox", b.Sandbox}
+	// Endpoint override: -c key=value berlaku per-invoke tanpa menyentuh
+	// config.toml user. Hanya dikirim bila BaseURL diisi (eksplisit).
+	args = append(args, b.endpointOverrides()...)
 	if b.Model != "" {
 		args = append(args, "-m", b.Model)
 	}
@@ -174,6 +183,28 @@ func (b *Bridge) Run(ctx context.Context, task string) Result {
 	}
 	res.OK = true
 	return res
+}
+
+// endpointOverrides membangun argumen -c untuk mengarahkan Codex ke endpoint
+// alternatif tanpa menimpa ~/.codex/config.toml user. Kosong bila BaseURL kosong
+// (berarti pakai config.toml seperti biasa).
+func (b *Bridge) endpointOverrides() []string {
+	if b.BaseURL == "" {
+		return nil
+	}
+	provider := b.Provider
+	if provider == "" {
+		provider = "9router" // default: sama dengan contoh config.toml user
+	}
+	out := []string{
+		"-c", "model_provider=" + provider,
+		"-c", "model_providers." + provider + ".base_url=" + strings.TrimRight(b.BaseURL, "/"),
+		"-c", "model_providers." + provider + ".wire_api=responses",
+	}
+	if b.APIKey != "" {
+		out = append(out, "-c", "model_providers."+provider+".http_headers.Authorization=Bearer "+b.APIKey)
+	}
+	return out
 }
 
 func (b *Bridge) ensureGitRepo() error {

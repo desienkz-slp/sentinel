@@ -123,16 +123,19 @@ func (s *Server) routes() http.Handler {
 			return
 		}
 		var body struct {
-			LLMBaseURL  *string   `json:"llm_base_url"`
-			LLMAPIKey   *string   `json:"llm_api_key"`
-			LLMModel    *string   `json:"llm_model"`
-			MaxSteps    *int      `json:"max_steps"`
-			CodexModel  *string   `json:"codex_model"`
-			WABaseURL   *string   `json:"wa_base_url"`
-			WAAllowlist *[]string `json:"wa_allowlist"`
-			WAAutoReply *bool     `json:"wa_auto_reply"`
-			WAAsync     *bool     `json:"wa_async"`
-			WAGroup     *bool     `json:"wa_group"`
+			LLMBaseURL    *string   `json:"llm_base_url"`
+			LLMAPIKey     *string   `json:"llm_api_key"`
+			LLMModel      *string   `json:"llm_model"`
+			MaxSteps      *int      `json:"max_steps"`
+			CodexModel    *string   `json:"codex_model"`
+			CodexBaseURL  *string   `json:"codex_base_url"`
+			CodexProvider *string   `json:"codex_provider"`
+			CodexAPIKey   *string   `json:"codex_api_key"`
+			WABaseURL     *string   `json:"wa_base_url"`
+			WAAllowlist   *[]string `json:"wa_allowlist"`
+			WAAutoReply   *bool     `json:"wa_auto_reply"`
+			WAAsync       *bool     `json:"wa_async"`
+			WAGroup       *bool     `json:"wa_group"`
 			// Endpoint adaptor eksternal (URL + token; token opsional = "tidak diubah").
 			BillingURL   *string `json:"billing_url"`
 			BillingToken *string `json:"billing_token"`
@@ -175,6 +178,19 @@ func (s *Server) routes() http.Handler {
 		if body.CodexModel != nil && *body.CodexModel != "" {
 			s.cfg.CodexModel = *body.CodexModel
 			s.codex.Model = *body.CodexModel
+		}
+		if body.CodexBaseURL != nil {
+			s.cfg.CodexBaseURL = strings.TrimRight(strings.TrimSpace(*body.CodexBaseURL), "/")
+			s.codex.BaseURL = s.cfg.CodexBaseURL
+		}
+		if body.CodexProvider != nil {
+			s.cfg.CodexProvider = strings.TrimSpace(*body.CodexProvider)
+			s.codex.Provider = s.cfg.CodexProvider
+		}
+		if body.CodexAPIKey != nil {
+			// Kosong = hapus key (kembali ke auth.json/config.toml).
+			s.cfg.CodexAPIKey = strings.TrimSpace(*body.CodexAPIKey)
+			s.codex.APIKey = s.cfg.CodexAPIKey
 		}
 		// WhatsApp: base URL boleh dikosongkan untuk mematikan integrasi.
 		if body.WABaseURL != nil {

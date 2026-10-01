@@ -11,17 +11,23 @@ import (
 )
 
 type Config struct {
-	Addr        string `json:"addr"`
-	LLMBaseURL  string `json:"llm_base_url"`
-	LLMAPIKey   string `json:"llm_api_key"`
-	LLMModel    string `json:"llm_model"`
-	LLMTimeout  int    `json:"llm_timeout_sec"`
-	MaxSteps    int    `json:"max_steps"`
-	CodexPath   string `json:"codex_path"`
-	CodexModel  string `json:"codex_model"`
-	CodexSbx    string `json:"codex_sandbox"`
-	DiagTimeout int    `json:"diag_timeout_sec"`
-	Org         string `json:"org"`
+	Addr       string `json:"addr"`
+	LLMBaseURL string `json:"llm_base_url"`
+	LLMAPIKey  string `json:"llm_api_key"`
+	LLMModel   string `json:"llm_model"`
+	LLMTimeout int    `json:"llm_timeout_sec"`
+	MaxSteps   int    `json:"max_steps"`
+	CodexPath  string `json:"codex_path"`
+	CodexModel string `json:"codex_model"`
+	CodexSbx   string `json:"codex_sandbox"`
+	// Endpoint Codex (opsional). Kosong = Codex memakai ~/.codex/config.toml
+	// sendiri. Bila diisi, diteruskan sebagai -c override per-invoke (tanpa
+	// menimpa config.toml user). Provider = nama model_providers di config.toml.
+	CodexBaseURL  string `json:"codex_base_url"`
+	CodexProvider string `json:"codex_provider"`
+	CodexAPIKey   string `json:"codex_api_key"`
+	DiagTimeout   int    `json:"diag_timeout_sec"`
+	Org           string `json:"org"`
 
 	// Integrasi WhatsApp Gateway (Node/Baileys, project ai-noc).
 	WABaseURL   string   `json:"wa_base_url"`
@@ -337,6 +343,15 @@ func Load(path string) *Config {
 	if v := getenv("NOC_CODEX_SANDBOX"); v != "" {
 		c.CodexSbx = v
 	}
+	if v := getenv("NOC_CODEX_BASE_URL"); v != "" {
+		c.CodexBaseURL = v
+	}
+	if v := getenv("NOC_CODEX_PROVIDER"); v != "" {
+		c.CodexProvider = v
+	}
+	if v := getenv("NOC_CODEX_API_KEY"); v != "" {
+		c.CodexAPIKey = v
+	}
 	if v := getenv("NOC_WA_BASE_URL", "N8N_WEBHOOK_URL"); v != "" {
 		c.WABaseURL = v
 	}
@@ -440,37 +455,41 @@ func (c *Config) Redacted() map[string]any {
 		}
 	}
 	return map[string]any{
-		"addr":          c.Addr,
-		"llm_base_url":  c.LLMBaseURL,
-		"llm_model":     c.LLMModel,
-		"llm_key":       k,
-		"llm_key_set":   c.LLMAPIKey != "",
-		"llm_timeout":   c.LLMTimeout,
-		"max_steps":     c.MaxSteps,
-		"codex_path":    c.CodexPath,
-		"codex_model":   c.CodexModel,
-		"codex_sandbox": c.CodexSbx,
-		"diag_timeout":  c.DiagTimeout,
-		"org":           c.Org,
-		"wa_base_url":   c.WABaseURL,
-		"wa_timeout":    c.WATimeout,
-		"wa_allowlist":  c.WAAllowlist,
-		"wa_auto_reply": c.WAAutoReply,
-		"wa_async":      c.WAAsync,
-		"wa_enabled":    c.WABaseURL != "",
-		"wa_dir":        c.WADir,
-		"wa_autostart":  c.WAAutoStart,
-		"wa_group":      c.WAGroup,
-		"wa_embedded":   c.WADir != "",
-		"standard_doc":  c.StandardDoc,
-		"cache_ttl_min": c.CacheTTLMin,
-		"sesi_ttl_min":  c.SesiTTLMin,
-		"memory_path":   c.MemoryPath,
-		"policy_path":   c.PolicyPath,
-		"registry_path": c.RegistryPath,
-		"workflow_dir":  c.WorkflowDir,
-		"incident_path": c.IncidentPath,
-		"audit_path":    c.AuditPath,
+		"addr":           c.Addr,
+		"llm_base_url":   c.LLMBaseURL,
+		"llm_model":      c.LLMModel,
+		"llm_key":        k,
+		"llm_key_set":    c.LLMAPIKey != "",
+		"llm_timeout":    c.LLMTimeout,
+		"max_steps":      c.MaxSteps,
+		"codex_path":     c.CodexPath,
+		"codex_model":    c.CodexModel,
+		"codex_sandbox":  c.CodexSbx,
+		"codex_base_url": c.CodexBaseURL,
+		"codex_provider": c.CodexProvider,
+		"codex_key_set":  c.CodexAPIKey != "",
+		"codex_key":      maskSecret(c.CodexAPIKey),
+		"diag_timeout":   c.DiagTimeout,
+		"org":            c.Org,
+		"wa_base_url":    c.WABaseURL,
+		"wa_timeout":     c.WATimeout,
+		"wa_allowlist":   c.WAAllowlist,
+		"wa_auto_reply":  c.WAAutoReply,
+		"wa_async":       c.WAAsync,
+		"wa_enabled":     c.WABaseURL != "",
+		"wa_dir":         c.WADir,
+		"wa_autostart":   c.WAAutoStart,
+		"wa_group":       c.WAGroup,
+		"wa_embedded":    c.WADir != "",
+		"standard_doc":   c.StandardDoc,
+		"cache_ttl_min":  c.CacheTTLMin,
+		"sesi_ttl_min":   c.SesiTTLMin,
+		"memory_path":    c.MemoryPath,
+		"policy_path":    c.PolicyPath,
+		"registry_path":  c.RegistryPath,
+		"workflow_dir":   c.WorkflowDir,
+		"incident_path":  c.IncidentPath,
+		"audit_path":     c.AuditPath,
 		// Endpoint adaptor eksternal (tanpa token mentah — hanya masked).
 		"billing_url":          c.BillingURL,
 		"radius_url":           c.RadiusURL,
