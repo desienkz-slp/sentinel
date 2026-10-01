@@ -287,6 +287,19 @@ class SessionManager {
 
           const userJid = this.sock?.user?.id || '';
           this.phone = userJid.split(':')[0].replace(/[^0-9]/g, '');
+          // Saat auto-reconnect cepat, sock.user kadang belum terisi padahal
+          // kredensial masih ada di creds.json. Fallback: baca 'me' dari
+          // creds.json supaya status tidak menampilkan nomor kosong.
+          if (!this.phone) {
+            try {
+              const creds = JSON.parse(fs.readFileSync(path.join(AUTH_DIR, 'creds.json'), 'utf8'));
+              if (creds?.me?.id) {
+                this.phone = creds.me.id.split(':')[0].replace(/[^0-9]/g, '');
+              }
+            } catch (e) {
+              // abaikan: creds belum ada / rusak
+            }
+          }
           this.name = this.sock?.user?.name || 'AI-NOC Sentinel';
 
           this.addLog(`WhatsApp connected successfully. Account: ${this.phone} (${this.name})`);

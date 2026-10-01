@@ -645,6 +645,21 @@ func (s *Server) routes() http.Handler {
 		writeJSON(w, 200, out)
 	})
 
+	mux.HandleFunc("/api/wa/reconnect", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]string{"error": "gunakan POST"})
+			return
+		}
+		ctx, cancel := timeoutCtx(r, 30*time.Second)
+		defer cancel()
+		out, err := s.wa.Reconnect(ctx)
+		if err != nil {
+			writeJSON(w, 502, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, out)
+	})
+
 	// Kirim notifikasi/balasan manual ke WhatsApp.
 	mux.HandleFunc("/api/wa/send", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

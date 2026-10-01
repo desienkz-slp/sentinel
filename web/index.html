@@ -143,7 +143,6 @@
       <pre id="waGwLog" class="hidden" style="max-height:150px;overflow:auto"></pre>
 
       <div class="row" style="margin-top:14px">
-        <div><label for="sWA">Base URL gateway</label><input id="sWA" placeholder="http://127.0.0.1:3001"></div>
         <div><label for="sWAList">Allowlist nomor (pisah koma) — <b>kosong = SEMUA nomor boleh</b></label><input id="sWAList" placeholder="628123456789,628999888777"></div>
       </div>
       <div class="row">
@@ -167,6 +166,8 @@
         <button class="ghost" onclick="waStatus()">Cek status sesi</button>
         <button class="ghost" onclick="waQR()">Tampilkan QR pairing</button>
         <button class="ghost" onclick="waSend()">Kirim tes</button>
+        <button class="ghost" onclick="waReconnect()">↻ Reconnect</button>
+        <button class="ghost" style="color:var(--bad)" onclick="waLogout()">Keluar (Logout)</button>
       </div>
       <div class="row" style="margin-top:10px">
         <input id="waTo" placeholder="nomor tujuan, mis. 628123456789">
@@ -341,12 +342,11 @@ async function waCtl(action) {
 async function saveWASettings() {
   try {
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
-      wa_base_url: $('sWA').value.trim(),
       wa_allowlist: $('sWAList').value.split(',').map(s=>s.trim()).filter(Boolean),
       wa_group: $('sWAGroup').value === 'true',
       wa_async: $('sWAAsync').value === 'true'
     })});
-    setWAMsg('Tersimpan. Gateway: ' + (d.config.wa_base_url || '—') + ' · allowlist: ' + (d.config.wa_allowlist||[]).length + ' entri');
+    setWAMsg('Tersimpan. Allowlist: ' + (d.config.wa_allowlist||[]).length + ' entri');
     waStatus();
   } catch(e) { setWAMsg('Gagal: ' + e.message); }
 }
@@ -357,11 +357,32 @@ async function waStatus() {
   setDot('WA', false, 'WhatsApp: cek…');
   try {
     const d = await api('/api/wa/status');
-    if (!d.enabled) { setDot('WA', false, 'WA: gateway belum diset'); setWAMsg('Gateway belum dikonfigurasi. Isi Base URL gateway di atas.'); return; }
+    if (!d.enabled) { setDot('WA', false, 'WA: gateway belum diset'); setWAMsg('Gateway belum aktif. Tekan ▶ Mulai.'); return; }
     setDot('WA', !!d.connected, d.connected ? 'WhatsApp tersambung' : 'WA: belum login (scan QR)');
     const s = d.gateway || {};
     setWAMsg('Status: ' + (s.status||s.state||'—') + (d.error ? ' · error: '+d.error : ''));
   } catch(e) { setDot('WA', false, 'WA: error'); setWAMsg('Gagal cek status: ' + e.message); }
+}
+
+// Reconnect: sambung ulang sesi WhatsApp tanpa menghapus kredensial.
+async function waReconnect() {
+  setWAMsg('Reconnect…');
+  try {
+    const d = await api('/api/wa/reconnect', {method:'POST', body:'{}'});
+    setWAMsg('Reconnect: ' + ((d && (d.message || d.status)) || JSON.stringify(d)));
+  } catch(e) { setWAMsg('Gagal reconnect: ' + e.message); }
+  await waStatus();
+}
+
+// Logout: putuskan + hapus sesi WhatsApp (perlu scan QR lagi).
+async function waLogout() {
+  if (!confirm('Keluar dari WhatsApp?\n\nIni akan MENGHAPUS sesi tersambung. Untuk menyambung lagi perlu scan QR ulang.')) return;
+  setWAMsg('Logout…');
+  try {
+    const d = await api('/api/wa/logout', {method:'POST', body:'{}'});
+    setWAMsg('Logout: ' + ((d && (d.message || d.status)) || JSON.stringify(d)));
+  } catch(e) { setWAMsg('Gagal logout: ' + e.message); }
+  await waStatus();
 }
 
 async function waQR() {

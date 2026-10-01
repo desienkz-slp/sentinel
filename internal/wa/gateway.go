@@ -163,6 +163,13 @@ func (c *Client) Connect(ctx context.Context) (map[string]any, error) {
 	return out, err
 }
 
+// Reconnect menyambung ulang sesi WhatsApp tanpa menghapus kredensial.
+func (c *Client) Reconnect(ctx context.Context) (map[string]any, error) {
+	var out map[string]any
+	err := c.do(ctx, http.MethodPost, "/api/whatsapp/reconnect", map[string]any{}, &out)
+	return out, err
+}
+
 func (c *Client) Logout(ctx context.Context) (map[string]any, error) {
 	var out map[string]any
 	err := c.do(ctx, http.MethodPost, "/api/whatsapp/logout", map[string]any{}, &out)
