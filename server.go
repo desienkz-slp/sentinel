@@ -371,8 +371,19 @@ func (s *Server) routes() http.Handler {
 			return
 		}
 
+		// Pengecualian allowlist: pesan dari NOMOR GATEWAY SENDIRI (operator
+		// mengetik/menguji dari nomor yang tertaut) selalu diproses. Ini yang
+		// memungkinkan uji coba "chat dengan diri sendiri" tanpa menambah nomor
+		// gateway ke allowlist.
+		dariNomorSendiri := false
+		if st, err := s.wa.Status(r.Context()); err == nil {
+			if nomor, ok := st["phone"].(string); ok && nomor != "" {
+				dariNomorSendiri = session.Key(nomor) == session.Key(id)
+			}
+		}
+
 		// Allowlist: cegah siapa pun memicu perintah diagnostik di jaringan.
-		if !wa.Allowed(s.cfg.WAAllowlist, id) {
+		if !dariNomorSendiri && !wa.Allowed(s.cfg.WAAllowlist, id) {
 			log.Printf("[WA] ditolak (tidak ada di allowlist): %s", id)
 			writeJSON(w, 200, wa.Reply{
 				Accepted:  false,

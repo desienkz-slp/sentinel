@@ -38,6 +38,10 @@ class SessionManager {
     this.lastError = null;
     this.reconnectAttempts = 0;
     this.isReconnecting = false;
+    // ID pesan yang DIKIRIM oleh gateway ini. Dipakai untuk membedakan
+    // "balasan kita sendiri" dari "pesan yang operator ketik sendiri".
+    // Tanpa ini, memproses pesan fromMe akan membuat loop balasan tak berujung.
+    this.sentIds = new Map(); // id -> timestamp (ms)
     this.recentLogs = [];
     this.dbPool = null;
 
@@ -242,8 +246,31 @@ class SessionManager {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
-          // Ignore status broadcasts and outbound messages from ourself
-          if (msg.key.fromMe || msg.key.remoteJid === 'status@broadcast') continue;
+          // Abaikan status broadcast.
+          if (msg.key.remoteJid === 'status@broadcast') continue;
+
+          const msgId0 = msg.key.id || '';
+
+          // Pesan dari DIRI SENDIRI (fromMe) ada dua jenis:
+          //   (a) balasan yang baru saja kita kirim -> HARUS diabaikan, kalau
+          //       tidak akan terjadi loop balasan tak berujung.
+          //   (b) pesan yang OPERATOR ketik sendiri dari HP (mode uji/catatan)
+          //       -> boleh diproses, supaya operator bisa mencoba bot dari
+          //       nomor gateway itu sendiri.
+          // Pembedanya: id pesan yang kita kirim tercatat di this.sentIds.
+          if (msg.key.fromMe) {
+            const sekarang = Date.now();
+            // Bersihkan catatan lama (lebih dari 10 menit) agar tidak menumpuk.
+            for (const [id, t] of this.sentIds) {
+              if (sekarang - t > 10 * 60 * 1000) this.sentIds.delete(id);
+            }
+            if (this.sentIds.has(msgId0)) {
+              this.sentIds.delete(msgId0);
+              continue; // ini balasan kita sendiri
+            }
+            // Bukan kiriman kita -> pesan yang operator ketik sendiri.
+            console.log(`[WA-INBOUND-SELF] operator mengetik sendiri message_id=${msgId0} (diproses)`);
+          }
 
           const text = msg.message?.conversation ||
                        msg.message?.extendedTextMessage?.text ||
@@ -367,6 +394,12 @@ class SessionManager {
 
     try {
       const result = await this.sock.sendMessage(jid, { text });
+      // Catat id pesan ini supaya saat event fromMe muncul (pesan kita sendiri
+      // dikirim balik oleh WhatsApp), kita bisa mengenali dan mengabaikannya.
+      // Tanpa ini, bot akan membalas balasannya sendiri tanpa henti.
+      if (result?.key?.id) {
+        this.sentIds.set(result.key.id, Date.now());
+      }
       console.log(`[WA-OUTBOUND] remote_jid=${jid} message_id=${result?.key?.id} status=SENT`);
       await this.recordEvent('outgoing_message', {
         to: jid,
