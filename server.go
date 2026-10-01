@@ -127,7 +127,17 @@ func (s *Server) routes() http.Handler {
 		if body.WAGroup != nil {
 			s.cfg.WAGroup = *body.WAGroup
 		}
-		writeJSON(w, 200, map[string]any{"ok": true, "config": s.cfg.Redacted()})
+		// Tulis ke disk. Tanpa ini pengaturan hanya hidup di memori dan hilang
+		// saat aplikasi di-restart — tombol "Simpan" jadi tidak ada artinya.
+		if err := s.cfg.Save(); err != nil {
+			log.Printf("[config] gagal menyimpan ke disk: %v", err)
+			writeJSON(w, 500, map[string]any{
+				"error":  "pengaturan berubah di memori tetapi GAGAL ditulis ke disk: " + err.Error(),
+				"config": s.cfg.Redacted(),
+			})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "saved_to": s.cfg.Path(), "config": s.cfg.Redacted()})
 	})
 
 	// Verifikasi kredensial + model lewat completion nyata (bukan sekadar daftar model).

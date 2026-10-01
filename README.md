@@ -31,6 +31,14 @@ Lalu buka **http://127.0.0.1:8090**.
 1. Panel **WhatsApp Gateway** → tunggu status **✅ berjalan**
 2. Klik **Tampilkan QR pairing** → scan dengan WhatsApp (Pengaturan → Perangkat Tertaut)
 3. **Isi allowlist nomor** — tanpa ini siapa pun bisa memicu diagnostik ke jaringan Anda
+
+   **Di mana:** dashboard → panel **WhatsApp Gateway** → kolom
+   **"Allowlist nomor (pisah koma)"** → tulis nomor → klik
+   **"Simpan pengaturan WA"**. Perubahan langsung ditulis ke `config.json`,
+   jadi bertahan setelah aplikasi di-restart.
+
+   ⚠️ **Mengosongkan kolom ini = SEMUA nomor boleh** (tidak ada penyaring).
+   Isi minimal nomor Anda sendiri.
 4. Kirim pesan WhatsApp ke nomor gateway → dibalas laporan otomatis
 
 ---
@@ -202,7 +210,7 @@ cp config.example.json config.json   # opsional, semua nilai bisa lewat env
 | `NOC_CODEX_SANDBOX` | `danger-full-access` | sandbox Codex |
 | `NOC_WA_BASE_URL` | `http://127.0.0.1:3001` | base URL gateway (fallback `N8N_WEBHOOK_URL`) |
 | `NOC_WA_TIMEOUT` | `45` | timeout panggilan ke gateway (detik) |
-| `NOC_WA_ALLOWLIST` | *(kosong = semua)* | nomor diizinkan, pisah koma |
+| `NOC_WA_ALLOWLIST` | *(kosong = SEMUA nomor boleh)* | nomor diizinkan, pisah koma |
 | `NOC_WA_AUTO_REPLY` | `true` | kirim hasil diagnosis kembali ke WhatsApp |
 | `NOC_WA_ASYNC` | `false` | `true` = balas "diterima" lalu kirim hasil menyusul |
 | `NOC_WA_AUTOSTART` | `true` | Go menyalakan gateway otomatis saat start |
@@ -395,6 +403,9 @@ dan memakai `NOC_WA_BASE_URL` seperti biasa.
 - **Tool terbatas** — whitelist 9 tool; LLM tidak bisa meminta perintah shell bebas.
 - **WhatsApp allowlist** — tanpa allowlist, siapa pun yang tahu nomor gateway bisa memicu
   diagnostik ke jaringan Anda. Isi `wa_allowlist` sebelum dipakai sungguhan.
+  Allowlist **kosong berarti terbuka untuk semua nomor** — jangan dikosongkan saat produksi.
+  Pengecualian: pesan dari **nomor gateway itu sendiri** selalu diproses, supaya operator
+  bisa menguji bot dengan mengirim chat ke dirinya sendiri tanpa menambah nomornya ke daftar.
 - **Kredensial sesi WhatsApp** ada di `wa-gateway/data/auth/` — setara login akun WhatsApp Anda.
   Sudah masuk `.gitignore`; **jangan pernah di-commit**.
 - **Webhook WA tanpa autentikasi** — bind gateway dan ai-noc-go ke localhost, atau tambahkan

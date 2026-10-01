@@ -3,6 +3,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -41,6 +42,39 @@ type Config struct {
 	// MemoryPath: file JSON tempat memory (fakta & riwayat per pengirim) disimpan.
 	// Kosong = pakai data/memory.json di samping binary.
 	MemoryPath string `json:"memory_path"`
+
+	// path adalah lokasi file config yang sedang dipakai. Disimpan supaya
+	// perubahan dari dashboard bisa ditulis kembali ke file yang SAMA.
+	// Tanpa ini, pengaturan hanya hidup di memori dan hilang saat restart.
+	path string
+}
+
+// SetPath mencatat file config yang sedang dipakai, agar Save() menulis ke sana.
+func (c *Config) SetPath(p string) { c.path = p }
+
+// Path mengembalikan file config yang sedang dipakai.
+func (c *Config) Path() string { return c.path }
+
+// Save menulis konfigurasi kembali ke file asalnya. Perubahan dari dashboard
+// WAJIB dipanggil ini, kalau tidak pengaturan hilang begitu aplikasi di-restart.
+//
+// Ditulis lewat file sementara lalu di-rename, supaya config yang sedang dipakai
+// tidak pernah rusak separuh bila proses mati di tengah penulisan.
+func (c *Config) Save() error {
+	if c.path == "" {
+		return fmt.Errorf("lokasi file config tidak diketahui (dijalankan tanpa file config)")
+	}
+	b, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	b = append(b, '\n')
+
+	tmp := c.path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, c.path)
 }
 
 func atob(s string, def bool) bool {
@@ -226,6 +260,11 @@ func Load(path string) *Config {
 		c.WADir = v
 	}
 	c.WADir = resolveWADir(c.WADir)
+	// Catat file config yang dipakai, supaya perubahan dari dashboard bisa
+	// ditulis kembali ke file yang sama (lihat Config.Save).
+	if _, err := os.Stat(path); err == nil {
+		c.SetPath(path)
+	}
 
 	// Urutan pencarian API key: env NOC -> env Hermes 9router -> auth.json Codex.
 	if c.LLMAPIKey == "" {
