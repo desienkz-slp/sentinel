@@ -30,29 +30,74 @@ const (
 	StatusUnknown       Status = "UNKNOWN"
 )
 
+// Topology menyimpan metadata infrastruktur yang sudah diverifikasi oleh sumber
+// sistem. Field kosong berarti data tidak tersedia dan tidak boleh ditebak.
+type Topology struct {
+	Area     string `json:"area,omitempty"`
+	Router   string `json:"router,omitempty"`
+	OLT      string `json:"olt,omitempty"`
+	PON      string `json:"pon,omitempty"`
+	Upstream string `json:"upstream,omitempty"`
+}
+
+// CorrelationKind menjelaskan alasan sebuah diagnosis tidak perlu dijalankan lagi.
+type CorrelationKind string
+
+const (
+	CorrelationNone      CorrelationKind = "NONE"
+	CorrelationDuplicate CorrelationKind = "DUPLICATE"
+	CorrelationMass      CorrelationKind = "MASS_INCIDENT"
+)
+
+// CorrelationPolicy membatasi jendela dan ambang grouping secara deterministik.
+type CorrelationPolicy struct {
+	Window        time.Duration
+	MassThreshold int
+}
+
+// MassIncident adalah ringkasan gangguan yang berdampak pada banyak pelanggan.
+type MassIncident struct {
+	ID                string    `json:"id"`
+	Intent            string    `json:"intent"`
+	Topology          Topology  `json:"topology"`
+	StartedAt         time.Time `json:"started_at"`
+	AffectedCustomers int       `json:"affected_customers"`
+	IncidentIDs       []string  `json:"incident_ids"`
+}
+
+// CorrelationResult adalah hasil pencatatan yang dipakai orkestrator untuk
+// menekan diagnosis redundan ketika insiden sudah terkait.
+type CorrelationResult struct {
+	Incident   Incident        `json:"incident"`
+	Kind       CorrelationKind `json:"kind"`
+	Suppressed bool            `json:"suppressed"`
+}
+
 // Incident adalah satu rekaman insiden.
 type Incident struct {
-	ID           string    `json:"id"`
-	Status       Status    `json:"status"`
-	Severity     string    `json:"severity,omitempty"`
-	Source       string    `json:"source,omitempty"` // whatsapp | dashboard | monitoring
-	Identity     string    `json:"identity"`         // nomor pengirim ternormalisasi
-	Intent       string    `json:"intent,omitempty"`
-	Query        string    `json:"query,omitempty"`
-	Target       string    `json:"target,omitempty"`
-	Verdict      string    `json:"verdict,omitempty"`
-	Confidence   float64   `json:"confidence,omitempty"`
-	RootCause    string    `json:"root_cause,omitempty"`
-	Evidence     []string  `json:"evidence,omitempty"`
-	Missing      []string  `json:"missing,omitempty"`
-	Alternatives []string  `json:"alternatives,omitempty"`
-	Actions      []string  `json:"actions,omitempty"`
-	EscalatedTo  string    `json:"escalated_to,omitempty"`
-	StartedAt    time.Time `json:"started_at"`
-	ClosedAt     time.Time `json:"closed_at,omitempty"`
-	TraceID      string    `json:"trace_id,omitempty"`
-	RequestID    string    `json:"request_id,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	Status        Status    `json:"status"`
+	Severity      string    `json:"severity,omitempty"`
+	Topology      Topology  `json:"topology,omitempty"`
+	CorrelationID string    `json:"correlation_id,omitempty"`
+	Source        string    `json:"source,omitempty"` // whatsapp | dashboard | monitoring
+	Identity      string    `json:"identity"`         // nomor pengirim ternormalisasi
+	Intent        string    `json:"intent,omitempty"`
+	Query         string    `json:"query,omitempty"`
+	Target        string    `json:"target,omitempty"`
+	Verdict       string    `json:"verdict,omitempty"`
+	Confidence    float64   `json:"confidence,omitempty"`
+	RootCause     string    `json:"root_cause,omitempty"`
+	Evidence      []string  `json:"evidence,omitempty"`
+	Missing       []string  `json:"missing,omitempty"`
+	Alternatives  []string  `json:"alternatives,omitempty"`
+	Actions       []string  `json:"actions,omitempty"`
+	EscalatedTo   string    `json:"escalated_to,omitempty"`
+	StartedAt     time.Time `json:"started_at"`
+	ClosedAt      time.Time `json:"closed_at,omitempty"`
+	TraceID       string    `json:"trace_id,omitempty"`
+	RequestID     string    `json:"request_id,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // Store adalah penyimpanan insiden thread-safe.
