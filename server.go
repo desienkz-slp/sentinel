@@ -1473,6 +1473,21 @@ func launchUpdate(script, version string) error {
 	if err != nil {
 		return fmt.Errorf("bash tidak ditemukan untuk menjalankan skrip update: %w", err)
 	}
+
+	// Di host systemd, jalankan updater sebagai transient unit terpisah. Child
+	// biasa tetap berada di cgroup noc-sentinel dan ikut dibunuh saat skrip
+	// me-restart service, sehingga health-check/rollback tidak sempat selesai.
+	if systemdRun, lookErr := exec.LookPath("systemd-run"); lookErr == nil {
+		unit := fmt.Sprintf("noc-sentinel-update-%d", time.Now().UnixNano())
+		cmd := exec.Command(systemdRun, "--unit="+unit, "--collect", "--no-block", bash, script, version)
+		cmd.Stdin = nil
+		if out, runErr := cmd.CombinedOutput(); runErr != nil {
+			return fmt.Errorf("gagal memulai transient update unit: %w (%s)", runErr, truncateLog(string(out), 300))
+		}
+		return nil
+	}
+
+	// Fallback untuk host tanpa systemd (mis. Windows/git-bash).
 	cmd := exec.Command(bash, script, version)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -1480,7 +1495,6 @@ func launchUpdate(script, version string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("gagal memulai skrip update: %w", err)
 	}
-	// Lepaskan: jangan Wait (proses hidup mandiri, akan restart service).
 	go func() { _ = cmd.Wait() }()
 	return nil
 }
