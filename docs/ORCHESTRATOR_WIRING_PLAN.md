@@ -17,7 +17,7 @@
 | 3 | Wire Policy gate untuk execute (deny-by-default) | ✅ selesai (commit `7da1e70`) |
 | 4 | Wire Verification Engine (resolved wajib verifikasi) | ✅ selesai (commit `(fase-4)`) |
 | 5 | Observability & audit lengkap (lifecycle + KPI) | ✅ selesai (commit fase 5) |
-| 6 | Deploy + validasi end-to-end | ⬜ belum |
+| 6 | Deploy + validasi end-to-end | ✅ selesai (commit fase 6) |
 
 ---
 
@@ -91,6 +91,23 @@ Status: ✅ selesai. Implementasi:
 ### FASE 6 — Deploy + validasi end-to-end
 - Build Linux → deploy 133 (git pull + binary).
 - Validasi: WA lokal (nurma) → cek Case ID, state, escalation, verification.
+
+Status: ✅ selesai. Hasil acceptance end-to-end (WA nyata nurma → bot 133, 4 skenario):
+
+| Skenario | Intent | Case state | Eskalasi | Hasil |
+|---|---|---|---|---|
+| "halo" | CHAT | CONVERSATION | — | ✅ balasan ramah tanpa footer |
+| "internet lemot" | COMPLAINT | ESCALATION | NOC Senior (6281333678765) | ✅ balasan humanis + handoff |
+| "tagihan saya belum terbayar" | COMPLAINT→(lanjutan) | ESCALATION | Admin (6285606311311) | ✅ handoff ke Admin |
+| "tes" | CHAT | CONVERSATION | — | ✅ tidak didiagnosis |
+
+- Semua balasan WA humanis, TANPA footer teknis; `/api/reports` `echo=False` (tidak ada loop); log 133 `WA-OUTBOUND-ECHO` aktif (echo kiriman sendiri diabaikan); tidak ada balasan ganda.
+- `/api/cases` + `/api/kpi` + `/api/audit` mencatat case/state/eskalasi dengan benar; `/api/policy/decide` deny-by-default.
+- **Gap yang diperbaiki (additive):**
+  1. `internal/caseengine/tracker.go` — Tracker kini menyimpan case selesai ke `archive` (kunci Case ID) saat `Replace`/`Put` menggantikan case lama untuk identity yang sama, sehingga `All()`/KPI tidak kehilangan riwayat (sebelumnya 4 case nyata tampil 2). `ActiveAll()` + `Count()` tetap hanya case berjalan.
+  2. `tests/mock_netora.py` — fixture test memakai nomor NOC nyata `6281333678765` sebagai phone pelanggan sintetis → diganti `628111222333` (aturan §53/security rule 3).
+- Deploy: cross-compile Linux → backup → scp → `systemctl restart` → verify `/api/health`, `/api/wa/status`, `/api/ask` smoke, `/api/cases`, `/api/kpi`.
+- `go test ./... -count=1` lulus penuh (40 package).
 
 ---
 

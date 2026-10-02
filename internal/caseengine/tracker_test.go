@@ -69,6 +69,40 @@ func TestTrackerAllReturnsSnapshotNewestFirst(t *testing.T) {
 	}
 }
 
+func TestTrackerReplaceArchivesHistory(t *testing.T) {
+	tr := NewTracker()
+	base := time.Date(2026, time.October, 1, 10, 0, 0, 0, time.UTC)
+	tr.now = func() time.Time { return base }
+	first := tr.Replace("628111222333", "whatsapp")
+	for _, s := range []State{StateIdentifying, StateConversation, StateReadyForDiagnosis,
+		StateReasoning, StateInvestigation, StateEscalation} {
+		if err := first.Transition(s, "system", "uji"); err != nil {
+			t.Fatalf("transisi %s gagal: %v", s, err)
+		}
+	}
+
+	tr.now = func() time.Time { return base.Add(time.Hour) }
+	second := tr.Replace("628111222333", "whatsapp")
+
+	// Case aktif = 1 (satu identity satu case berjalan).
+	if tr.Count() != 1 {
+		t.Fatalf("Count = %d, ingin 1", tr.Count())
+	}
+	// Riwayat lama TETAP tampil di All() (tidak hilang dari observabilitas/KPI).
+	all := tr.All()
+	if len(all) != 2 {
+		t.Fatalf("All = %d case, ingin 2 (aktif + riwayat)", len(all))
+	}
+	if all[0] != second || all[1] != first {
+		t.Fatal("All harus terurut terbaru dulu, dan memuat case lama yang diarsipkan")
+	}
+	// ActiveAll hanya memuat case berjalan.
+	active := tr.ActiveAll()
+	if len(active) != 1 || active[0] != second {
+		t.Fatalf("ActiveAll = %d case, ingin 1 (hanya case aktif)", len(active))
+	}
+}
+
 func TestNormalizeIdentityStripsSuffixes(t *testing.T) {
 	cases := map[string]string{
 		"628111222333@s.whatsapp.net": "628111222333",

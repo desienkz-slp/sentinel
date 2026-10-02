@@ -30,7 +30,7 @@ class H(BaseHTTPRequestHandler):
                 "status": "success",
                 "data": [{
                     "id": 1, "username": "demo-001", "name": "Demo User",
-                    "phone": "6281333678765",
+                    "phone": "628111222333",
                     "address": "Jl. Contoh No. 1",
                     "coordinate": {"latitude": -7.98, "longitude": 112.63},
                     "area": {"id": 1, "name": "Malang"}, "odp": {"id": 2, "name": "ODP-A"},

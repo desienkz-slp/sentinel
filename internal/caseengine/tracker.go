@@ -20,12 +20,17 @@ import (
 type Tracker struct {
 	mu    sync.RWMutex
 	cases map[string]*Case
-	now   func() time.Time
+	// archive menyimpan case yang sudah selesai (digantikan Replace) supaya
+	// observabilitas/KPI (fase 5) tidak kehilangan riwayat saat pelanggan yang
+	// sama memulai keluhan baru. Kunci = Case ID (bukan identity), sehingga
+	// satu identity boleh punya banyak case historis.
+	archive map[string]*Case
+	now     func() time.Time
 }
 
 // NewTracker membuat tracker kosong dengan jam waktu nyata.
 func NewTracker() *Tracker {
-	return &Tracker{cases: make(map[string]*Case), now: time.Now}
+	return &Tracker{cases: make(map[string]*Case), archive: make(map[string]*Case), now: time.Now}
 }
 
 // Get mengembalikan case untuk identity tanpa membuat yang baru.
@@ -42,6 +47,7 @@ func (t *Tracker) Get(identity string) (*Case, bool) {
 
 // Replace membuat case baru untuk identity dan menggantikan case lama (bila ada).
 // Dipakai saat kontak baru dimulai setelah investigasi sebelumnya selesai.
+// Case lama dipindah ke archive (kunci Case ID) supaya riwayat tetap bisa diamati.
 func (t *Tracker) Replace(identity, channel string) *Case {
 	key := normalizeIdentity(identity)
 	now := time.Now()
@@ -54,6 +60,9 @@ func (t *Tracker) Replace(identity, channel string) *Case {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if old, ok := t.cases[key]; ok {
+		t.archive[string(old.ID)] = old
+	}
 	t.cases[key] = c
 	return c
 }
@@ -67,12 +76,38 @@ func (t *Tracker) Put(c *Case) *Case {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.cases[normalizeIdentity(c.Identity)] = c
+	key := normalizeIdentity(c.Identity)
+	if old, ok := t.cases[key]; ok && old != c {
+		t.archive[string(old.ID)] = old
+	}
+	t.cases[key] = c
 	return c
 }
 
-// All mengembalikan salinan semua case (terbaru dulu) untuk observasi/audit.
+// All mengembalikan salinan semua case (terbaru dulu) untuk observasi/audit:
+// case aktif + case yang sudah diarsipkan (digantikan Replace). Riwayat yang
+// sudah selesai ikut muncul supaya lifecycle dan KPI tidak kehilangan case.
 func (t *Tracker) All() []*Case {
+	if t == nil {
+		return nil
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	out := make([]*Case, 0, len(t.cases)+len(t.archive))
+	for _, c := range t.cases {
+		out = append(out, c)
+	}
+	for _, c := range t.archive {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out
+}
+
+// ActiveAll mengembalikan salinan case yang sedang aktif saja (belum selesai /
+// belum digantikan). Dipakai bila pemanggil butuh daftar case berjalan tanpa
+// riwayat.
+func (t *Tracker) ActiveAll() []*Case {
 	if t == nil {
 		return nil
 	}
@@ -86,7 +121,7 @@ func (t *Tracker) All() []*Case {
 	return out
 }
 
-// Count mengembalikan jumlah case yang sedang terlacak.
+// Count mengembalikan jumlah case aktif yang sedang terlacak (bukan riwayat).
 func (t *Tracker) Count() int {
 	if t == nil {
 		return 0
