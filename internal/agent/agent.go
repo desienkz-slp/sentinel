@@ -361,8 +361,12 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 				rep.Target = probedTarget(rep.Steps)
 			}
 			// FASE 1: tutup state case (INVESTIGATION/ESCALATION).
+			// Workflow deterministik untuk keluhan SELALU dianggap diagnosis
+			// nyata — walau semua adapter nonaktif (dilewati) dan korelasinya
+			// berujung TIDAK DIKETAHUI, itu tetap hasil diagnosis yang harus
+			// bisa di-eskalasi.
 			if e.Case != nil {
-				snap := e.Case.onResult(klas.Key, klas.Intent, rep.Verdict, rep.Confidence, h.RanAnyTool)
+				snap := e.Case.onResult(klas.Key, klas.Intent, rep.Verdict, rep.Confidence, true)
 				rep.CaseID, rep.CaseState = snap.CaseID, snap.CaseState
 			}
 			// Eskalasi ke Codex bila keyakinan rendah (analisis senior).
