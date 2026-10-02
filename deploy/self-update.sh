@@ -94,6 +94,14 @@ done
 [ -f stage/tools/registry.yaml ] && cp -a stage/tools/registry.yaml "$APP_DIR/tools/registry.yaml"
 [ -d stage/wa-gateway/app ] && cp -a stage/wa-gateway/app/. "$APP_DIR/wa-gateway/app/"
 [ -d stage/wa-gateway/public ] && cp -a stage/wa-gateway/public/. "$APP_DIR/wa-gateway/public/"
+# Updater harus ikut memperbarui dirinya sendiri; tanpa ini server selamanya
+# memakai skrip versi lama. Ganti secara atomik agar skrip yang sedang berjalan
+# tidak ditruncate saat Bash masih membacanya.
+if [ -f stage/deploy/self-update.sh ]; then
+  cp -a stage/deploy/self-update.sh "$APP_DIR/deploy/self-update.sh.new"
+  chmod 0755 "$APP_DIR/deploy/self-update.sh.new"
+  mv -f "$APP_DIR/deploy/self-update.sh.new" "$APP_DIR/deploy/self-update.sh"
+fi
 [ -f stage/VERSION ] && cp -a stage/VERSION "$APP_DIR/VERSION"
 # node_modules: npm ci bila package-lock berubah (native binding glibc).
 if [ -f stage/wa-gateway/package-lock.json ]; then
