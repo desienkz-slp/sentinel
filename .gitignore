@@ -30,3 +30,6 @@ deploy/.env.*
 
 # Dokumen kontrak API internal — JANGAN di-commit
 NOC_AGENT_API.md
+
+# local tool enablement (operator step-2, never committed)
+tools/registry.local.yaml

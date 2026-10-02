@@ -247,7 +247,17 @@ func projectRoot() string {
 func defaultPolicyPath() string {
 	return filepath.Join(projectRoot(), "policies", "default-policy.yaml")
 }
-func defaultRegistryPath() string { return filepath.Join(projectRoot(), "tools", "registry.yaml") }
+// defaultRegistryPath mengembalikan path registry tool. Bila ada overlay lokal
+// `tools/registry.local.yaml` (gitignored, step-2 operator untuk mengaktifkan
+// tool READ setelah endpoint+kredensial nyata tersedia), file itu diutamakan.
+// File yang di-commit (registry.yaml) TETAP deny-by-default demi kontrak keamanan.
+func defaultRegistryPath() string {
+	local := filepath.Join(projectRoot(), "tools", "registry.local.yaml")
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return filepath.Join(projectRoot(), "tools", "registry.yaml")
+}
 func defaultWorkflowDir() string  { return filepath.Join(projectRoot(), "workflows") }
 func defaultIncidentPath() string { return filepath.Join(dataDir(), "incidents.json") }
 func defaultAuditPath() string    { return filepath.Join(dataDir(), "audit.json") }
