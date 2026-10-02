@@ -334,17 +334,29 @@ class SessionManager {
           const msgId0 = msg.key.id || '';
 
           // Pesan dari DIRI SENDIRI (fromMe) ada dua jenis:
-          //   (a) balasan yang baru saja kita kirim -> HARUS diabaikan, kalau
-          //       tidak akan terjadi loop balasan tak berujung.
-          //   (b) pesan yang OPERATOR ketik sendiri dari HP (mode uji/catatan)
-          //       -> boleh diproses, supaya operator bisa mencoba bot dari
-          //       nomor gateway itu sendiri.
-          // Pembedanya: id pesan tercatat di this.sentIds ATAU teksnya cocok
-          // dengan outbound yang baru dikirim (anti-race, sebab event upsert
-          // bisa emit sebelum sendMessage() resolve dan mengisi sentIds).
+          //   (a) echo balasan yang baru saja kita kirim ke pelanggan -> WAJIB
+          //       diabaikan, kalau tidak terjadi loop balasan tak berujung.
+          //       Echo ini punya message_id BERBEDA dari result.key.id (histori
+          //       sync multi-device) dan teksnya bisa dinamis (LLM generate),
+          //       sehingga pencocokan sentIds/recentOutbound saja TIDAK cukup.
+          //   (b) pesan yang OPERATOR ketik sendiri dari HP (mode uji/catatan).
+          //
+          // Aturan aman (deny-by-default): SEMUA pesan fromMe yang diarahkan ke
+          // chat orang lain (@s.whatsapp.net / @lid / @g.us) adalah echo kiriman
+          // kita sendiri -> abaikan. Hanya pesan fromMe dengan remoteJid BERISI
+          // NOMOR GATEWAY SENDIRI (catatan self) yang diproses sebagai operator.
           if (msg.key.fromMe) {
+            const remote = msg.key.remoteJid || '';
+            const selfJid = String(this.phone || '').replace(/[^0-9]/g, '');
+            const isSelfNote = selfJid !== '' && remote.split('@')[0].replace(/[^0-9]/g, '') === selfJid;
+
+            // Echo kiriman kita ke pelanggan -> SELALU abaikan (anti-loop mutlak).
+            if (!isSelfNote) {
+              console.log(`[WA-OUTBOUND-ECHO] abaikan echo kiriman sendiri message_id=${msgId0} remote=${remote}`);
+              continue;
+            }
+
             const sekarang = Date.now();
-            // Bersihkan catatan lama (lebih dari 10 menit) agar tidak menumpuk.
             for (const [id, t] of this.sentIds) {
               if (sekarang - t > 10 * 60 * 1000) this.sentIds.delete(id);
             }
@@ -359,17 +371,15 @@ class SessionManager {
             );
             if (this.sentIds.has(msgId0)) {
               this.sentIds.delete(msgId0);
-              console.log(`[WA-OUTBOUND-ECHO] abaikan balasan sendiri message_id=${msgId0}`);
-              continue; // ini balasan kita sendiri
-            }
-            // Anti-race: id belum tercatat, tapi teksnya sama dengan outbound
-            // yang baru kita kirim (window 60 detik) -> itu balasan kita juga.
-            if (teksMsg && this.isRecentOutbound(teksMsg)) {
-              this.consumeOutbound(teksMsg);
-              console.log(`[WA-OUTBOUND-ECHO] abaikan balasan sendiri (cocok teks) message_id=${msgId0}`);
+              console.log(`[WA-OUTBOUND-ECHO] abaikan catatan sendiri message_id=${msgId0}`);
               continue;
             }
-            // Bukan kiriman kita -> pesan yang operator ketik sendiri.
+            if (teksMsg && this.isRecentOutbound(teksMsg)) {
+              this.consumeOutbound(teksMsg);
+              console.log(`[WA-OUTBOUND-ECHO] abaikan catatan sendiri (cocok teks) message_id=${msgId0}`);
+              continue;
+            }
+            // Catatan self yang bukan kiriman kita -> operator mengetik sendiri.
             console.log(`[WA-INBOUND-SELF] operator mengetik sendiri message_id=${msgId0} (diproses)`);
           }
 
