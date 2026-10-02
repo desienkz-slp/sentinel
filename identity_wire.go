@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"ainoc/internal/audit"
 	"ainoc/internal/billing"
 	"ainoc/internal/config"
 	"ainoc/internal/directory"
@@ -140,17 +141,17 @@ func (s *Server) registerIdentityRoutes(mux *http.ServeMux) {
 		defer cancel()
 		c := s.identifyCaller(ctx, num)
 		writeJSON(w, 200, map[string]any{
-			"ok":         true,
-			"number":     c.Number,
-			"role":       c.Role,
-			"role_label": directory.Role(c.Role).Label(),
-			"name":       c.Name,
-			"title":      c.Title,
-			"is_staff":   c.IsStaff,
-			"is_customer": c.IsCustomer,
-			"customer":   c.Customer,
-			"perms":      c.Perms,
-			"pin_verified": s.pinSesi != nil && s.pinSesi.verified(c.Number),
+			"ok":            true,
+			"number":        c.Number,
+			"role":          c.Role,
+			"role_label":    directory.Role(c.Role).Label(),
+			"name":          c.Name,
+			"title":         c.Title,
+			"is_staff":      c.IsStaff,
+			"is_customer":   c.IsCustomer,
+			"customer":      c.Customer,
+			"perms":         c.Perms,
+			"pin_verified":  s.pinSesi != nil && s.pinSesi.verified(c.Number),
 			"billing_error": c.BillingError,
 		})
 	})
@@ -202,6 +203,81 @@ func (s *Server) registerIdentityRoutes(mux *http.ServeMux) {
 		}
 		s.pinSesi.grant(body.Number)
 		writeJSON(w, 200, map[string]any{"ok": true, "message": "PIN terverifikasi", "valid_until": time.Now().Add(s.pinSesi.ttl).Format(time.RFC3339)})
+	})
+
+	// POST /api/action/execute — jalankan aksi (termasuk WRITE) atas nama penelepon.
+	// Rantai: identify -> authorize (role+izin) -> cek PIN -> audit -> dispatch.
+	// Body: {number, tool, args?}
+	// Respons NEED_PIN berarti klien harus verify-pin dulu lalu ulangi.
+	mux.HandleFunc("/api/action/execute", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]any{"ok": false, "error": "pakai POST"})
+			return
+		}
+		var body struct {
+			Number string         `json:"number"`
+			Tool   string         `json:"tool"`
+			Args   map[string]any `json:"args"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		body.Tool = strings.TrimSpace(body.Tool)
+		if body.Number == "" || body.Tool == "" {
+			writeJSON(w, 400, map[string]any{"ok": false, "error": "number dan tool wajib"})
+			return
+		}
+		ctx, cancel := timeoutCtx(r, 25*time.Second)
+		defer cancel()
+
+		// 1. Identifikasi penelepon.
+		caller := s.identifyCaller(ctx, body.Number)
+
+		// 2. Otorisasi berbasis role + PIN.
+		pinOK := s.pinSesi != nil && s.pinSesi.verified(caller.Number)
+		authz := directory.Authorize(caller, body.Tool, pinOK)
+
+		// 3. Audit SELALU (baik ditolak maupun dijalankan) — master spec §25.
+		s.auditAction(caller, body.Tool, body.Args, authz, pinOK)
+
+		switch authz.Decision {
+		case directory.Deny:
+			writeJSON(w, 403, map[string]any{
+				"ok": false, "decision": "DENY", "error": authz.Reason,
+				"role": caller.Role, "perm_needed": authz.Perm,
+			})
+			return
+		case directory.NeedPIN:
+			writeJSON(w, 200, map[string]any{
+				"ok": false, "decision": "NEED_PIN",
+				"message":     "Aksi ini berisiko. Verifikasi PIN dulu via /api/staff/verify-pin lalu ulangi.",
+				"perm_needed": authz.Perm, "role": caller.Role,
+			})
+			return
+		}
+
+		// 4. Lolos otorisasi -> teruskan ke dispatcher (registry->policy->adapter).
+		//    Dispatcher TETAP gerbang terakhir: bila tool WRITE belum terdaftar/
+		//    aktif atau adapter belum implement, hasilnya ditolak jujur (tidak palsu).
+		if s.disp == nil {
+			writeJSON(w, 200, map[string]any{"ok": false, "error": "tool gateway tidak siap"})
+			return
+		}
+		res := s.disp.Invoke(ctx, body.Tool, body.Args)
+		// Audit hasil eksekusi.
+		s.auditActionResult(caller, body.Tool, res.OK, string(res.Decision), res.Error)
+		writeJSON(w, 200, map[string]any{
+			"ok":               res.OK,
+			"decision":         "AUTHORIZED",
+			"actor":            caller.Number,
+			"role":             caller.Role,
+			"tool":             body.Tool,
+			"result":           res.Output,
+			"gateway_decision": res.Decision,
+			"error":            res.Error,
+			"request_id":       res.RequestID,
+		})
 	})
 }
 
@@ -321,4 +397,51 @@ func withCaller(ctx context.Context, c directory.Caller) context.Context {
 func callerFrom(ctx context.Context) (directory.Caller, bool) {
 	c, ok := ctx.Value(callerCtxKey{}).(directory.Caller)
 	return c, ok
+}
+
+// auditAction mencatat keputusan otorisasi aksi (master spec §25). Argumen
+// disanitasi: args disalin apa adanya (tanpa kredensial — tool read/write kita
+// tidak menerima kredensial di args).
+func (s *Server) auditAction(c directory.Caller, tool string, args map[string]any, authz directory.AuthResult, pinOK bool) {
+	if s.aud == nil {
+		return
+	}
+	human := "pin_verified=" + boolStr(pinOK)
+	s.aud.Record(audit.Entry{
+		EventType:      "action_authz",
+		OccurredAt:     time.Now().UTC(),
+		Actor:          c.Number + " (" + string(c.Role) + ")",
+		Tool:           tool,
+		Arguments:      args,
+		PolicyDecision: string(authz.Decision),
+		HumanApproval:  human,
+		Note:           authz.Reason,
+	})
+}
+
+// auditActionResult mencatat hasil eksekusi aksi yang sudah lolos otorisasi.
+func (s *Server) auditActionResult(c directory.Caller, tool string, ok bool, gatewayDecision, errMsg string) {
+	if s.aud == nil {
+		return
+	}
+	status := "success"
+	if !ok {
+		status = "failed"
+	}
+	s.aud.Record(audit.Entry{
+		EventType:       "action_execute",
+		OccurredAt:      time.Now().UTC(),
+		Actor:           c.Number + " (" + string(c.Role) + ")",
+		Tool:            tool,
+		PolicyDecision:  gatewayDecision,
+		ExecutionStatus: status,
+		Error:           errMsg,
+	})
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
