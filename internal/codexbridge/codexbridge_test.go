@@ -83,7 +83,7 @@ func TestTail(t *testing.T) {
 
 func TestNewDefaults(t *testing.T) {
 	b := New("codex", "m", "", 0)
-	if b.Sandbox != "danger-full-access" {
+	if b.Sandbox != "read-only" {
 		t.Errorf("sandbox default = %q", b.Sandbox)
 	}
 	if b.Timeout != 180*time.Second {

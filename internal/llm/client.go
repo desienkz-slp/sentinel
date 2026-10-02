@@ -99,7 +99,9 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tools []Tool) (*Messa
 }
 
 func (c *Client) chatCompletions(ctx context.Context, msgs []Message, tools []Tool) (*Message, error) {
-	payload := chatRequest{Model: c.Model, Messages: msgs, Tools: tools, Stream: true}
+	// Non-streaming: beberapa router OpenAI-compatible (mis. griphubrouter)
+	// hang saat stream=true, sedangkan respons non-stream selalu didukung.
+	payload := chatRequest{Model: c.Model, Messages: msgs, Tools: tools, Stream: false}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
@@ -109,7 +111,6 @@ func (c *Client) chatCompletions(ctx context.Context, msgs []Message, tools []To
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
 	if c.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
@@ -120,13 +121,9 @@ func (c *Client) chatCompletions(ctx context.Context, msgs []Message, tools []To
 	}
 	defer resp.Body.Close()
 
-	ct := resp.Header.Get("Content-Type")
 	if resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("llm http %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
-	}
-	if strings.Contains(ct, "event-stream") {
-		return parseSSE(resp.Body)
 	}
 	return parseJSON(resp.Body)
 }
@@ -276,7 +273,32 @@ func (c *Client) chatMessages(ctx context.Context, msgs []Message, tools []Tool)
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("llm http %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
-	return parseAnthropic(resp.Body)
+	// Baca seluruh body sekali, lalu deteksi format respons: beberapa router
+	// OpenAI-compatible (mis. griphubrouter) menjawab format OpenAI
+	// (choices[].message) walau dipanggil lewat /messages (gaya Anthropic).
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return nil, err
+	}
+	return parseAnthropicOrOpenAI(raw)
+}
+
+// parseAnthropicOrOpenAI mendeteksi format respons: bila berisi "choices"
+// (OpenAI chat.completion) atau "output" (OpenAI Responses) diparse sebagai
+// OpenAI; selain itu diparse sebagai Anthropic Messages (content[]).
+func parseAnthropicOrOpenAI(raw []byte) (*Message, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("llm: respons kosong")
+	}
+	// Deteksi cepat berdasarkan field kunci di JSON.
+	if bytes.Contains(trimmed, []byte(`"choices"`)) {
+		return parseJSON(bytes.NewReader(trimmed))
+	}
+	if bytes.Contains(trimmed, []byte(`"output"`)) {
+		return parseResponses(bytes.NewReader(trimmed))
+	}
+	return parseAnthropic(bytes.NewReader(trimmed))
 }
 
 func parseJSON(r io.Reader) (*Message, error) {

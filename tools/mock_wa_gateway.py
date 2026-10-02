@@ -69,7 +69,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def simulate(target: str, payload: dict):
-    """Tiru webhook.js: POST payload ke N8N_WEBHOOK_URL lalu balas 'reply' ke WA."""
+    """Tiru webhook.js: POST payload ke NOC_WEBHOOK_URL lalu balas 'reply' ke WA."""
     req = urllib.request.Request(
         target, data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "X-AI-NOC-Source": "whatsapp-gateway"},

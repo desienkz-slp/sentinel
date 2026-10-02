@@ -1,0 +1,19 @@
+[Unit]
+Description=NOC Sentinel (ai-noc-go + WhatsApp Gateway)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=noc
+Group=noc
+WorkingDirectory=/opt/noc-sentinel
+EnvironmentFile=/opt/noc-sentinel/.env
+ExecStart=/opt/noc-sentinel/bin/ai-noc-go -addr :8090
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

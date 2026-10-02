@@ -620,15 +620,8 @@ func probedTarget(steps []Step) string {
 
 // shouldEscalate menentukan apakah analisis perlu dilanjutkan ke Codex CLI.
 func (e *Engine) shouldEscalate(rep Report, used map[string]int) bool {
-	if e.Codex == nil || !e.Codex.Available() {
-		return false
-	}
-	if rep.Error != "" || rep.Answer == "" {
-		return true
-	}
-	if rep.Verdict == "" || rep.Verdict == "TIDAK DIKETAHUI" || rep.Confidence < 60 {
-		return true
-	}
+	// Phase 0: low-confidence cases must be handed to a human authority, never
+	// silently delegated to another model/CLI.
 	return false
 }
 

@@ -21,7 +21,7 @@ var defaultDoc string
 
 // Version dinaikkan setiap kali aturan berubah, supaya laporan bisa dilacak
 // dihasilkan oleh standar versi berapa.
-const Version = "1.0.0"
+const Version = "1.1.0"
 
 // Intent adalah kategori pesan masuk, ditentukan KODE (bukan model).
 type Intent string
@@ -72,6 +72,15 @@ var weakContext = []string{
 	"internet", "koneksi", "jaringan", "wifi", "wlan", "lan", "kabel",
 	"router", "modem", "ont", "cpe", "pppoe", "radius", "dns",
 	"cek koneksi", "cek jaringan", "ping", "bandwidth", "speedtest",
+}
+
+// testWords: penanda pesan tes/uji komunikasi. Pesan seperti ini (mis. "halo,
+// ini tes komunikasi, mohon balas") TIDAK boleh langsung dibaca sebagai keluhan
+// meskipun memuat kata "koneksi"/"internet" — CS harus interaktif (master spec
+// §7), bukan langsung diagnosis.
+var testWords = []string{
+	"tes", "test", "testing", "cek komunikasi", "tes komunikasi",
+	"test komunikasi", "tes koneksi", "test koneksi",
 }
 
 // chatWords: sapaan & obrolan ringan. Dicocokkan PER KATA UTUH (bukan substring)
@@ -153,6 +162,15 @@ func Classify(msg string) Intent {
 	// Gejala gangguan nyata -> keluhan, apa pun bentuk kalimatnya.
 	if hasAny(padded, strongComplaint) {
 		return IntentComplaint
+	}
+
+	// Pesan tes/uji komunikasi -> CHAT (jangan didiagnosis). Contoh nyata:
+	// "Halo, ini tes komunikasi dari Hermes. Mohon balas untuk konfirmasi
+	// koneksi." mengandung kata "koneksi" (weakContext) tetapi bukan keluhan —
+	// CS harus interaktif (master spec §7). Keluhan nyata tetap aman karena
+	// strongComplaint sudah diperiksa lebih dulu.
+	if hasAny(padded, testWords) {
+		return IntentChat
 	}
 
 	// Pertanyaan tanpa gejala gangguan -> minta perjelas.

@@ -68,6 +68,40 @@ func splitHostPort(target string, defPort string) (string, string) {
 	return target, defPort
 }
 
+// AllowedBy memastikan target valid dan termasuk network/host yang telah disetujui operator.
+// Allowlist kosong berarti diagnostics jaringan dimatikan (deny-by-default).
+func AllowedBy(target string, allowlist []string) bool {
+	if !Allowed(target) || len(allowlist) == 0 {
+		return false
+	}
+	host := target
+	if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+		u, err := url.Parse(host)
+		if err != nil {
+			return false
+		}
+		host = u.Hostname()
+	} else if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	for _, entry := range allowlist {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if strings.EqualFold(host, entry) {
+			return true
+		}
+		if _, network, err := net.ParseCIDR(entry); err == nil {
+			if ip := net.ParseIP(host); ip != nil && network.Contains(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Tools mengembalikan definisi tool untuk function-calling LLM.
 func (r *Runner) Tools() []llm.Tool {
 	mk := func(name, desc string, props map[string]any, required ...string) llm.Tool {

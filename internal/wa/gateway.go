@@ -4,7 +4,7 @@
 // pada project ai-noc, TANPA perlu mengubah gateway tersebut):
 //
 //	MASUK  : gateway POST payload {message_id,chat_id,sender,sender_name,message,
-//	         timestamp,type} ke N8N_WEBHOOK_URL. Bila respons memuat field
+//	         timestamp,type} ke NOC_WEBHOOK_URL. Bila respons memuat field
 //	         "reply", gateway otomatis mengirimkannya kembali ke chat_id.
 //	KELUAR : ai-noc-go POST {to,message} ke /api/whatsapp/send.
 package wa
@@ -31,13 +31,14 @@ type InboundMessage struct {
 	Type       string `json:"type"`
 }
 
-// Identity mengembalikan identitas pengirim untuk keperluan allowlist, sesi,
+// Identity mengembalikan identitas pengirim untuk keperluan blocklist, sesi,
 // cache, dan memory.
 //
 // PENTING: utamakan Sender (nomor telepon hasil resolusi gateway), bukan
 // ChatID. WhatsApp kini mengirim sebagian chat sebagai @lid (Linked ID) —
 // deretan angka panjang yang BUKAN nomor telepon. Memakai ChatID membuat nomor
-// tidak cocok dengan allowlist sehingga pesan pelanggan ikut ditolak.
+// tidak cocok dengan blocklist sehingga pesan pelanggan yang diblokir ikut
+// lolos.
 func (m InboundMessage) Identity() string {
 	if s := strings.TrimSpace(m.Sender); s != "" && !IsLID(s) {
 		return s
@@ -216,14 +217,12 @@ func IsGroup(chatID, sender string) bool {
 	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(sender)), "@g.us")
 }
 
-// Allowed memeriksa allowlist pengirim. Daftar kosong = izinkan semua (mode dev).
-func Allowed(allowlist []string, identity string) bool {
-	if len(allowlist) == 0 {
-		return true
-	}
+// Blocked memeriksa apakah pengirim ada di blocklist. Nomor dalam blocklist
+// TIDAK dibalas. Daftar kosong = tidak ada yang diblokir (semua dibalas).
+func Blocked(blocklist []string, identity string) bool {
 	id := normalize(identity)
-	for _, a := range allowlist {
-		if normalize(a) == id && id != "" {
+	for _, b := range blocklist {
+		if normalize(b) == id && id != "" {
 			return true
 		}
 	}
@@ -247,8 +246,8 @@ func normalize(s string) string {
 	return b.String()
 }
 
-// ParseAllowlist memecah "628xx,628yy" menjadi slice.
-func ParseAllowlist(s string) []string {
+// ParseBlocklist memecah "628xx,628yy" menjadi slice.
+func ParseBlocklist(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {

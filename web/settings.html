@@ -16,9 +16,16 @@
   body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
   header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
     background:linear-gradient(180deg,#111a24,#0d141c);position:sticky;top:0;z-index:10;flex-wrap:wrap}
-  .brand-logo{width:38px;height:38px;flex:0 0 auto}
+  .brand-logo{width:38px;height:38px;flex:0 0 auto;display:block}
   .logo{font-weight:700;letter-spacing:.5px;font-size:17px}
   .logo span{color:var(--acc)}
+  .gear{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 auto;
+    color:var(--dim);text-decoration:none;font-size:17px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel2);transition:color .15s,border-color .15s}
+  .gear:hover{color:var(--txt);border-color:#33465c}
+  .gear.on{color:var(--acc);border-color:#27536b;background:#12303c}
+  .brand-link{display:inline-flex;flex:0 0 auto;text-decoration:none}
+  .brand-link img{display:block}
   .nav a{color:var(--dim);text-decoration:none;font-size:13px;padding:7px 12px;border:1px solid var(--line);
     border-radius:8px;background:var(--panel2)}
   .nav a:hover{color:var(--txt);border-color:#33465c}
@@ -28,6 +35,9 @@
   .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
   .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
   .dot.off{background:var(--bad)}
+  .ep-tag{font:10px/1 var(--mono);font-weight:700;padding:2px 6px;border-radius:5px}
+  .ep-tag.a{background:#38bdf8;color:#06202e}   /* light blue = Endpoint A */
+  .ep-tag.b{background:#ef4444;color:#fff}       /* red = Endpoint B */
   .spacer{flex:1}
   main{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 20px 40px;max-width:1100px;margin:0 auto}
   @media(max-width:900px){main{grid-template-columns:1fr}}
@@ -54,15 +64,14 @@
 </head>
 <body>
 <header>
-  <img class="brand-logo" src="/logo.png" alt="NOC Sentinel" width="38" height="38">
+  <a class="gear on" href="/settings.html" title="Pengaturan" aria-label="Pengaturan">⚙</a>
+  <a class="brand-link" href="/" title="Ke Dashboard">
+    <img class="brand-logo" src="/logo.png" alt="NOC Sentinel" width="38" height="38">
+  </a>
   <div class="logo">NOC <span>Sentinel</span></div>
-  <nav class="nav">
-    <a href="/">← Dashboard</a>
-    <a href="/settings.html" class="on">⚙ Pengaturan</a>
-  </nav>
   <div class="spacer"></div>
-  <div class="pill"><span class="dot" id="dotLLM"></span><span id="txtLLM">LLM belum dites</span></div>
-  <div class="pill"><span class="dot" id="dotCodex"></span><span id="txtCodex">Codex…</span></div>
+  <div class="pill"><span class="ep-tag a">A</span><span class="dot" id="dotLLM"></span><span id="txtLLM">A · Conversation</span></div>
+  <div class="pill"><span class="ep-tag b">B</span><span class="dot" id="dotCodex"></span><span id="txtCodex">B · Reasoning</span></div>
   <div class="pill"><span class="dot" id="dotBilling"></span><span id="txtBilling">Billing…</span></div>
   <div class="pill"><span class="dot" id="dotMikrotik"></span><span id="txtMikrotik">MikroTik…</span></div>
   <div class="pill"><span class="dot" id="dotRadius"></span><span id="txtRadius">RADIUS…</span></div>
@@ -71,11 +80,11 @@
 
 <main>
   <section class="card">
-    <h2>Conversation — Endpoint A</h2>
+    <h2>Conversation — Endpoint A <span class="ep-tag a">A</span></h2>
     <div class="sub">LLM untuk percakapan &amp; diagnosis (loop OODA + balasan pelanggan).</div>
 
     <div class="row">
-      <div><label for="sBase">Base URL</label><input id="sBase" placeholder="http://127.0.0.1:20128/v1"></div>
+      <div><label for="sBase">Base URL</label><input id="sBase" placeholder="https://provider.example/v1"></div>
       <div><label for="sKey">API Key (kosongkan bila sudah tersimpan)</label><input id="sKey" type="password" placeholder="•••• (tidak ditampilkan)"></div>
     </div>
     <div class="row">
@@ -104,11 +113,11 @@
   </section>
 
   <section class="card">
-    <h2>Reasoning — Endpoint B</h2>
-    <div class="sub">Model eskalasi analisis mendalam via Codex CLI (dipanggil saat keyakinan rendah).</div>
+    <h2>Reasoning — Endpoint B <span class="ep-tag b">B</span></h2>
+    <div class="sub">Endpoint model eskalasi analisis mendalam (dipanggil saat keyakinan rendah).</div>
 
     <div class="row">
-      <div><label for="sCodexBase">Base URL (opsional)</label><input id="sCodexBase" placeholder="http://127.0.0.1:20128/v1 (kosong = pakai config.toml)"></div>
+      <div><label for="sCodexBase">Base URL (opsional)</label><input id="sCodexBase" placeholder="https://provider.example/v1 (kosong = ikut Conversation)"></div>
       <div><label for="sCodexKey">API Key (opsional)</label><input id="sCodexKey" type="password" placeholder="••••"></div>
     </div>
     <div class="row">
@@ -129,7 +138,7 @@
     <div class="hint" id="setMsgB"></div>
     <div class="btns">
       <button class="ghost" onclick="loadModels('b')">Cek daftar model</button>
-      <button class="ghost" onclick="codexSelftest()">Tes Codex CLI</button>
+      <button class="ghost" onclick="pingEndpointB()">Tes koneksi (completion nyata)</button>
     </div>
     <div class="status">
       Reasoning: <b id="stCodexEp">—</b> · model <b id="stCodex">—</b> · key <b id="stCodexKey">—</b>
@@ -138,12 +147,17 @@
 
   <section class="card">
     <h2>Perilaku Agen</h2>
-    <div class="sub">Batas langkah &amp; simpan seluruh pengaturan (kedua endpoint).</div>
+    <div class="sub">Batas langkah, kontak eskalasi &amp; simpan seluruh pengaturan (kedua endpoint).</div>
     <div class="row">
       <div><label for="sSteps">Maks langkah per sesi</label><input id="sSteps" type="number" min="1" max="20"></div>
       <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan Semua Pengaturan</button></div>
     </div>
+    <div class="row">
+      <div><label for="sNoc">Nomor NOC (eskalasi teknis)</label><input id="sNoc" placeholder="628xxxxxxxxxx"></div>
+      <div><label for="sAdmin">Nomor ADMIN (eskalasi billing/akun)</label><input id="sAdmin" placeholder="628xxxxxxxxxx"></div>
+    </div>
     <div class="hint" id="setMsg"></div>
+    <div class="status">Maks langkah tersimpan: <b id="stSteps">—</b></div>
   </section>
 
   <section class="card">
@@ -357,6 +371,8 @@ async function boot() {
     const c = st.config;
     $('sBase').value = c.llm_base_url; 
     $('sSteps').value = c.max_steps;
+    $('sNoc').value = c.noc_number || '';
+    $('sAdmin').value = c.admin_number || '';
     $('sCodexBase').value = c.codex_base_url || '';
     // Isi dropdown model dengan nilai tersimpan dulu (opsi lengkap dimuat
     // via tombol "Cek daftar model" atau otomatis di bawah).
@@ -397,7 +413,13 @@ async function loadModels(ep) {
   const selId = isA ? 'sModel' : 'sCodex';
   msg(msgEl, null, `Memuat daftar model (${isA ? 'Conversation' : 'Reasoning'})…`);
   try {
-    const d = await api('/api/models?endpoint=' + (isA ? 'a' : 'b'));
+    // Baca nilai kolom (base URL + key) yang sedang diketik — bukan yang
+    // tersimpan — supaya kolom langsung berpengaruh tanpa harus simpan dulu.
+    const base = (isA ? $('sBase').value : $('sCodexBase').value).trim();
+    const key = (isA ? $('sKey').value : $('sCodexKey').value).trim();
+    const body = JSON.stringify({ base_url: base || undefined, api_key: key || undefined });
+    const d = await api('/api/models?endpoint=' + (isA ? 'a' : 'b'),
+      { method: 'POST', body });
     const nice = ['ag/gemini','cx/gpt','grip/gpt','grip/deepseek','grip/glm','grip/qwen'];
     const sorted = d.models.slice().sort((a,b)=>{
       const ra = nice.findIndex(p=>a.startsWith(p)), rb = nice.findIndex(p=>b.startsWith(p));
@@ -438,6 +460,8 @@ async function saveSettings() {
       llm_base_url: $('sBase').value, llm_api_key: $('sKey').value || undefined,
       llm_model: $('sModel').value, llm_wire_api: $('sWire').value,
       max_steps: parseInt($('sSteps').value,10)||undefined,
+      noc_number: $('sNoc').value,
+      admin_number: $('sAdmin').value,
       codex_model: $('sCodex').value,
       codex_base_url: $('sCodexBase').value || undefined,
       codex_api_key: $('sCodexKey').value || undefined,
@@ -553,20 +577,33 @@ async function pingLLM() {
   setDot('LLM', false, 'menguji…');
   msg('setMsg', null, 'Menguji LLM…');
   try {
-    const d = await api('/api/llm/ping');
+    // Uji nilai kolom yang sedang diketik (bukan yang tersimpan), supaya
+    // tombol tes langsung memakai base URL + key + model yang baru diisi.
+    const d = await api('/api/llm/ping', {method:'POST', body: JSON.stringify({
+      base_url: $('sBase').value.trim() || undefined,
+      api_key: $('sKey').value.trim() || undefined,
+      model: $('sModel').value || undefined,
+      wire_api: $('sWire').value || undefined
+    })});
     setDot('LLM', true, `LLM OK (${d.latency_ms}ms · ${d.model})`);
     msg('setMsg', true, `LLM menjawab dalam ${d.latency_ms}ms (model: ${d.model}).`);
   } catch(e) { setDot('LLM', false, 'LLM gagal'); msg('setMsg', false, 'LLM gagal: ' + e.message.slice(0,120)); }
 }
 
-async function codexSelftest() {
+async function pingEndpointB() {
   setDot('Codex', false, 'menguji…');
-  msg('setMsg', null, 'Menguji Codex CLI…');
+  msg('setMsg', null, 'Menguji endpoint B…');
   try {
-    const d = await api('/api/codex', {method:'POST', body: JSON.stringify({task:'Balas persis: CODEX_OK'})});
-    setDot('Codex', !!d.ok, d.ok ? `Codex OK (${d.elapsed_ms}ms)` : 'Codex gagal');
-    msg('setMsg', d.ok, d.ok ? `Codex menjawab CODEX_OK dalam ${d.elapsed_ms}ms.` : 'Codex gagal: ' + (d.err||'').slice(0,120));
-  } catch(e) { setDot('Codex', false, 'Codex error'); msg('setMsg', false, 'Codex error: ' + e.message.slice(0,120)); }
+    // Uji endpoint B (Reasoning) langsung — nilai dari kolom, bukan Codex CLI.
+    const d = await api('/api/llm/ping', {method:'POST', body: JSON.stringify({
+      base_url: $('sCodexBase').value.trim() || undefined,
+      api_key: $('sCodexKey').value.trim() || undefined,
+      model: $('sCodex').value || undefined,
+      wire_api: $('sCodexWire').value || undefined
+    })});
+    setDot('Codex', true, `B OK (${d.latency_ms}ms · ${d.model})`);
+    msg('setMsg', true, `Endpoint B menjawab dalam ${d.latency_ms}ms (model: ${d.model}).`);
+  } catch(e) { setDot('Codex', false, 'B gagal'); msg('setMsg', false, 'Endpoint B gagal: ' + e.message.slice(0,120)); }
 }
 
 boot();

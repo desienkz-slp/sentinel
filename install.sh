@@ -274,7 +274,7 @@ if [ "$FAIL" -eq 0 ] && [ "$CHECK_ONLY" -eq 0 ]; then
   fi
   printf "\n  Dashboard  : ${B}http://127.0.0.1:8090${R}\n"
   printf "  WA Gateway : ${B}http://127.0.0.1:8090/whatsapp${R}  ${DIM}(scan QR dari panel dashboard)${R}\n"
-  printf "\n  ${WARN}Jangan lupa: isi allowlist nomor WhatsApp sebelum dipakai sungguhan.${R}\n"
+  printf "\n  ${WARN}Kelola daftar blokir nomor WhatsApp lewat popup di dashboard (nomor diblokir tidak dibalas).${R}\n"
 elif [ "$CHECK_ONLY" -eq 1 ]; then
   if [ "$FAIL" -eq 0 ]; then
     printf "${OK}${B}  Semua kebutuhan wajib sudah terpenuhi.${R}\n"

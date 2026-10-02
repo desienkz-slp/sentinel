@@ -63,6 +63,13 @@ func TestParseVerdict(t *testing.T) {
 
 // probedTarget mengambil target dari langkah tool pertama — dipakai agar riwayat
 // menampilkan alamat yang benar-benar dicek meski pengirim tidak menyebutkannya.
+func TestLowConfidenceNeverAutomaticallyEscalatesToCodex(t *testing.T) {
+	e := &Engine{Codex: nil}
+	if e.shouldEscalate(Report{Verdict: "TIDAK DIKETAHUI", Confidence: 0}, nil) {
+		t.Fatal("low-confidence report must enter human escalation, not Codex")
+	}
+}
+
 func TestProbedTarget(t *testing.T) {
 	if got := probedTarget(nil); got != "" {
 		t.Errorf("probedTarget(nil) = %q, mau kosong", got)

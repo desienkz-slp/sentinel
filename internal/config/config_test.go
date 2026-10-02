@@ -14,7 +14,7 @@ import (
 func TestSaveMenulisKeFileYangSama(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	awal := `{"addr":":8090","llm_model":"ag/gemini-3.8-flash-high","wa_allowlist":[]}`
+	awal := `{"addr":":8090","llm_model":"ag/gemini-3.8-flash-high","wa_blocklist":[]}`
 	if err := os.WriteFile(path, []byte(awal), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestSaveMenulisKeFileYangSama(t *testing.T) {
 	}
 
 	// Ubah seperti yang dilakukan dashboard, lalu simpan.
-	c.WAAllowlist = []string{"628123456789", "628999888777"}
+	c.WABlocklist = []string{"628123456789", "628999888777"}
 	c.WAGroup = true
 	if err := c.Save(); err != nil {
 		t.Fatalf("Save gagal: %v", err)
@@ -33,8 +33,8 @@ func TestSaveMenulisKeFileYangSama(t *testing.T) {
 
 	// Baca ulang dari disk: nilai baru harus bertahan.
 	c2 := Load(path)
-	if len(c2.WAAllowlist) != 2 || c2.WAAllowlist[0] != "628123456789" {
-		t.Errorf("allowlist tidak tersimpan: %v", c2.WAAllowlist)
+	if len(c2.WABlocklist) != 2 || c2.WABlocklist[0] != "628123456789" {
+		t.Errorf("blocklist tidak tersimpan: %v", c2.WABlocklist)
 	}
 	if !c2.WAGroup {
 		t.Error("wa_group tidak tersimpan")
@@ -50,6 +50,17 @@ func TestSaveMenulisKeFileYangSama(t *testing.T) {
 
 // Save tanpa file config harus mengembalikan error yang jelas, bukan panic
 // dan bukan diam-diam berhasil.
+func TestLoadRejectsUnsafeCodexSandbox(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"codex_sandbox":"danger-full-access"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(path).CodexSbx; got != "read-only" {
+		t.Fatalf("CodexSbx=%q, want read-only", got)
+	}
+}
+
 func TestSaveTanpaPathError(t *testing.T) {
 	c := Default()
 	if err := c.Save(); err == nil {
@@ -82,7 +93,7 @@ func TestSaveHasilJSONValid(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := Load(path)
-	c.WAAllowlist = []string{"628111"}
+	c.WABlocklist = []string{"628111"}
 	if err := c.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +186,7 @@ func TestAdapterEndpointFromEnvOnly(t *testing.T) {
 
 	// Token boleh disimpan ke config.json (gitignored) — yang penting TIDAK
 	// muncul di Redacted(). config.json sendiri di-.gitignore, aman.
-	c.WAAllowlist = []string{"628111"}
+	c.WABlocklist = []string{"628111"}
 	if err := c.Save(); err != nil {
 		t.Fatal(err)
 	}

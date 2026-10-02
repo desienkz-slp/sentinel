@@ -175,7 +175,9 @@ func (s *Server) routes() http.Handler {
 			CodexAPIKey   *string   `json:"codex_api_key"`
 			CodexWireAPI  *string   `json:"codex_wire_api"`
 			WABaseURL     *string   `json:"wa_base_url"`
-			WAAllowlist   *[]string `json:"wa_allowlist"`
+			WABlocklist   *[]string `json:"wa_blocklist"`
+			NOCNumber     *string   `json:"noc_number"`
+			AdminNumber   *string   `json:"admin_number"`
 			WAAutoReply   *bool     `json:"wa_auto_reply"`
 			WAAsync       *bool     `json:"wa_async"`
 			WAGroup       *bool     `json:"wa_group"`
@@ -248,8 +250,14 @@ func (s *Server) routes() http.Handler {
 			s.cfg.WABaseURL = strings.TrimRight(strings.TrimSpace(*body.WABaseURL), "/")
 			s.wa.BaseURL = s.cfg.WABaseURL
 		}
-		if body.WAAllowlist != nil {
-			s.cfg.WAAllowlist = *body.WAAllowlist
+		if body.WABlocklist != nil {
+			s.cfg.WABlocklist = *body.WABlocklist
+		}
+		if body.NOCNumber != nil {
+			s.cfg.NOCNumber = strings.TrimSpace(*body.NOCNumber)
+		}
+		if body.AdminNumber != nil {
+			s.cfg.AdminNumber = strings.TrimSpace(*body.AdminNumber)
 		}
 		if body.WAAutoReply != nil {
 			s.cfg.WAAutoReply = *body.WAAutoReply
@@ -341,15 +349,42 @@ func (s *Server) routes() http.Handler {
 	})
 
 	// Verifikasi kredensial + model lewat completion nyata (bukan sekadar daftar model).
+	// Menerima body opsional {base_url,api_key,model,wire_api} untuk menguji nilai
+	// yang baru diketik di kolom UI SEBELUM disimpan (agar kolom langsung berpengaruh).
 	mux.HandleFunc("/api/llm/ping", func(w http.ResponseWriter, r *http.Request) {
+		base, key, model, wire := s.cfg.LLMBaseURL, s.cfg.LLMAPIKey, s.cfg.LLMModel, s.cfg.LLMWireAPI
+		if r.Method == http.MethodPost && r.Body != nil {
+			var body struct {
+				BaseURL *string `json:"base_url"`
+				APIKey  *string `json:"api_key"`
+				Model   *string `json:"model"`
+				WireAPI *string `json:"wire_api"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				if body.BaseURL != nil && *body.BaseURL != "" {
+					base = strings.TrimRight(*body.BaseURL, "/")
+				}
+				if body.APIKey != nil {
+					key = *body.APIKey
+				}
+				if body.Model != nil && *body.Model != "" {
+					model = *body.Model
+				}
+				if body.WireAPI != nil && *body.WireAPI != "" {
+					wire = strings.TrimSpace(*body.WireAPI)
+				}
+			}
+		}
+		c := llm.New(base, key, model, s.cfg.LLMTimeout)
+		c.WireAPI = wire
 		ctx, cancel := timeoutCtx(r, time.Duration(s.cfg.LLMTimeout)*time.Second)
 		defer cancel()
-		text, d, err := s.llm.Ping(ctx)
+		text, d, err := c.Ping(ctx)
 		if err != nil {
-			writeJSON(w, 502, map[string]any{"ok": false, "error": err.Error(), "model": s.cfg.LLMModel})
+			writeJSON(w, 502, map[string]any{"ok": false, "error": err.Error(), "model": model})
 			return
 		}
-		writeJSON(w, 200, map[string]any{"ok": true, "reply": text, "model": s.cfg.LLMModel, "latency_ms": d.Milliseconds()})
+		writeJSON(w, 200, map[string]any{"ok": true, "reply": text, "model": model, "latency_ms": d.Milliseconds()})
 	})
 
 	mux.HandleFunc("/api/models", func(w http.ResponseWriter, r *http.Request) {
@@ -366,6 +401,21 @@ func (s *Server) routes() http.Handler {
 			}
 			if key == "" {
 				key = s.cfg.LLMAPIKey
+			}
+		}
+		// POST body {base_url,api_key} = uji nilai kolom sebelum disimpan.
+		if r.Method == http.MethodPost && r.Body != nil {
+			var body struct {
+				BaseURL *string `json:"base_url"`
+				APIKey  *string `json:"api_key"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				if body.BaseURL != nil && *body.BaseURL != "" {
+					base = strings.TrimRight(*body.BaseURL, "/")
+				}
+				if body.APIKey != nil {
+					key = *body.APIKey
+				}
 			}
 		}
 		ids, err := listModelsHTTP(ctx, base, key)
@@ -390,9 +440,14 @@ func (s *Server) routes() http.Handler {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
+		body.Target = strings.TrimSpace(body.Target)
+		if body.Tool != "interface" && body.Tool != "system" && !diag.AllowedBy(body.Target, s.cfg.DiagAllowlist) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "target diagnostik tidak ada dalam allowlist operator"})
+			return
+		}
 		ctx, cancel := timeoutCtx(r, time.Duration(s.cfg.DiagTimeout)*time.Second)
 		defer cancel()
-		writeJSON(w, 200, s.diag.Run(ctx, body.Tool, strings.TrimSpace(body.Target)))
+		writeJSON(w, 200, s.diag.Run(ctx, body.Tool, body.Target))
 	})
 
 	mux.HandleFunc("/api/tools", func(w http.ResponseWriter, r *http.Request) {
@@ -862,10 +917,8 @@ func (s *Server) routes() http.Handler {
 			return
 		}
 
-		// Pengecualian allowlist: pesan dari NOMOR GATEWAY SENDIRI (operator
-		// mengetik/menguji dari nomor yang tertaut) selalu diproses. Ini yang
-		// memungkinkan uji coba "chat dengan diri sendiri" tanpa menambah nomor
-		// gateway ke allowlist.
+		// Pengecualian blocklist: pesan dari NOMOR GATEWAY SENDIRI (operator
+		// mengetik/menguji dari nomor yang tertaut) selalu diproses.
 		dariNomorSendiri := false
 		if st, err := s.wa.Status(r.Context()); err == nil {
 			if nomor, ok := st["phone"].(string); ok && nomor != "" {
@@ -873,13 +926,14 @@ func (s *Server) routes() http.Handler {
 			}
 		}
 
-		// Allowlist: cegah siapa pun memicu perintah diagnostik di jaringan.
-		if !dariNomorSendiri && !wa.Allowed(s.cfg.WAAllowlist, id) {
-			log.Printf("[WA] ditolak (tidak ada di allowlist): %s", id)
+		// Blocklist: nomor yang diblokir TIDAK dibalas. Daftar kosong =
+		// tidak ada yang diblokir (semua nomor dibalas).
+		if !dariNomorSendiri && wa.Blocked(s.cfg.WABlocklist, id) {
+			log.Printf("[WA] ditolak (nomor diblokir): %s", id)
 			writeJSON(w, 200, wa.Reply{
 				Accepted:  false,
 				MessageID: msg.MessageID,
-				Note:      "pengirim tidak ada di allowlist",
+				Note:      "nomor pengirim diblokir",
 			})
 			return
 		}
@@ -1077,6 +1131,7 @@ func (s *Server) routes() http.Handler {
 	}
 
 	guard := security.New(s.cfg.Addr, s.cfg.OperatorToken, s.cfg.WebhookToken)
+	guard.SetTrustedCIDRs(s.cfg.TrustedCIDRs)
 	operator := guard.Operator(mux)
 	webhook := guard.Webhook(mux)
 	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

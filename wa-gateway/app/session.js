@@ -95,6 +95,11 @@ class SessionManager {
     // "balasan kita sendiri" dari "pesan yang operator ketik sendiri".
     // Tanpa ini, memproses pesan fromMe akan membuat loop balasan tak berujung.
     this.sentIds = new Map(); // id -> timestamp (ms)
+    // Cadangan anti-race: teks outbound yang baru dikirim, dicatat SEBELUM
+    // sendMessage() resolve. Event messages.upsert (fromMe) bisa emit lebih
+    // dulu daripada promise resolve, sehingga this.sentIds belum terisi — maka
+    // dicocokkan lewat teks yang baru saja dikirim (window pendek).
+    this.recentOutbound = new Map(); // teks ternormalisasi -> timestamp (ms)
     // Pemetaan LID (Linked ID) -> nomor telepon asli. WhatsApp memakai LID
     // untuk sebagian pengirim; tanpa pemetaan ini, pesan mereka tidak bisa
     // dicocokkan dengan allowlist dan ikut ditolak.
@@ -334,16 +339,35 @@ class SessionManager {
           //   (b) pesan yang OPERATOR ketik sendiri dari HP (mode uji/catatan)
           //       -> boleh diproses, supaya operator bisa mencoba bot dari
           //       nomor gateway itu sendiri.
-          // Pembedanya: id pesan yang kita kirim tercatat di this.sentIds.
+          // Pembedanya: id pesan tercatat di this.sentIds ATAU teksnya cocok
+          // dengan outbound yang baru dikirim (anti-race, sebab event upsert
+          // bisa emit sebelum sendMessage() resolve dan mengisi sentIds).
           if (msg.key.fromMe) {
             const sekarang = Date.now();
             // Bersihkan catatan lama (lebih dari 10 menit) agar tidak menumpuk.
             for (const [id, t] of this.sentIds) {
               if (sekarang - t > 10 * 60 * 1000) this.sentIds.delete(id);
             }
+            for (const [teks, t] of this.recentOutbound) {
+              if (sekarang - t > 10 * 60 * 1000) this.recentOutbound.delete(teks);
+            }
+            const teksMsg = this.normText(
+              msg.message?.conversation ||
+              msg.message?.extendedTextMessage?.text ||
+              msg.message?.imageMessage?.caption ||
+              ''
+            );
             if (this.sentIds.has(msgId0)) {
               this.sentIds.delete(msgId0);
+              console.log(`[WA-OUTBOUND-ECHO] abaikan balasan sendiri message_id=${msgId0}`);
               continue; // ini balasan kita sendiri
+            }
+            // Anti-race: id belum tercatat, tapi teksnya sama dengan outbound
+            // yang baru kita kirim (window 60 detik) -> itu balasan kita juga.
+            if (teksMsg && this.isRecentOutbound(teksMsg)) {
+              this.consumeOutbound(teksMsg);
+              console.log(`[WA-OUTBOUND-ECHO] abaikan balasan sendiri (cocok teks) message_id=${msgId0}`);
+              continue;
             }
             // Bukan kiriman kita -> pesan yang operator ketik sendiri.
             console.log(`[WA-INBOUND-SELF] operator mengetik sendiri message_id=${msgId0} (diproses)`);
@@ -548,6 +572,11 @@ class SessionManager {
     this.addLog(`Sending message to ${jid} (${text.length} chars)...`);
 
     try {
+      // Catat teks outbound SEBELUM sendMessage() resolve. Event messages.upsert
+      // (fromMe=true) bisa emit lebih dulu daripada promise resolve, jadi kalau
+      // kita hanya mencatat id setelah await, handler akan salah mengira balasan
+      // kita sebagai "operator mengetik sendiri" dan memprosesnya lagi (loop).
+      this.recordOutbound(text);
       const result = await this.sock.sendMessage(jid, { text });
       // Catat id pesan ini supaya saat event fromMe muncul (pesan kita sendiri
       // dikirim balik oleh WhatsApp), kita bisa mengenali dan mengabaikannya.
@@ -567,6 +596,46 @@ class SessionManager {
       this.addLog(`Failed to send message to ${jid}: ${err.message}`, 'ERROR');
       throw err;
     }
+  }
+
+  // ---- pendeteksian outbound anti-race (lihat messages.upsert fromMe) ----
+
+  // normText menormalkan teks supaya pencocokan outbound tahan variasi spasi/
+  // baris baru yang ditambahkan WhatsApp saat mengirim balik pesan kita.
+  normText(s) {
+    return String(s || '').replace(/\s+/g, ' ').trim();
+  }
+
+  // recordOutbound mencatat teks yang hendak kita kirim, SEBELUM sendMessage()
+  // resolve. Ini penangkal utama race: event upsert (fromMe) bisa datang lebih
+  // dulu sebelum sentIds terisi.
+  recordOutbound(text) {
+    const t = this.normText(text);
+    if (!t) return;
+    this.recentOutbound.set(t, Date.now());
+    // Batasi jumlah entri supaya map tidak tumbuh tanpa batas.
+    if (this.recentOutbound.size > 200) {
+      const oldest = [...this.recentOutbound.entries()].sort((a, b) => a[1] - b[1])[0];
+      if (oldest) this.recentOutbound.delete(oldest[0]);
+    }
+  }
+
+  // isRecentOutbound: apakah teks pesan fromMe sama dengan outbound yang baru
+  // dikirim (window 60 detik)? Dipakai untuk mengenali echo balasan sendiri
+  // ketika id-nya belum tercatat di sentIds.
+  isRecentOutbound(text) {
+    const t = this.normText(text);
+    if (!t) return false;
+    const ts = this.recentOutbound.get(t);
+    return typeof ts === 'number' && (Date.now() - ts) <= 60 * 1000;
+  }
+
+  // consumeOutbound menghapus satu entri setelah dipakai sebagai pembeda echo,
+  // supaya teks yang sama tidak terus-menerus "makan" pesan operator asli yang
+  // kebetulan mengetik teks yang sama di window 60 detik.
+  consumeOutbound(text) {
+    const t = this.normText(text);
+    if (t) this.recentOutbound.delete(t);
   }
 
   getStatus() {

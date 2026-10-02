@@ -30,15 +30,14 @@ Lalu buka **http://127.0.0.1:8090**.
 
 1. Panel **WhatsApp Gateway** → tunggu status **✅ berjalan**
 2. Klik **Tampilkan QR pairing** → scan dengan WhatsApp (Pengaturan → Perangkat Tertaut)
-3. **Isi allowlist nomor** — tanpa ini siapa pun bisa memicu diagnostik ke jaringan Anda
+3. **Kelola daftar blokir nomor** — nomor yang diblokir tidak akan dibalas bot
 
-   **Di mana:** dashboard → panel **WhatsApp Gateway** → kolom
-   **"Allowlist nomor (pisah koma)"** → tulis nomor → klik
-   **"Simpan pengaturan WA"**. Perubahan langsung ditulis ke `config.json`,
-   jadi bertahan setelah aplikasi di-restart.
+   **Di mana:** dashboard → panel **WhatsApp Gateway** → tombol
+   **"🛑 Kelola Daftar Blokir"** → popup untuk **menambah/menghapus** nomor.
+   Perubahan langsung ditulis ke `config.json`, jadi bertahan setelah restart.
 
-   ⚠️ **Mengosongkan kolom ini = SEMUA nomor boleh** (tidak ada penyaring).
-   Isi minimal nomor Anda sendiri.
+   💡 **Daftar kosong = semua nomor dibalas** (default). Tambahkan nomor yang
+   mengganggu/spam agar bot berhenti membalasnya.
 4. Kirim pesan WhatsApp ke nomor gateway → dibalas laporan otomatis
 
 ---
@@ -50,7 +49,7 @@ Pelanggan / teknisi WhatsApp
         │  pesan (chat pribadi; grup diabaikan bawaan)
         ▼
 WhatsApp Gateway (Node/Baileys, child process :3001)
-        │  POST payload ke N8N_WEBHOOK_URL (di-set otomatis oleh Go)
+        │  POST payload ke NOC_WEBHOOK_URL (di-set otomatis oleh Go)
         ▼
 ai-noc-go  /api/wa/webhook
         │
@@ -79,7 +78,7 @@ Gateway mengirim field "reply" kembali ke chat  ◄── perilaku bawaan webhoo
 | **WhatsApp** | Gateway Node/Baileys di-vendor di `wa-gateway/`, dikelola Go |
 | **Supervisor** | Menjalankan, memantau, dan me-restart gateway otomatis |
 | **Codex bridge** | `codex exec` dipanggil dari Go sebagai mesin eskalasi |
-| **Keamanan** | Validasi target ketat, tanpa shell, whitelist tool, allowlist nomor |
+| **Keamanan** | Validasi target ketat, tanpa shell, whitelist tool, daftar blokir nomor |
 
 ---
 
@@ -237,7 +236,7 @@ cp config.example.json config.json   # opsional, semua nilai bisa lewat env
 | `NOC_DIAG_TIMEOUT` | `30` | timeout per probe (detik) |
 | `NOC_CODEX_PATH` | `codex` | path ke `codex.exe` native |
 | `NOC_CODEX_SANDBOX` | `danger-full-access` | sandbox Codex |
-| `NOC_WA_BASE_URL` | `http://127.0.0.1:3001` | base URL gateway (fallback `N8N_WEBHOOK_URL`) |
+| `NOC_WA_BASE_URL` | `http://127.0.0.1:3001` | base URL gateway |
 | `NOC_WA_TIMEOUT` | `45` | timeout panggilan ke gateway (detik) |
 | `NOC_WA_ALLOWLIST` | *(kosong = SEMUA nomor boleh)* | nomor diizinkan, pisah koma |
 | `NOC_WA_AUTO_REPLY` | `true` | kirim hasil diagnosis kembali ke WhatsApp |
@@ -430,11 +429,11 @@ dan memakai `NOC_WA_BASE_URL` seperti biasa.
 - **Tidak ada shell** — selalu `exec.Command(bin, args...)` dengan argumen terpisah.
 - **API key tidak pernah dikirim ke browser** — `/api/status` hanya mengembalikan versi ter-mask.
 - **Tool terbatas** — whitelist 9 tool; LLM tidak bisa meminta perintah shell bebas.
-- **WhatsApp allowlist** — tanpa allowlist, siapa pun yang tahu nomor gateway bisa memicu
-  diagnostik ke jaringan Anda. Isi `wa_allowlist` sebelum dipakai sungguhan.
-  Allowlist **kosong berarti terbuka untuk semua nomor** — jangan dikosongkan saat produksi.
+- **WhatsApp blocklist** — nomor yang ada di `wa_blocklist` **tidak dibalas** oleh bot.
+  Kelola lewat popup "🛑 Kelola Daftar Blokir" di panel WhatsApp Gateway. Daftar
+  **kosong berarti semua nomor dibalas** (default aman, tidak ada yang diblokir).
   Pengecualian: pesan dari **nomor gateway itu sendiri** selalu diproses, supaya operator
-  bisa menguji bot dengan mengirim chat ke dirinya sendiri tanpa menambah nomornya ke daftar.
+  bisa menguji bot dengan mengirim chat ke dirinya sendiri tanpa tersaring blokir.
 - **Kredensial sesi WhatsApp** ada di `wa-gateway/data/auth/` — setara login akun WhatsApp Anda.
   Sudah masuk `.gitignore`; **jangan pernah di-commit**.
 - **Webhook WA tanpa autentikasi** — bind gateway dan ai-noc-go ke localhost, atau tambahkan

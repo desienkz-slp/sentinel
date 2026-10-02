@@ -1,0 +1,74 @@
+{
+  "source_of_truth": "AI_AGENT_HERMES_MASTER_SPEC.md §47 (HERMES DEVELOPMENT PHASES)",
+  "model": "gpt-5.6-terra",
+  "model_fallback": ["gpt-5.6-sol", "gpt-5.6-luna"],
+  "phases": [
+    {
+      "id": 0,
+      "name": "DISCOVERY",
+      "goal": "Inspect repo, services, Docker, database, environment, existing WhatsApp gateway, Hermes, n8n, Billing/RADIUS/GenieACS/MikroTik APIs.",
+      "output": "Architecture map.",
+      "exit_gate": "Architecture map document exists; existing APIs and capabilities inventoried; gap analysis produced."
+    },
+    {
+      "id": 1,
+      "name": "FOUNDATION",
+      "goal": "Build Case Engine, database schema, customer context, staff directory, audit log, state machine.",
+      "exit_gate": "go test ./... passes; case state machine enforced in code with tests; DB schema migration present."
+    },
+    {
+      "id": 2,
+      "name": "CONVERSATION AI",
+      "goal": "Build conversation state, intent detection, data collection, sufficiency engine, customer-safe response.",
+      "exit_gate": "go test ./... passes; conversation transitions to READY_FOR_DIAGNOSIS only when required data present; customer replies never leak internals."
+    },
+    {
+      "id": 3,
+      "name": "REASONING",
+      "goal": "Build structured case input, evidence collection, hypothesis engine, diagnostics, confidence, structured output.",
+      "exit_gate": "go test ./... passes; reasoning returns structured schema; unknown evidence stays UNKNOWN (no fabrication)."
+    },
+    {
+      "id": 4,
+      "name": "TOOL GATEWAY",
+      "goal": "Integrate Billing, RADIUS, MikroTik, GenieACS — all behind permission/policy layer.",
+      "exit_gate": "go test ./... passes; every adapter behind deny-by-default registry; read-only staged adapters have contract tests."
+    },
+    {
+      "id": 5,
+      "name": "POLICY/RISK",
+      "goal": "Build allowlist, risk classification, approval, execution guard, verification.",
+      "exit_gate": "go test ./... passes; risk tiers enforced; approval binds exact action+parameters and expires."
+    },
+    {
+      "id": 6,
+      "name": "ESCALATION",
+      "goal": "Build NOC Senior escalation, Admin escalation, staff availability, priority, timeout, fallback.",
+      "exit_gate": "go test ./... passes; network→NOC Senior, non-network→Admin routing enforced; complete escalation context payload."
+    },
+    {
+      "id": 7,
+      "name": "INCIDENT CORRELATION",
+      "goal": "Build duplicate detection, mass incident correlation, common infrastructure correlation.",
+      "exit_gate": "go test ./... passes; correlated outage suppresses redundant diagnosis; mass incident grouping by topology/time."
+    },
+    {
+      "id": 8,
+      "name": "KNOWLEDGE/LEARNING",
+      "goal": "Build validated KB, resolution patterns, human corrections, feedback loop.",
+      "exit_gate": "go test ./... passes; learning cannot self-promote to production knowledge; human review gate exists."
+    },
+    {
+      "id": 9,
+      "name": "OBSERVABILITY",
+      "goal": "Build dashboard, metrics, audit, logs, health, alerts.",
+      "exit_gate": "go test ./... passes; KPI/metrics endpoints present; audit trail complete; health endpoints respond."
+    },
+    {
+      "id": 10,
+      "name": "PRODUCTION HARDENING",
+      "goal": "Test duplicate messages, API failure, LLM timeout, tool timeout, network failure, WhatsApp reconnect, database failure, race conditions, repeated actions, unauthorized action, escalation failure, rollback.",
+      "exit_gate": "go test ./... passes including race; replay suite covers delayed/reordered/duplicate messages, dependency failure, gateway outage, concurrent cases."
+    }
+  ]
+}

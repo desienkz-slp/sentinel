@@ -38,6 +38,19 @@ func TestClassify(t *testing.T) {
 		{"pertanyaan umum", "apakah nomor ini bisa dipakai cek jaringan?", IntentUnclear},
 		{"kosong", "", IntentUnclear},
 		{"acak", "asdkjhasd", IntentUnclear},
+
+		// Pesan tes/uji komunikasi -> CHAT (bukan COMPLAINT) meski ada kata
+		// "koneksi"/"internet" (master spec §7: CS interaktif, jangan diagnosis).
+		{"tes komunikasi", "Halo, ini tes komunikasi dari Hermes. Mohon balas untuk konfirmasi koneksi.", IntentChat},
+		{"tes koneksi", "tes koneksi", IntentChat},
+		{"test", "test", IntentChat},
+		{"cek komunikasi", "cek komunikasi", IntentChat},
+		{"sapaan murni", "halo, mohon balas", IntentChat},
+
+		// Keluhan nyata tetap COMPLAINT walau memuat kata tes.
+		{"tes tapi lemot", "tes internet lemot", IntentComplaint},
+		{"wifi mati", "wifi mati", IntentComplaint},
+		{"pppoe gagal", "pppoe gagal terus", IntentComplaint},
 	}
 	for _, c := range cases {
 		t.Run(c.nama, func(t *testing.T) {

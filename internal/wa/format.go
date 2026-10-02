@@ -46,9 +46,10 @@ func VerdictEmoji(v string) string {
 	}
 }
 
-// FormatReport menyusun pesan WhatsApp: balasan manusiawi untuk pelanggan,
-// lalu ringkasan teknis singkat di bawahnya (berguna untuk teknisi yang ikut
-// membaca percakapan).
+// FormatReport menyusun pesan WhatsApp untuk pelanggan: HANYA teks balasan
+// manusiawi (v.Balasan, fallback v.Answer). Ringkasan teknis (verdict/confidence/
+// akar masalah) TIDAK disertakan ke pelanggan (master spec §19, §36) — ringkasan
+// teknis tetap tersimpan di Report.Answer untuk dashboard/audit.
 func FormatReport(v ReportView) string {
 	// Balasan obrolan (tanpa pengecekan) dikirim apa adanya — tanpa header
 	// laporan dan tanpa status, karena memang bukan hasil diagnosis.
@@ -56,64 +57,12 @@ func FormatReport(v ReportView) string {
 		return truncateWALen(strings.TrimSpace(v.Balasan))
 	}
 
-	var b strings.Builder
-
-	verdict := strings.ToUpper(strings.TrimSpace(v.Verdict))
-	if verdict == "" {
-		verdict = "TIDAK DIKETAHUI"
-	}
-
-	// 1) Balasan untuk pelanggan — ini bagian utama.
+	// Balasan untuk pelanggan — satu-satunya isi pesan WA.
 	balasan := strings.TrimSpace(v.Balasan)
 	if balasan == "" {
 		balasan = strings.TrimSpace(v.Answer)
 	}
-	if balasan != "" {
-		b.WriteString(balasan)
-	}
-
-	// 2) Ringkasan teknis ringkas — dipisah garis supaya jelas bedanya.
-	teknis := ringkasTeknis(v)
-	if teknis != "" {
-		if b.Len() > 0 {
-			b.WriteString("\n\n———\n")
-		}
-		b.WriteString(teknis)
-	}
-
-	return truncateWALen(strings.TrimSpace(b.String()))
-}
-
-// ringkasTeknis menyusun ringkasan teknis singkat: status, keyakinan, dan
-// akar masalah (bila ada di jawaban model). Sengaja TIDAK memuat seluruh BUKTI
-// agar tidak membanjiri pelanggan.
-func ringkasTeknis(v ReportView) string {
-	verdict := strings.ToUpper(strings.TrimSpace(v.Verdict))
-	if verdict == "" {
-		verdict = "TIDAK DIKETAHUI"
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s %s", VerdictEmoji(verdict), verdict)
-	if v.Confidence > 0 {
-		fmt.Fprintf(&b, " · %.0f%%", v.Confidence)
-	}
-	if v.Escalated {
-		b.WriteString(" · dianalisis lanjut")
-	}
-	if akar := akarMasalah(v.Answer); akar != "" {
-		b.WriteString("\n" + akar)
-	}
-	return b.String()
-}
-
-// akarMasalah mengambil baris AKAR_MASALAH dari jawaban model (bila ada).
-var akarRe = regexp.MustCompile(`(?im)^\s*AKAR_MASALAH\s*[:=]\s*(.+)$`)
-
-func akarMasalah(answer string) string {
-	if m := akarRe.FindStringSubmatch(answer); m != nil {
-		return "Penyebab: " + strings.TrimSpace(m[1])
-	}
-	return ""
+	return truncateWALen(balasan)
 }
 
 // truncateWALen memotong pesan agar tidak melewati batas aman WhatsApp.
@@ -165,7 +114,7 @@ func formatBody(answer string) string {
 	return strings.TrimSpace(b.String())
 }
 
-// FormatReplyPendek dipakai untuk balasan cepat (mis. pesan ditolak allowlist).
+// FormatReplyPendek dipakai untuk balasan cepat (mis. pesan dari nomor diblokir).
 func FormatReplyPendek(msg string) string {
 	return "*🛰️ NOC Sentinel*\n\n" + strings.TrimSpace(msg)
 }

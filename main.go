@@ -207,8 +207,8 @@ func main() {
 	log.Printf("ai-noc-go  |  dashboard  http://127.0.0.1%s", cfg.Addr)
 	log.Printf("LLM        |  %s  (model: %s, key: %s)", cfg.LLMBaseURL, cfg.LLMModel, keyState(cfg.LLMAPIKey))
 	log.Printf("Codex CLI  |  %s  (model: %s, siap: %v)", cfg.CodexPath, cfg.CodexModel, bridge.Available())
-	log.Printf("WhatsApp   |  gateway %s (timeout %ds, auto-reply: %v, async: %v, allowlist: %d entri)",
-		orNone(cfg.WABaseURL), cfg.WATimeout, cfg.WAAutoReply, cfg.WAAsync, len(cfg.WAAllowlist))
+	log.Printf("WhatsApp   |  gateway %s (timeout %ds, auto-reply: %v, async: %v, blocklist: %d entri)",
+		orNone(cfg.WABaseURL), cfg.WATimeout, cfg.WAAutoReply, cfg.WAAsync, len(cfg.WABlocklist))
 	if sup != nil {
 		log.Printf("             embedded di %s — autostart: %v", cfg.WADir, cfg.WAAutoStart)
 	} else {

@@ -265,7 +265,7 @@ func (m *Manager) spawn(ctx context.Context) error {
 		"AUTH_DIR="+filepath.Join(m.Dir, "data", "auth"),
 	)
 	// Arahkan webhook gateway ke aplikasi ini supaya loop WA->agen->WA utuh.
-	env = append(env, "N8N_WEBHOOK_URL=http://127.0.0.1:8090/api/wa/webhook")
+	env = append(env, "NOC_WEBHOOK_URL=http://127.0.0.1:8090/api/wa/webhook")
 	env = append(env, m.Env...)
 	cmd.Env = env
 

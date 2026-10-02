@@ -44,7 +44,7 @@ func New(codexPath, model, sandbox string, timeoutSec int) *Bridge {
 		timeoutSec = 180
 	}
 	if sandbox == "" {
-		sandbox = "danger-full-access"
+		sandbox = "read-only"
 	}
 	wd, _ := os.MkdirTemp("", "ainoc-codex-*")
 	return &Bridge{

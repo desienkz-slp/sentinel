@@ -13,8 +13,7 @@ services:
       - DB_NAME=noc_sentinel
       - DB_USER=noc_admin
       - DB_PASS=${DB_PASS:?set DB_PASS in environment}
-      - N8N_WEBHOOK_URL=http://noc-n8n:5678/webhook/whatsapp-inbound
-      - ORCHESTRATOR_URL=http://172.18.20.139:8000/pipeline/whatsapp
+      - NOC_WEBHOOK_URL=http://host.docker.internal:8090/api/wa/webhook
       - AUTH_DIR=/app/data/auth
     volumes:
       - ./app:/app/app

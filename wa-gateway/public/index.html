@@ -35,7 +35,6 @@
       <a href="/whatsapp" class="nav-item">Android</a>
       <a href="/whatsapp" class="nav-item">Baseline</a>
       <a href="/whatsapp" class="nav-item">Learning</a>
-      <a href="http://172.18.20.139:5678" target="_blank" class="nav-item">n8n Engine</a>
       <a href="http://172.18.20.139:9090" target="_blank" class="nav-item">System Health</a>
     </nav>
 
@@ -55,7 +54,7 @@
     <div class="section-header">
       <div>
         <h1 class="page-title">WhatsApp Gateway Management</h1>
-        <p class="page-desc">Enterprise Multi-Device Gateway • Baileys Engine • n8n Webhook • Hermes Intent Bridge</p>
+        <p class="page-desc">Enterprise Multi-Device Gateway • Baileys Engine • NOC Sentinel Ingress</p>
       </div>
       <div class="action-buttons">
         <button id="btn-reconnect" class="btn btn-secondary">
@@ -157,26 +156,26 @@
         <div class="card card-telemetry">
           <div class="card-header">
             <span class="card-label">INTEGRATION STATUS</span>
-            <span class="card-sublabel">n8n &amp; Hermes Pipeline</span>
+            <span class="card-sublabel">NOC Sentinel Ingress</span>
           </div>
 
           <div class="telemetry-grid">
             <div class="telemetry-box">
-              <span class="tel-label">n8n Webhook</span>
+              <span class="tel-label">NOC Sentinel Webhook</span>
               <div class="tel-status-row">
                 <span class="status-indicator-dot" id="dot-webhook"></span>
                 <span class="tel-value" id="val-webhook">Checking...</span>
               </div>
-              <span class="tel-hint" id="val-webhook-url">http://127.0.0.1:5678/webhook/...</span>
+              <span class="tel-hint" id="val-webhook-url">http://127.0.0.1:8090/api/wa/webhook</span>
             </div>
 
             <div class="telemetry-box">
               <span class="tel-label">Hermes Intent Engine</span>
               <div class="tel-status-row">
                 <span class="status-indicator-dot green"></span>
-                <span class="tel-value">ACTIVE (Port 8000)</span>
+                <span class="tel-value">ACTIVE (NOC Sentinel :8090)</span>
               </div>
-              <span class="tel-hint">11 Intent Profiles Ready</span>
+              <span class="tel-hint">Workflow deterministik di sisi Go</span>
             </div>
 
             <div class="telemetry-box">
@@ -233,12 +232,12 @@
         <div class="card card-tester">
           <div class="card-header">
             <span class="card-label">INTERACTIVE COMMAND SIMULATOR</span>
-            <span class="card-sublabel">Test Hermes &amp; Diagnostic Pipeline</span>
+            <span class="card-sublabel">Test NOC Sentinel Diagnostic Pipeline</span>
           </div>
 
           <div class="card-body">
             <p class="tester-intro">
-              Kirim simulasi pesan WhatsApp operator langsung ke pipeline AI-NOC untuk memverifikasi eksekusi diagnosis real-time:
+              Kirim simulasi pesan WhatsApp operator langsung ke NOC Sentinel untuk memverifikasi eksekusi diagnosis real-time:
             </p>
 
             <div class="quick-tags">

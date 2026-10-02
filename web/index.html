@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NOC Sentinel — AI NOC Console</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="64x64" href="/favicon.png">
 <style>
   :root{
     --bg:#0b0f14; --panel:#121922; --panel2:#0f151d; --line:#1f2a37;
@@ -14,9 +16,11 @@
   body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
 
   /* ---------- Header / top bar ---------- */
-  header{display:flex;align-items:center;gap:18px;padding:12px 22px;border-bottom:1px solid var(--line);
+  header{display:flex;align-items:center;gap:14px;padding:12px 22px;border-bottom:1px solid var(--line);
     background:linear-gradient(180deg,#111a24,#0d141c);position:sticky;top:0;z-index:50;flex-wrap:wrap}
+  .header-inner{display:flex;align-items:center;gap:14px;max-width:1800px;margin:0 auto;width:100%;flex-wrap:wrap}
   .brand{display:flex;flex-direction:column;line-height:1.15}
+  .brand-logo{width:40px;height:40px;flex:0 0 auto;display:block}
   .logo{font-weight:700;letter-spacing:.5px;font-size:18px}
   .logo span{color:var(--acc)}
   .tagline{font:11px/1 var(--mono);color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-top:3px}
@@ -25,6 +29,13 @@
     border:1px solid transparent;border-radius:8px;letter-spacing:.3px}
   nav a:hover{color:var(--txt);background:var(--panel2);border-color:var(--line)}
   nav a.on{color:var(--acc);background:#12303c;border-color:#1e4a58}
+  .gear{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 auto;
+    color:var(--dim);text-decoration:none;font-size:17px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel2);transition:color .15s,border-color .15s}
+  .gear:hover{color:var(--txt);border-color:#33465c}
+  .gear.on{color:var(--acc);border-color:#27536b;background:#12303c}
+  .brand-link{display:inline-flex;flex:0 0 auto;text-decoration:none}
+  .brand-link img{display:block}
   .spacer{flex:1}
   .pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .pill{font:12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line);border-radius:99px;color:var(--dim);
@@ -32,6 +43,9 @@
   .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:0 0 auto}
   .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
   .dot.off{background:var(--bad)}
+  .ep-tag{font:10px/1 var(--mono);font-weight:700;padding:2px 6px;border-radius:5px;flex:0 0 auto}
+  .ep-tag.a{background:#38bdf8;color:#06202e}   /* light blue = Endpoint A */
+  .ep-tag.b{background:#ef4444;color:#fff}       /* red = Endpoint B */
 
   /* ---------- Layout shell ---------- */
   .shell{max-width:1800px;margin:0 auto;padding:16px 22px 48px}
@@ -93,24 +107,46 @@
   details summary{cursor:pointer;color:var(--dim);font-size:12px;margin-top:12px}
   #waGwLog{max-height:160px;overflow:auto}
   #waQRBox img{display:block}
+
+  /* ---------- Modal / popup ---------- */
+  .modal-mask{position:fixed;inset:0;background:rgba(4,7,12,.72);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
+  .modal-mask.hidden{display:none}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:100%;max-width:460px;
+    padding:20px;box-shadow:0 18px 60px rgba(0,0,0,.5)}
+  .modal h3{margin:0 0 4px;font-size:15px}
+  .modal .sub{font-size:12px;color:var(--dim);margin-bottom:14px}
+  .modal .add-row{display:flex;gap:8px}
+  .modal .add-row input{flex:1}
+  .modal .add-row button{width:auto;flex:0 0 auto;padding:9px 16px}
+  .bl-list{margin:14px 0 0;padding:0;list-style:none;max-height:280px;overflow:auto}
+  .bl-list li{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--line);
+    border-radius:9px;margin-bottom:8px;background:var(--panel2)}
+  .bl-list li .num{flex:1;font-family:var(--mono);font-size:13.5px}
+  .bl-list li button{width:auto;flex:0 0 auto;padding:5px 10px;font-size:12px}
+  .bl-list .empty{color:var(--dim);font-size:13px;padding:6px 2px}
+  .modal .m-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  .modal .m-foot button{width:auto;padding:9px 16px}
 </style>
 </head>
 <body>
 <header>
-  <div class="brand">
-    <div class="logo">NOC <span>Sentinel</span></div>
-    <div class="tagline">AI Network Operations Console</div>
-  </div>
-  <nav>
-    <a href="/" class="on">Dashboard</a>
-    <a href="/settings.html">⚙ Pengaturan</a>
-  </nav>
-  <div class="spacer"></div>
-  <div class="pills">
-    <div class="pill"><span class="dot" id="dotLLM"></span><span id="txtLLM">LLM belum dites</span></div>
-    <div class="pill"><span class="dot" id="dotCodex"></span><span id="txtCodex">Codex…</span></div>
-    <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WhatsApp…</span></div>
-    <div class="pill" id="pillModel">model: —</div>
+  <div class="header-inner">
+    <a class="gear" href="/settings.html" title="Pengaturan" aria-label="Pengaturan">⚙</a>
+    <a class="brand-link" href="/" title="Ke Dashboard">
+      <img class="brand-logo" src="/logo.png" alt="NOC Sentinel" width="40" height="40">
+    </a>
+    <div class="brand">
+      <div class="logo">NOC <span>Sentinel</span></div>
+      <div class="tagline">AI Network Operations Console</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="pills">
+      <div class="pill"><span class="ep-tag a">A</span><span class="dot" id="dotLLM"></span><span id="txtLLM">A · Conversation</span></div>
+      <div class="pill"><span class="ep-tag b">B</span><span class="dot" id="dotCodex"></span><span id="txtCodex">B · Reasoning</span></div>
+      <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WhatsApp…</span></div>
+      <div class="pill" id="pillModel">model: —</div>
+    </div>
   </div>
 </header>
 
@@ -177,8 +213,12 @@
         <div class="hint" id="waGwOut">memeriksa proses…</div>
         <pre id="waGwLog" class="hidden"></pre>
 
-        <label for="sWAList">Allowlist nomor (pisah koma) — <b>kosong = SEMUA nomor boleh</b></label>
-        <input id="sWAList" placeholder="628123456789,628999888777">
+        <label>Blokir nomor — nomor yang diblokir <b>tidak akan dibalas</b></label>
+        <div class="btns" style="margin-top:6px">
+          <button onclick="openBlocklist()">🛑 Kelola Daftar Blokir</button>
+          <span class="pill" id="blCount" style="margin-left:auto;align-self:center">0 nomor diblokir</span>
+        </div>
+        <div class="hint">Nomor yang diblokir tidak dijawab sama sekali oleh bot.</div>
 
         <div class="row">
           <div>
@@ -258,9 +298,26 @@
   </div>
 </div>
 
+<!-- ============ Popup kelola daftar blokir ============ -->
+<div class="modal-mask hidden" id="blModal">
+  <div class="modal">
+    <h3>🛑 Daftar Blokir Nomor</h3>
+    <div class="sub">Nomor dalam daftar ini <b>tidak dibalas</b> oleh bot.</div>
+    <div class="add-row">
+      <input id="blInput" placeholder="mis. 628123456789" inputmode="numeric">
+      <button onclick="addBlocked()">Tambah</button>
+    </div>
+    <ul class="bl-list" id="blList"></ul>
+    <div class="m-foot">
+      <button class="ghost" onclick="closeBlocklist()">Tutup</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 let tools = [];
+let blList = []; // salinan daftar blokir nomor di klien
 
 async function api(path, opts={}) {
   const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts));
@@ -276,9 +333,13 @@ async function boot() {
     const c = st.config;
     window._model = c.llm_model;
     $('pillModel').textContent = 'model: ' + c.llm_model;
-    setDot('Codex', st.codex_ready, st.codex_ready ? 'Codex siap ('+c.codex_model+')' : 'Codex tidak ditemukan');
-    if (!c.llm_key_set) setDot('LLM', false, 'API key belum ada');
-    $('sWAList').value = (c.wa_allowlist||[]).join(',');
+    // Endpoint B = Reasoning (bukan Codex CLI). Tampilkan status berdasar
+    // key tersimpan (sama seperti pill A), bukan codex_ready.
+    setDot('Codex', !!c.codex_key_set, c.codex_key_set ? 'B · Reasoning' : 'B · key belum ada');
+    if (!c.llm_key_set) setDot('LLM', false, 'A · API key belum ada');
+    else setDot('LLM', true, 'A · Conversation');
+    blList = (c.wa_blocklist||[]).slice();
+    renderBlCount();
     $('sWAGroup').value = String(!!c.wa_group);
     $('sWAAsync').value = String(!!c.wa_async);
   } catch (e) { console.error(e); }
@@ -375,16 +436,86 @@ async function waCtl(action) {
 async function saveWASettings() {
   try {
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
-      wa_allowlist: $('sWAList').value.split(',').map(s=>s.trim()).filter(Boolean),
+      wa_blocklist: blList,
       wa_group: $('sWAGroup').value === 'true',
       wa_async: $('sWAAsync').value === 'true'
     })});
-    setWAMsg('Tersimpan. Allowlist: ' + (d.config.wa_allowlist||[]).length + ' entri');
+    setWAMsg('Tersimpan. Blokir: ' + (d.config.wa_blocklist||[]).length + ' nomor');
     waStatus();
   } catch(e) { setWAMsg('Gagal: ' + e.message); }
 }
 
 function setWAMsg(t) { $('waMsgOut').textContent = t; }
+
+// ---------- Daftar blokir nomor (popup) ----------
+function normalizeNumber(s) {
+  // Harus cocok dengan normalize() di backend (internal/wa/gateway.go):
+  // buang semua non-digit (dan awalan +). Leading 0 DIJAGA supaya tidak
+  // menimbulkan mismatch antara nomor yang disimpan dan identitas masuk.
+  return String(s).trim().replace(/[^0-9]/g, '');
+}
+
+function renderBlCount() {
+  $('blCount').textContent = blList.length + ' nomor diblokir';
+}
+
+function renderBlList() {
+  const ul = $('blList');
+  if (!blList.length) {
+    ul.innerHTML = '<li class="empty">Belum ada nomor yang diblokir.</li>';
+    return;
+  }
+  ul.innerHTML = blList.map((n, i) => `<li>
+    <span class="num">${esc(n)}</span>
+    <button class="ghost" style="color:var(--bad)" onclick="removeBlocked(${i})">Hapus</button>
+  </li>`).join('');
+}
+
+async function persistBl() {
+  await api('/api/config', {method:'POST', body: JSON.stringify({
+    wa_blocklist: blList,
+    wa_group: $('sWAGroup').value === 'true',
+    wa_async: $('sWAAsync').value === 'true'
+  })});
+}
+
+function openBlocklist() {
+  renderBlList();
+  $('blModal').classList.remove('hidden');
+  $('blInput').value = '';
+  $('blInput').focus();
+}
+
+function closeBlocklist() {
+  $('blModal').classList.add('hidden');
+  renderBlCount();
+}
+
+async function addBlocked() {
+  const raw = $('blInput').value.trim();
+  if (!raw) { $('blInput').focus(); return; }
+  const n = normalizeNumber(raw);
+  if (!n) { $('blInput').focus(); return; }
+  if (blList.includes(n)) { setWAMsg(n + ' sudah ada di daftar blokir'); $('blInput').value = ''; $('blInput').focus(); return; }
+  blList.push(n);
+  renderBlList();
+  $('blInput').value = '';
+  $('blInput').focus();
+  try {
+    await persistBl();
+    setWAMsg('Tersimpan. ' + n + ' diblokir (' + blList.length + ' nomor total)');
+  } catch(e) { setWAMsg('Gagal menyimpan: ' + e.message); }
+}
+
+async function removeBlocked(i) {
+  const n = blList[i];
+  blList.splice(i, 1);
+  renderBlList();
+  try {
+    await persistBl();
+    setWAMsg('Tersimpan. ' + n + ' dihapus dari blokir (' + blList.length + ' nomor tersisa)');
+  } catch(e) { setWAMsg('Gagal menyimpan: ' + e.message); }
+}
 
 async function waStatus() {
   setDot('WA', false, 'WhatsApp: cek…');
@@ -443,7 +574,7 @@ async function waSend() {
 }
 
 function sampleReport() {
-  return "*🛰️ NOC Sentinel — Laporan Diagnosis*\n\n*Target:* 8.8.8.8\n*Status:* ⚠️ DEGRADASI\n*Keyakinan:* 78%\n*Mesin:* llm (34.2s)\n\n*AKAR_MASALAH:* packet loss di uplink\n*REKOMENDASI:* cek uplink ke IX";
+  return "*NOC Sentinel* — Mohon maaf atas gangguannya. Dari pengecekan kami, jalur dari server ke internet normal, jadi kendalanya kemungkinan di perangkat/alat di rumah. Coba cabut kabel power ONT ±30 detik lalu pasang lagi ya. Kalau masih kendala, kabari saya biar saya jadwalkan teknisi.\n\n———\n⚠️ DEGRADASI · 78%\nPenyebab: packet loss di uplink";
 }
 
 function esc(s){return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}

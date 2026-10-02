@@ -5,29 +5,29 @@ import (
 	"testing"
 )
 
-func TestAllowed(t *testing.T) {
+func TestBlocked(t *testing.T) {
 	list := []string{"628123456789", "628999888777"}
 
-	allow := []string{
+	blokir := []string{
 		"628123456789", "628123456789@s.whatsapp.net",
 		"628999888777@c.us", " 628123456789 ",
 	}
-	for _, id := range allow {
-		if !Allowed(list, id) {
-			t.Errorf("Allowed(%q) = false, seharusnya true", id)
+	for _, id := range blokir {
+		if !Blocked(list, id) {
+			t.Errorf("Blocked(%q) = false, seharusnya true", id)
 		}
 	}
 
-	deny := []string{"628000000000", "628123456780", "", "6281234567890"}
-	for _, id := range deny {
-		if Allowed(list, id) {
-			t.Errorf("Allowed(%q) = true, seharusnya false", id)
+	boleh := []string{"628000000000", "628123456780", "", "6281234567890"}
+	for _, id := range boleh {
+		if Blocked(list, id) {
+			t.Errorf("Blocked(%q) = true, seharusnya false", id)
 		}
 	}
 
-	// Daftar kosong = mode dev, izinkan semua (non-kosong).
-	if !Allowed(nil, "628111222333") {
-		t.Error("allowlist kosong seharusnya mengizinkan semua")
+	// Daftar kosong = tidak ada yang diblokir (semua dibalas).
+	if Blocked(nil, "628111222333") {
+		t.Error("blocklist kosong seharusnya tidak memblokir siapa pun")
 	}
 }
 
@@ -46,19 +46,19 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
-func TestParseAllowlist(t *testing.T) {
-	got := ParseAllowlist(" 628111 , 628222,,628333 ")
+func TestParseBlocklist(t *testing.T) {
+	got := ParseBlocklist(" 628111 , 628222,,628333 ")
 	if len(got) != 3 || got[0] != "628111" || got[2] != "628333" {
-		t.Errorf("ParseAllowlist = %#v", got)
+		t.Errorf("ParseBlocklist = %#v", got)
 	}
-	if len(ParseAllowlist("")) != 0 {
-		t.Error("ParseAllowlist kosong harus menghasilkan slice kosong")
+	if len(ParseBlocklist("")) != 0 {
+		t.Error("ParseBlocklist kosong harus menghasilkan slice kosong")
 	}
 }
 
 // Identity mengutamakan SENDER (nomor telepon hasil resolusi gateway), bukan
 // chat_id. WhatsApp kini mengirim sebagian chat sebagai @lid; memakai chat_id
-// membuat nomor tidak cocok dengan allowlist sehingga pesan pelanggan ditolak.
+// membuat nomor tidak cocok dengan blocklist sehingga nomor yang diblokir lolos.
 func TestIdentityUtamakanSender(t *testing.T) {
 	m := InboundMessage{ChatID: "628111@s.whatsapp.net", Sender: "628111"}
 	if m.Identity() != "628111" {
@@ -122,7 +122,8 @@ func TestIsConnected(t *testing.T) {
 }
 
 func TestFormatReport(t *testing.T) {
-	// Format baru: balasan manusiawi pelanggan dulu, lalu ringkasan teknis ringkas.
+	// Format baru (§19, §36): WA pelanggan HANYA memuat balasan manusiawi.
+	// Ringkasan teknis (verdict/confidence/akar) TIDAK boleh ikut terkirim.
 	answer := "BALASAN: Saya sudah cek, Pak. Koneksi dari kami normal, kendalanya kemungkinan\n" +
 		"di alat di rumah. Coba cabut pasang ONT ya.\n\n" +
 		"VERDICT: DEGRADASI\nKEYAKINAN: 78\nAKAR_MASALAH: packet loss di uplink\n" +
@@ -134,20 +135,15 @@ func TestFormatReport(t *testing.T) {
 			"di alat di rumah. Coba cabut pasang ONT ya.",
 	})
 
-	// Balasan pelanggan harus muncul dan mendahului ringkasan teknis.
+	// Balasan pelanggan harus muncul.
 	if !strings.Contains(msg, "Saya sudah cek, Pak") {
 		t.Errorf("balasan pelanggan hilang:\n%s", msg)
 	}
-	// Ringkasan teknis tetap ada untuk teknisi.
-	for _, want := range []string{"DEGRADASI", "78%", "Penyebab: packet loss di uplink"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("ringkasan teknis kehilangan %q:\n%s", want, msg)
-		}
-	}
-	// Label mentah TIDAK boleh terlihat pelanggan.
-	for _, jangan := range []string{"BALASAN:", "VERDICT:", "BUKTI:", "KEYAKINAN:"} {
+	// Ringkasan teknis TIDAK boleh dikirim ke pelanggan (§19, §36).
+	for _, jangan := range []string{"DEGRADASI", "78%", "Penyebab: packet loss di uplink",
+		"VERDICT:", "BUKTI:", "KEYAKINAN:", "AKAR_MASALAH:", "———"} {
 		if strings.Contains(msg, jangan) {
-			t.Errorf("label teknis %q bocor ke pelanggan:\n%s", jangan, msg)
+			t.Errorf("ringkasan teknis %q bocor ke pelanggan:\n%s", jangan, msg)
 		}
 	}
 	// Header kaku lama sudah tidak dipakai.
@@ -273,11 +269,11 @@ func TestIsLID(t *testing.T) {
 	}
 }
 
-// Allowlist harus cocok dengan nomor hasil resolusi, walau chat datang @lid.
-func TestAllowlistCocokDenganNomorHasilResolusi(t *testing.T) {
-	allow := []string{"628111222333"}
+// Blocklist harus cocok dengan nomor hasil resolusi, walau chat datang @lid.
+func TestBlocklistCocokDenganNomorHasilResolusi(t *testing.T) {
+	block := []string{"628111222333"}
 	m := InboundMessage{ChatID: "111111111111111@lid", Sender: "628111222333"}
-	if !Allowed(allow, m.Identity()) {
-		t.Error("pesan dari nomor terdaftar ditolak karena identitas memakai LID")
+	if !Blocked(block, m.Identity()) {
+		t.Error("pesan dari nomor yang diblokir tidak terdeteksi karena identitas memakai LID")
 	}
 }

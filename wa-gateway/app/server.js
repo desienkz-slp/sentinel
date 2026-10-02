@@ -112,7 +112,8 @@ app.post('/api/whatsapp/send', async (req, res) => {
 });
 
 // 10. POST /api/whatsapp/simulate-query
-// Allows testing the complete end-to-end Hermes -> Diagnostic pipeline directly from Web UI
+// Menjalankan pipeline end-to-end ke aplikasi NOC Sentinel (Go) — ingress
+// yang sama dengan webhook inbound. Tidak ada orchestrator Python/n8n lama.
 app.post('/api/whatsapp/simulate-query', async (req, res) => {
   const { query, sender } = req.body;
   if (!query) {
@@ -130,9 +131,11 @@ app.post('/api/whatsapp/simulate-query', async (req, res) => {
   };
 
   try {
-    // Call the AI-NOC pipeline orchestrator
-    const orchUrl = process.env.ORCHESTRATOR_URL || 'http://127.0.0.1:8000/pipeline/whatsapp';
-    const response = await axios.post(orchUrl, payload, { timeout: 180000 }); // pipeline diagnosis bisa 45-90s
+    // Ingress tunggal ke aplikasi NOC Sentinel (sama seperti webhook inbound).
+    const ingressUrl = process.env.NOC_WEBHOOK_URL
+      || process.env.N8N_WEBHOOK_URL
+      || 'http://127.0.0.1:8090/api/wa/webhook';
+    const response = await axios.post(ingressUrl, payload, { timeout: 180000 }); // pipeline diagnosis bisa 45-90s
     res.json(response.data);
   } catch (err) {
     res.status(500).json({

@@ -11,10 +11,21 @@ import (
 )
 
 type Config struct {
-	Addr       string `json:"addr"`
-	LLMBaseURL string `json:"llm_base_url"`
-	LLMAPIKey  string `json:"llm_api_key"`
-	LLMModel   string `json:"llm_model"`
+	// Addr defaults to loopback. A non-local deployment must configure the
+	// operator and webhook tokens below; the HTTP guard refuses unauthenticated
+	// non-local control traffic.
+	Addr          string `json:"addr"`
+	OperatorToken string `json:"operator_token"`
+	WebhookToken  string `json:"webhook_token"`
+	// TrustedCIDRs: jaringan yang dipercaya seperti loopback (tanpa token
+	// operator). Contoh "172.18.20.0/25". Kosong = hanya loopback dipercaya.
+	TrustedCIDRs []string `json:"trusted_cidrs"`
+	// DiagAllowlist berisi CIDR/IP/hostname yang boleh menjadi target diagnostik manual.
+	// Kosong = semua diagnostic network ditolak.
+	DiagAllowlist []string `json:"diag_allowlist"`
+	LLMBaseURL    string `json:"llm_base_url"`
+	LLMAPIKey     string `json:"llm_api_key"`
+	LLMModel      string `json:"llm_model"`
 	// LLMWireAPI: format komunikasi native (chat | responses | messages).
 	// Default "chat" (/chat/completions).
 	LLMWireAPI string `json:"llm_wire_api"`
@@ -38,12 +49,15 @@ type Config struct {
 	// Integrasi WhatsApp Gateway (Node/Baileys, project ai-noc).
 	WABaseURL   string   `json:"wa_base_url"`
 	WATimeout   int      `json:"wa_timeout_sec"`
-	WAAllowlist []string `json:"wa_allowlist"`
-	WAAutoReply bool     `json:"wa_auto_reply"`
-	WAAsync     bool     `json:"wa_async"`
-	WADir       string   `json:"wa_dir"`
-	WAAutoStart bool     `json:"wa_autostart"`
-	WAGroup     bool     `json:"wa_group"` // balas pesan dari grup juga
+	WABlocklist []string `json:"wa_blocklist"`
+	// Nomor kontak internal untuk eskalasi/notifikasi.
+	NOCNumber   string `json:"noc_number"`
+	AdminNumber string `json:"admin_number"`
+	WAAutoReply bool   `json:"wa_auto_reply"`
+	WAAsync     bool   `json:"wa_async"`
+	WADir       string `json:"wa_dir"`
+	WAAutoStart bool   `json:"wa_autostart"`
+	WAGroup     bool   `json:"wa_group"` // balas pesan dari grup juga
 	// StandardDoc: path file standar konteks yang bisa diedit operator tanpa
 	// build ulang. Kosong = pakai standar bawaan (di-embed).
 	StandardDoc string `json:"standard_doc"`
@@ -162,7 +176,7 @@ func atoi(s string, def int) int {
 // Default mengembalikan konfigurasi awal sebelum file/env diterapkan.
 func Default() *Config {
 	return &Config{
-		Addr:         ":8090",
+		Addr:         "127.0.0.1:8090",
 		LLMBaseURL:   "http://127.0.0.1:20128/v1",
 		LLMModel:     "ag/gemini-3.8-flash-high",
 		LLMWireAPI:   "chat",
@@ -170,7 +184,7 @@ func Default() *Config {
 		MaxSteps:     12,
 		CodexPath:    "codex",
 		CodexModel:   "cx/gpt-5.6-terra",
-		CodexSbx:     "danger-full-access",
+		CodexSbx:     "read-only",
 		CodexWireAPI: "responses",
 		DiagTimeout:  30,
 		Org:          "NetLayer",
@@ -336,6 +350,28 @@ func Load(path string) *Config {
 	if v := getenv("NOC_ADDR"); v != "" {
 		c.Addr = v
 	}
+	if v := getenv("NOC_OPERATOR_TOKEN"); v != "" {
+		c.OperatorToken = v
+	}
+	if v := getenv("NOC_WEBHOOK_TOKEN"); v != "" {
+		c.WebhookToken = v
+	}
+	if v := getenv("NOC_TRUSTED_CIDRS"); v != "" {
+		c.TrustedCIDRs = nil
+		for _, entry := range strings.Split(v, ",") {
+			if entry = strings.TrimSpace(entry); entry != "" {
+				c.TrustedCIDRs = append(c.TrustedCIDRs, entry)
+			}
+		}
+	}
+	if v := getenv("NOC_DIAG_ALLOWLIST"); v != "" {
+		c.DiagAllowlist = nil
+		for _, entry := range strings.Split(v, ",") {
+			if entry = strings.TrimSpace(entry); entry != "" {
+				c.DiagAllowlist = append(c.DiagAllowlist, entry)
+			}
+		}
+	}
 	if v := getenv("NOC_LLM_BASE_URL", "LLM_BASE_URL"); v != "" {
 		c.LLMBaseURL = v
 	}
@@ -366,16 +402,22 @@ func Load(path string) *Config {
 	if v := getenv("NOC_CODEX_WIRE_API"); v != "" {
 		c.CodexWireAPI = v
 	}
-	if v := getenv("NOC_WA_BASE_URL", "N8N_WEBHOOK_URL"); v != "" {
+	if v := getenv("NOC_WA_BASE_URL"); v != "" {
 		c.WABaseURL = v
 	}
 	c.WATimeout = atoi(getenv("NOC_WA_TIMEOUT"), c.WATimeout)
-	if v := getenv("NOC_WA_ALLOWLIST"); v != "" {
+	if v := getenv("NOC_WA_BLOCKLIST"); v != "" {
 		for _, p := range strings.Split(v, ",") {
 			if p = strings.TrimSpace(p); p != "" {
-				c.WAAllowlist = append(c.WAAllowlist, p)
+				c.WABlocklist = append(c.WABlocklist, p)
 			}
 		}
+	}
+	if v := getenv("NOC_NUMBER"); v != "" {
+		c.NOCNumber = strings.TrimSpace(v)
+	}
+	if v := getenv("NOC_ADMIN_NUMBER"); v != "" {
+		c.AdminNumber = strings.TrimSpace(v)
 	}
 	c.WAAutoReply = atob(getenv("NOC_WA_AUTO_REPLY"), c.WAAutoReply)
 	c.WAAsync = atob(getenv("NOC_WA_ASYNC"), c.WAAsync)
@@ -454,6 +496,10 @@ func Load(path string) *Config {
 	if c.LLMAPIKey == "" {
 		c.LLMAPIKey = keyFromCodexAuth()
 	}
+	// Phase 0: Codex is analysis-only. Configuration cannot widen its sandbox.
+	if c.CodexSbx != "read-only" {
+		c.CodexSbx = "read-only"
+	}
 	c.LLMBaseURL = strings.TrimRight(c.LLMBaseURL, "/")
 	return c
 }
@@ -469,43 +515,47 @@ func (c *Config) Redacted() map[string]any {
 		}
 	}
 	return map[string]any{
-		"addr":           c.Addr,
-		"llm_base_url":   c.LLMBaseURL,
-		"llm_model":      c.LLMModel,
-		"llm_wire_api":   c.LLMWireAPI,
-		"llm_key":        k,
-		"llm_key_set":    c.LLMAPIKey != "",
-		"llm_timeout":    c.LLMTimeout,
-		"max_steps":      c.MaxSteps,
-		"codex_path":     c.CodexPath,
-		"codex_model":    c.CodexModel,
-		"codex_sandbox":  c.CodexSbx,
-		"codex_base_url": c.CodexBaseURL,
-		"codex_provider": c.CodexProvider,
-		"codex_wire_api": c.CodexWireAPI,
-		"codex_key_set":  c.CodexAPIKey != "",
-		"codex_key":      maskSecret(c.CodexAPIKey),
-		"diag_timeout":   c.DiagTimeout,
-		"org":            c.Org,
-		"wa_base_url":    c.WABaseURL,
-		"wa_timeout":     c.WATimeout,
-		"wa_allowlist":   c.WAAllowlist,
-		"wa_auto_reply":  c.WAAutoReply,
-		"wa_async":       c.WAAsync,
-		"wa_enabled":     c.WABaseURL != "",
-		"wa_dir":         c.WADir,
-		"wa_autostart":   c.WAAutoStart,
-		"wa_group":       c.WAGroup,
-		"wa_embedded":    c.WADir != "",
-		"standard_doc":   c.StandardDoc,
-		"cache_ttl_min":  c.CacheTTLMin,
-		"sesi_ttl_min":   c.SesiTTLMin,
-		"memory_path":    c.MemoryPath,
-		"policy_path":    c.PolicyPath,
-		"registry_path":  c.RegistryPath,
-		"workflow_dir":   c.WorkflowDir,
-		"incident_path":  c.IncidentPath,
-		"audit_path":     c.AuditPath,
+		"addr":               c.Addr,
+		"operator_token_set": c.OperatorToken != "",
+		"webhook_token_set":  c.WebhookToken != "",
+		"llm_base_url":       c.LLMBaseURL,
+		"llm_model":          c.LLMModel,
+		"llm_wire_api":       c.LLMWireAPI,
+		"llm_key":            k,
+		"llm_key_set":        c.LLMAPIKey != "",
+		"llm_timeout":        c.LLMTimeout,
+		"max_steps":          c.MaxSteps,
+		"codex_path":         c.CodexPath,
+		"codex_model":        c.CodexModel,
+		"codex_sandbox":      c.CodexSbx,
+		"codex_base_url":     c.CodexBaseURL,
+		"codex_provider":     c.CodexProvider,
+		"codex_wire_api":     c.CodexWireAPI,
+		"codex_key_set":      c.CodexAPIKey != "",
+		"codex_key":          maskSecret(c.CodexAPIKey),
+		"diag_timeout":       c.DiagTimeout,
+		"org":                c.Org,
+		"wa_base_url":        c.WABaseURL,
+		"wa_timeout":         c.WATimeout,
+		"wa_blocklist":       c.WABlocklist,
+		"noc_number":         c.NOCNumber,
+		"admin_number":       c.AdminNumber,
+		"wa_auto_reply":      c.WAAutoReply,
+		"wa_async":           c.WAAsync,
+		"wa_enabled":         c.WABaseURL != "",
+		"wa_dir":             c.WADir,
+		"wa_autostart":       c.WAAutoStart,
+		"wa_group":           c.WAGroup,
+		"wa_embedded":        c.WADir != "",
+		"standard_doc":       c.StandardDoc,
+		"cache_ttl_min":      c.CacheTTLMin,
+		"sesi_ttl_min":       c.SesiTTLMin,
+		"memory_path":        c.MemoryPath,
+		"policy_path":        c.PolicyPath,
+		"registry_path":      c.RegistryPath,
+		"workflow_dir":       c.WorkflowDir,
+		"incident_path":      c.IncidentPath,
+		"audit_path":         c.AuditPath,
 		// Endpoint adaptor eksternal (tanpa token mentah — hanya masked).
 		"billing_url":          c.BillingURL,
 		"radius_url":           c.RadiusURL,

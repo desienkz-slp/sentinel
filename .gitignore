@@ -13,14 +13,17 @@ gateway.log
 # Binary hasil build
 bin/
 
-# Konfigurasi lokal
+# Konfigurasi lokal (termasuk backup otomatis yang bisa memuat token nyata)
 config.json
+config.json.bak-*
+config.json.*
 
 # Deployment secrets (never commit)
 deploy/.env
 .env
 deploy/.env.*
 !deploy/.env.example
+!deploy/.env.production.example
 
 # PostgreSQL data volume local overrides
 *.pgdata/

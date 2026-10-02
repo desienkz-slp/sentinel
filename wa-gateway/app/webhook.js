@@ -1,9 +1,19 @@
 import axios from 'axios';
 
+// Ingress tunggal untuk pesan masuk: aplikasi NOC Sentinel (Go) di
+// /api/wa/webhook. Tidak ada lagi jalur n8n atau orchestrator Python lama —
+// orchestration deterministik ada di sisi Go (master spec §13). Env
+// N8N_WEBHOOK_URL dipertahankan sebagai alias kompatibilitas lama; env
+// kanoniknya adalah NOC_WEBHOOK_URL.
+function resolveIngressUrl() {
+  return process.env.NOC_WEBHOOK_URL
+    || process.env.N8N_WEBHOOK_URL
+    || 'http://127.0.0.1:8090/api/wa/webhook';
+}
+
 class WebhookDispatcher {
   constructor() {
-    this.n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'http://127.0.0.1:5678/webhook/whatsapp-inbound';
-    this.orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://127.0.0.1:8000/pipeline/whatsapp';
+    this.ingressUrl = resolveIngressUrl();
     this.status = 'standby';
     this.lastDispatchedAt = null;
     this.lastLatencyMs = 0;
@@ -27,9 +37,8 @@ class WebhookDispatcher {
     this.lastDispatchedAt = new Date().toISOString();
     const startT = Date.now();
 
-    // 1. Attempt dispatch to n8n webhook
     try {
-      const resp = await axios.post(this.n8nWebhookUrl, payload, {
+      const resp = await axios.post(this.ingressUrl, payload, {
         headers: {
           'Content-Type': 'application/json',
           'X-AI-NOC-Source': 'whatsapp-gateway'
@@ -43,9 +52,10 @@ class WebhookDispatcher {
       this.lastError = null;
       this.successCount++;
 
-      // If n8n returns a direct reply in body, dispatch back to WhatsApp
+      // Aplikasi NOC Sentinel mengembalikan `reply` (balasan untuk pelanggan)
+      // bila auto-reply aktif. Bila ada, kirim balik ke WhatsApp.
       if (resp.data && resp.data.reply && sessionManager) {
-        sessionManager.addLog(`Balasan diterima dari AI-NOC (${resp.data.reply.length} chars) -> mengirim ke ${payload.chat_id}`);
+        sessionManager.addLog(`Balasan diterima dari NOC Sentinel (${resp.data.reply.length} chars) -> mengirim ke ${payload.chat_id}`);
         try {
           await sessionManager.sendMessage(payload.chat_id, resp.data.reply);
         } catch (sendErr) {
@@ -53,7 +63,7 @@ class WebhookDispatcher {
           // tampak seperti "bot tidak membalas" padahal balasannya sudah dibuat.
           console.error(`[Webhook] GAGAL mengirim balasan ke ${payload.chat_id}: ${sendErr.message}`);
           sessionManager.addLog(`GAGAL mengirim balasan ke ${payload.chat_id}: ${sendErr.message}`, 'ERROR');
-          return { success: false, via: 'n8n', status: resp.status, error: sendErr.message };
+          return { success: false, status: resp.status, error: sendErr.message };
         }
       } else if (resp.data) {
         // Server menerima pesan tetapi tidak menyertakan balasan. Ini penyebab
@@ -65,38 +75,22 @@ class WebhookDispatcher {
         );
       }
 
-      return { success: true, via: 'n8n', status: resp.status, data: resp.data };
+      return { success: true, status: resp.status, data: resp.data };
     } catch (err) {
       this.lastLatencyMs = Date.now() - startT;
       this.lastStatusCode = err.response ? err.response.status : 503;
       this.lastError = err.message;
       this.status = 'failing';
       this.failCount++;
-      console.warn(`[Webhook] n8n webhook unreachable (${err.message}). Triggering fallback orchestrator...`);
-
-      // 2. Fallback: Trigger direct AI-NOC orchestrator so diagnostic pipeline always runs
-      try {
-        const orchResp = await axios.post(this.orchestratorUrl, payload, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 180000 // fallback orchestrator, sama seperti jalur n8n
-        });
-
-        if (orchResp.data && orchResp.data.report && sessionManager) {
-          await sessionManager.sendMessage(payload.chat_id, orchResp.data.report);
-        }
-
-        return { success: true, via: 'orchestrator_fallback', data: orchResp.data };
-      } catch (orchErr) {
-        console.error(`[Webhook] Fallback orchestrator also failed: ${orchErr.message}`);
-        return { success: false, error: orchErr.message };
-      }
+      console.error(`[Webhook] Gagal menghubungi NOC Sentinel (${this.ingressUrl}): ${err.message}`);
+      return { success: false, error: err.message };
     }
   }
 
   getStatus() {
     return {
       status: this.status,
-      target_url: this.n8nWebhookUrl,
+      target_url: this.ingressUrl,
       last_dispatched_at: this.lastDispatchedAt,
       last_latency_ms: this.lastLatencyMs,
       last_status_code: this.lastStatusCode,

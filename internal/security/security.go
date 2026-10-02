@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,6 +33,7 @@ type Operator struct {
 type Guard struct {
 	operatorToken string
 	webhookToken  string
+	trustedCIDRs  []*net.IPNet
 	operators     map[string]Operator
 	seenMu        *sync.Mutex
 	seen          map[string]time.Time
@@ -46,10 +48,29 @@ func New(_ string, operatorToken, webhookToken string) Guard {
 func NewWithOperators(_ string, operators map[string]Operator, webhookToken string) Guard {
 	return Guard{operators: operators, webhookToken: strings.TrimSpace(webhookToken), seenMu: &sync.Mutex{}, seen: make(map[string]time.Time), skew: 5 * time.Minute}
 }
+
+// SetTrustedCIDRs menetapkan jaringan tambahan yang dipercaya seperti loopback.
+// Panggil sekali sebelum serve. Entri tak valid diabaikan (tidak error).
+func (g *Guard) SetTrustedCIDRs(cidrs []string) {
+	g.trustedCIDRs = nil
+	for _, c := range cidrs {
+		if _, ipnet, err := net.ParseCIDR(strings.TrimSpace(c)); err == nil {
+			g.trustedCIDRs = append(g.trustedCIDRs, ipnet)
+		}
+	}
+}
 func (g Guard) Operator(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		op, ok := g.operator(r)
 		if !ok {
+			// Dashboard lokal dan CLI tidak mengirim token; lalu lintas dari
+			// mesin ini sendiri ATAU jaringan tepercaya diperbolehkan
+			// (lihat pesan "non-local exposure"). Keputusan operator: akses
+			// loopback/tepercaya tanpa token diizinkan.
+			if g.isTrusted(r) {
+				withIdentity(next, Operator{ID: "trusted", Role: RoleAdmin}).ServeHTTP(w, r)
+				return
+			}
 			if len(g.operators) == 0 && g.operatorToken == "" {
 				http.Error(w, "operator authentication must be configured before non-local exposure", 503)
 			} else {
@@ -104,6 +125,13 @@ func sameOrigin(r *http.Request) bool {
 func (g Guard) Webhook(next http.Handler) http.Handler { return g.SignedWebhook(next) }
 func (g Guard) SignedWebhook(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Gateway WhatsApp berjalan lokal dan tidak menandatangani request;
+		// lalu lintas loopback/tepercaya diperbolehkan (pesan "non-local
+		// exposure" di bawah).
+		if g.isTrusted(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if g.webhookToken == "" {
 			http.Error(w, "webhook token must be configured before non-local exposure", 503)
 			return
@@ -155,6 +183,31 @@ func secureEqual(a, b string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// isLoopback melaporkan apakah request berasal dari mesin ini sendiri
+// (127.0.0.1 / ::1) ATAU dari jaringan tepercaya (NOC_TRUSTED_CIDRS).
+// Dipakai untuk mempercayai dashboard lokal, CLI, dan webhook gateway
+// WhatsApp yang memang tidak mengirim kredensial. Akses non-loopback/non-
+// tepercaya tetap dilindungi guard token/tanda tangan.
+func (g Guard) isTrusted(r *http.Request) bool {
+	host := r.RemoteAddr
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "127.0.0.1" || host == "::1" || strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, n := range g.trustedCIDRs {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 func withIdentity(next http.Handler, op Operator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

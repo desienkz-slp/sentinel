@@ -31,6 +31,22 @@ func TestAllowed(t *testing.T) {
 	}
 }
 
+func TestAllowedByRejectsTargetOutsideApprovedNetwork(t *testing.T) {
+	allow := []string{"10.10.0.0/16", "noc.internal"}
+	if !AllowedBy("10.10.4.8", allow) {
+		t.Fatal("allowed in-network IP rejected")
+	}
+	if !AllowedBy("noc.internal", allow) {
+		t.Fatal("allowed hostname rejected")
+	}
+	if AllowedBy("8.8.8.8", allow) {
+		t.Fatal("public target accepted outside approved allowlist")
+	}
+	if AllowedBy("10.10.4.8", nil) {
+		t.Fatal("target accepted with no configured allowlist")
+	}
+}
+
 func TestSplitHostPort(t *testing.T) {
 	cases := []struct{ in, host, port string }{
 		{"10.0.0.1:1812", "10.0.0.1", "1812"},
