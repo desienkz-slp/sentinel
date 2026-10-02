@@ -27,9 +27,11 @@ import (
 	"ainoc/internal/llm"
 	"ainoc/internal/memory"
 	"ainoc/internal/mikrotik"
+	"ainoc/internal/observability"
 	"ainoc/internal/policy"
 	"ainoc/internal/radius"
 	"ainoc/internal/registry"
+	"ainoc/internal/security"
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
 	"ainoc/internal/supervisor"
@@ -63,6 +65,7 @@ type Server struct {
 	// Blueprint upgrade: health, dedupe.
 	hreg *health.Registry
 	ded  *dedupe.Store
+	obs  *observability.Collector
 
 	// Blueprint upgrade: tool dispatcher (registry -> policy -> adapter).
 	disp *tool.Dispatcher
@@ -95,6 +98,26 @@ func (s *Server) routes() http.Handler {
 	static, _ := fs.Sub(webFS, "web")
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
+	// Liveness tidak bergantung pada layanan lain: proses HTTP masih hidup.
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "ai-noc-go"})
+	})
+
+	// Readiness memakai hasil probe terakhir. UNKNOWN saat boot tidak dianggap
+	// gagal supaya orchestrator tidak mematikan proses sebelum probe awal selesai.
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		status := health.StatusUnknown
+		if s.hreg != nil {
+			status = s.hreg.Overall()
+		}
+		ready := status != health.StatusDegraded
+		code := http.StatusOK
+		if !ready {
+			code = http.StatusServiceUnavailable
+		}
+		writeJSON(w, code, map[string]any{"ok": ready, "service": "ai-noc-go", "status": status})
+	})
+
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		// Health endpoint mengembalikan status dependensi + agregat.
 		if s.hreg != nil {
@@ -115,6 +138,24 @@ func (s *Server) routes() http.Handler {
 			"codex_ready": s.codex.Available(),
 			"reports":     len(s.engine.Reports()),
 		})
+	})
+
+	// Metrik HTTP dan KPI diagnosis bersifat agregat: tidak memuat query,
+	// identitas pelanggan, atau isi respons sehingga aman untuk dashboard operator.
+	mux.HandleFunc("/api/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if s.obs == nil {
+			writeJSON(w, http.StatusOK, observability.Snapshot{Routes: []observability.RouteMetric{}})
+			return
+		}
+		writeJSON(w, http.StatusOK, s.obs.Snapshot())
+	})
+
+	mux.HandleFunc("/api/kpi", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, observability.BuildKPI(s.observabilityOutcomes()))
+	})
+
+	mux.HandleFunc("/api/alerts", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, observability.BuildAlerts(s.observabilityDependencies(), s.observabilityOutcomes()))
 	})
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
@@ -1035,7 +1076,50 @@ func (s *Server) routes() http.Handler {
 		mux.HandleFunc("/api/whatsapp/", s.proxyToGateway)
 	}
 
-	return withLogging(mux)
+	guard := security.New(s.cfg.Addr, s.cfg.OperatorToken, s.cfg.WebhookToken)
+	operator := guard.Operator(mux)
+	webhook := guard.Webhook(mux)
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/wa/webhook" {
+			webhook.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			operator.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	return withObservability(protected, s.obs, s.aud)
+}
+
+func (s *Server) observabilityOutcomes() []observability.CaseOutcome {
+	if s.engine == nil {
+		return []observability.CaseOutcome{}
+	}
+	reports := s.engine.Reports()
+	out := make([]observability.CaseOutcome, 0, len(reports))
+	for _, report := range reports {
+		out = append(out, observability.CaseOutcome{
+			ElapsedMS: report.ElapsedMS,
+			Escalated: report.Escalated,
+			Error:     report.Error,
+			Verdict:   report.Verdict,
+		})
+	}
+	return out
+}
+
+func (s *Server) observabilityDependencies() []observability.Dependency {
+	if s.hreg == nil {
+		return []observability.Dependency{}
+	}
+	deps := s.hreg.All()
+	out := make([]observability.Dependency, 0, len(deps))
+	for _, dep := range deps {
+		out = append(out, observability.Dependency{Name: dep.Name, Status: string(dep.Status), Detail: dep.Detail})
+	}
+	return out
 }
 
 // proxyToGateway meneruskan request ke proses Node.js (WhatsApp Gateway).
@@ -1251,12 +1335,50 @@ func maskSecret(s string) string {
 	return "••••" + s[len(s)-4:]
 }
 
-func withLogging(h http.Handler) http.Handler {
+type observabilityResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *observabilityResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *observabilityResponseWriter) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(body)
+}
+
+func withObservability(h http.Handler, collector *observability.Collector, aud *audit.Store) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		h.ServeHTTP(w, r)
+		wrapped := &observabilityResponseWriter{ResponseWriter: w}
+		h.ServeHTTP(wrapped, r)
+		status := wrapped.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		duration := time.Since(start)
+		collector.RecordHTTP(r.Method, r.URL.Path, status, duration)
+		if aud != nil && strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/audit" {
+			aud.Record(audit.Entry{
+				EventType:       "http_request",
+				Actor:           "operator_api",
+				EntityType:      "http_route",
+				EntityID:        r.Method + " " + r.URL.Path,
+				ExecutionStatus: http.StatusText(status),
+				After: map[string]any{
+					"status":      status,
+					"duration_ms": duration.Milliseconds(),
+				},
+				Note: "akses API dicatat tanpa isi request atau query string",
+			})
+		}
 		if !strings.HasPrefix(r.URL.Path, "/api/health") {
-			log.Printf("%s %s (%s)", r.Method, r.URL.Path, time.Since(start).Round(time.Millisecond))
+			log.Printf("%s %s status=%d (%s)", r.Method, r.URL.Path, status, duration.Round(time.Millisecond))
 		}
 	})
 }

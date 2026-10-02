@@ -35,6 +35,7 @@ import (
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
 	"ainoc/internal/memory"
+	"ainoc/internal/observability"
 	"ainoc/internal/policy"
 	"ainoc/internal/registry"
 	"ainoc/internal/session"
@@ -144,6 +145,8 @@ func main() {
 
 	// Cache dedup untuk webhook WhatsApp (cegah pesan duplikat ganda).
 	ded := dedupe.New(2*time.Minute, 10000)
+	// Counter observability hanya menyimpan agregat rute/status/latensi.
+	obs := observability.NewCollector()
 	// Cache umum (bisa dipakai nanti oleh adaptor eksternal).
 	cc := cache.New(time.Duration(cfg.CacheTTLMin) * time.Minute)
 
@@ -184,7 +187,7 @@ func main() {
 		}
 	}()
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, disp: disp}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, disp: disp}
 
 	// Selaraskan BillingAdapter dengan config saat ini (URL+token dari env/config).
 	srv.syncBillingAdapter()

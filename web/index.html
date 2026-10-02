@@ -225,6 +225,12 @@
   <!-- ============ BARIS BAWAH: data ============ -->
   <div class="bottom">
     <section class="card" style="margin-bottom:0">
+      <h2>Observabilitas <span class="pill" id="obsAlertTag" style="font-size:11px;padding:3px 8px">memuat…</span></h2>
+      <div class="hint" id="obsStat">Memuat KPI, status dependensi, dan alert…</div>
+      <div class="hint" style="margin-top:10px">KPI resolusi hanya dihitung setelah case engine menyimpan verifikasi berhasil; diagnosis sehat bukan klaim resolusi.</div>
+    </section>
+
+    <section class="card" style="margin-bottom:0">
       <h2>Standar Konteks &amp; Sesi <span class="pill" id="stdTag" style="font-size:11px;padding:3px 8px">v—</span></h2>
       <div class="hint" id="sesiStat">memuat…</div>
       <div class="btns">
@@ -548,6 +554,23 @@ async function refreshHistory() {
   } catch(e) {}
 }
 
+// ---------- Observabilitas ----------
+async function refreshObservability() {
+  try {
+    const [kpi, alerts] = await Promise.all([api('/api/kpi'), api('/api/alerts')]);
+    $('obsAlertTag').textContent = (alerts||[]).length ? `${alerts.length} alert` : 'tanpa alert';
+    $('obsStat').innerHTML =
+      `kasus diproses: <b>${kpi.cases_processed||0}</b> · ` +
+      `eskalasi: <b>${kpi.escalated||0}</b> · gagal: <b>${kpi.failed||0}</b> · ` +
+      `resolusi terverifikasi: <b>${kpi.verified_resolved||0}</b> · ` +
+      `rata-rata diagnosis: <b>${kpi.average_diagnosis_ms||0}ms</b>` +
+      ((alerts||[]).length ? `<br><span style="color:var(--warn)">${esc(alerts.slice(0,3).map(a=>`${a.subject}: ${a.message||a.severity}`).join(' · '))}</span>` : '');
+  } catch(e) {
+    $('obsAlertTag').textContent = 'tidak tersedia';
+    $('obsStat').textContent = 'Gagal memuat observabilitas: ' + e.message;
+  }
+}
+
 // Muat ringkasan blueprint (policy mode + registry + workflow).
 async function refreshBlueprint() {
   try {
@@ -567,7 +590,9 @@ async function refreshBlueprint() {
 boot();
 setInterval(refreshHistory, 15000);
 setInterval(refreshBlueprint, 15000);
+setInterval(refreshObservability, 15000);
 refreshBlueprint();
+refreshObservability();
 </script>
 </body>
 </html>
