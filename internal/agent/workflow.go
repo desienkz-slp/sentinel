@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 
+	"ainoc/internal/caseengine"
 	"ainoc/internal/correlation"
 	"ainoc/internal/llm"
 	"ainoc/internal/policy"
@@ -113,6 +114,37 @@ func (e *Engine) runWorkflow(ctx context.Context, identity, target string, def w
 				h.Aborted = "langkah " + st.Tool + " ditahan policy gate → eskalasi"
 				break
 			}
+		}
+
+		// ---- FASE 4: aksi WRITE lewat Verification Engine ----
+		// Aksi yang mengubah state tidak boleh dianggap selesai tanpa verifikasi
+		// nyata. Read-only lanjut ke dispatcher biasa; WRITE (bila policy ALLOW,
+		// jarang karena deny-by-default) dieksekusi + diverifikasi + ditutup lewat
+		// RunAction. Tanpa gate verifikasi, write tidak dijalankan (fail-closed).
+		if toolIsWrite(e.Reg, st.Tool) {
+			if e.Verify == nil {
+				record(Step{Kind: "verify", Tool: st.Tool, OK: false,
+					Output: "verification engine tidak tersedia — aksi write tidak dijalankan"})
+				h.Aborted = "langkah " + st.Tool + " butuh verification engine (tidak tersedia)"
+				break
+			}
+			rres, vsnap := e.Verify.RunAction(ctx, identity, "", st.Tool, args, nil)
+			h.RanAnyTool = true
+			record(Step{
+				Kind: "tool", Tool: rres.Tool,
+				Target: firstString(args, "identity", "device_id", "target", "interface"),
+				Output: rres.Output.Text, OK: rres.OK, DurationMS: rres.LatencyMS,
+			})
+			record(Step{Kind: "verify", Tool: st.Tool,
+				OK:     vsnap.CaseState == string(caseengine.StateResolved),
+				Output: "verifikasi pasca-aksi → case " + vsnap.CaseState})
+			domain := toolDomain(st.Tool)
+			if rres.OK {
+				h.Evidence.Add(domain, rres.Output.Text)
+			} else {
+				h.Evidence.Add(domain, "ERROR: "+rres.Error)
+			}
+			continue
 		}
 
 		rres := e.Disp.Invoke(ctx, st.Tool, args)

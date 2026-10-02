@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ainoc/internal/audit"
+	"ainoc/internal/caseengine"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
@@ -108,6 +109,12 @@ type Engine struct {
 	// — hanya probe jaringan read-only yang jalan. Bila terisi, setiap usulan
 	// aksi AI lewat Check() dulu: LOW read-only ALLOW, selainnya eskalasi.
 	Policy *PolicyGate
+
+	// Verify fase 4: Verification Engine — satu-satunya jalur yang boleh
+	// menutup aksi WRITE menjadi RESOLVED. Bila nil, aksi write (yang sudah
+	// diizinkan) tetap dieksekusi TANPA verifikasi — jangan biarkan nil di
+	// produksi (dipasang di main.go). Read-only tidak membutuhkan gate ini.
+	Verify *VerificationGate
 
 	mu      sync.Mutex
 	reports []Report
@@ -493,6 +500,50 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 			// Rutekan: tool eksternal (registry) vs probe jaringan bawaan (diag).
 			if e.Disp != nil && e.Reg != nil {
 				if _, isExternal := e.Reg.Get(tc.Function.Name); isExternal {
+					// ---- FASE 4: aksi WRITE lewat Verification Engine ----
+					// Aksi yang mengubah state TIDAK boleh dianggap selesai tanpa
+					// verifikasi nyata (master spec §13, §53 rule 7). Bila gerbang
+					// verifikasi terpasang DAN tool ini write, eksekusi + verifikasi
+					// + tutup loop (RESOLVED/ESCALATION) dilakukan RunAction. Tanpa
+					// gerbang (nil), write tidak dijalankan — fail-closed.
+					if toolIsWrite(e.Reg, tc.Function.Name) {
+						if e.Verify == nil {
+							rres := tool.Result{Tool: tc.Function.Name,
+								Error: "verification engine tidak tersedia — aksi write tidak dijalankan"}
+							usedTools[tc.Function.Name]++
+							add(Step{Kind: "verify", Tool: tc.Function.Name, OK: false,
+								Output: rres.Error})
+							payload, _ := json.Marshal(map[string]any{
+								"tool": tc.Function.Name, "ok": false, "decision": policy.Deny,
+								"output": "", "error": rres.Error, "request_id": "verify-gate",
+							})
+							msgs = append(msgs, llm.Message{
+								Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name, Content: string(payload),
+							})
+							continue
+						}
+						rres, vsnap := e.Verify.RunAction(ctx, klas.Key, rep.CaseID, tc.Function.Name, args, nil)
+						usedTools[tc.Function.Name]++
+						if vsnap.CaseID != "" {
+							rep.CaseID, rep.CaseState = vsnap.CaseID, vsnap.CaseState
+						}
+						add(Step{
+							Kind: "tool", Tool: rres.Tool, Target: firstString(args, "identity", "device_id", "target"),
+							Output: rres.Output.Text, OK: rres.OK, DurationMS: rres.LatencyMS,
+						})
+						add(Step{Kind: "verify", Tool: tc.Function.Name, OK: vsnap.CaseState == string(caseengine.StateResolved),
+							Output: "verifikasi pasca-aksi → case " + vsnap.CaseState})
+						payload, _ := json.Marshal(map[string]any{
+							"tool": rres.Tool, "ok": rres.OK, "decision": rres.Decision,
+							"output": rres.Output.Text, "error": rres.Error,
+							"request_id": rres.RequestID, "duration_ms": rres.LatencyMS,
+							"case_state": vsnap.CaseState,
+						})
+						msgs = append(msgs, llm.Message{
+							Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name, Content: string(payload),
+						})
+						continue
+					}
 					rres := e.Disp.Invoke(ctx, tc.Function.Name, args)
 					usedTools[tc.Function.Name]++
 					add(Step{

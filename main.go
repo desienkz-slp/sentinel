@@ -153,6 +153,13 @@ func main() {
 	guard := policy.NewExecutionGuard(pol, agent.ActionDefinitions(reg.All(), diagNames))
 	engine.Policy = agent.NewPolicyGate(guard, reg, casew, aud)
 
+	// FASE 4: wire Verification Engine (resolved wajib verifikasi nyata).
+	// Satu-satunya jalur yang boleh menutup aksi WRITE menjadi RESOLVED:
+	// EXECUTING → VERIFYING → RecordVerification → RESOLVED | FAILED→ESCALATION.
+	// Read-only tidak melewati gate ini (bukti probe sudah cukup). Tanpa
+	// gate, aksi write TIDAK dijalankan (fail-closed di agent.go).
+	engine.Verify = agent.NewVerificationGate(casew, reg, disp, aud, nil)
+
 	// ---- Blueprint upgrade: health, cache, dedupe, db ----
 	// Semua opsional: sistem tetap jalan walau database belum menyala.
 	hreg := health.New()

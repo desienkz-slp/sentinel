@@ -10,6 +10,7 @@
 package agent
 
 import (
+	"fmt"
 	"log"
 
 	"ainoc/internal/caseengine"
@@ -143,8 +144,132 @@ func (w *CaseWire) Snapshot(identity string) CaseSnapshot {
 	return CaseSnapshot{CaseID: string(c.ID), CaseState: string(c.State())}
 }
 
-// onPolicyBlock — FASE 3 — mendorong case lewat jalur aksi bila legal:
+// ---- FASE 4: Verification Engine ----
+
+// onActionStarted — FASE 4 — mendorong case lewat jalur eksekusi aksi bila
+// legal. Case tiba di sini setelah gerbang kebijakan memutuskan ALLOW dan
+// action benar-benar akan dieksekusi:
 //
+//	ACTION_PROPOSED → POLICY_CHECK → EXECUTING
+//
+// Jalur lengkap pasca-aksi (dilakukan pemanggil lewat onActionCompleted):
+//
+//	EXECUTING → VERIFYING → (RecordVerification Passed) → RESOLVED
+//	EXECUTING → VERIFYING → (RecordVerification gagal) → FAILED → ESCALATION
+//
+// Tanpa panggilan ini, tidak ada case yang boleh sampai RESOLVED: state
+// machine menolak RESOLVED tanpa verification yang Passed (invariant fase 1).
+func (w *CaseWire) onActionStarted(identity, tool string) CaseSnapshot {
+	if w == nil || w.tracker == nil {
+		return CaseSnapshot{}
+	}
+	c, ok := w.tracker.Get(identity)
+	if !ok {
+		log.Printf("[verify] case untuk %s tidak ditemukan — action %s tanpa case", identity, tool)
+		return CaseSnapshot{}
+	}
+	switch c.State() {
+	case caseengine.StateReasoning, caseengine.StateInvestigation, caseengine.StateActionProposed:
+		if c.State() == caseengine.StateReasoning || c.State() == caseengine.StateInvestigation {
+			if err := c.Transition(caseengine.StateActionProposed, "agent", "aksi diusulkan AI: "+tool); err != nil {
+				log.Printf("[verify] transisi ->ACTION_PROPOSED gagal untuk %s: %v", identity, err)
+			}
+		}
+		if c.State() == caseengine.StateActionProposed {
+			if err := c.Transition(caseengine.StatePolicyCheck, "policy", "kebijakan ALLOW: "+tool); err != nil {
+				log.Printf("[verify] transisi ->POLICY_CHECK gagal untuk %s: %v", identity, err)
+			}
+		}
+		if c.State() == caseengine.StatePolicyCheck {
+			if err := c.Transition(caseengine.StateExecuting, "agent", "eksekusi aksi: "+tool); err != nil {
+				log.Printf("[verify] transisi ->EXECUTING gagal untuk %s: %v", identity, err)
+			}
+		}
+	case caseengine.StateExecuting, caseengine.StateVerifying:
+		// Sudah dalam jalur aksi — biarkan (idempotent).
+	default:
+		log.Printf("[verify] state %s tidak masuk jalur aksi untuk %s (tool %s)", c.State(), identity, tool)
+	}
+	return CaseSnapshot{CaseID: string(c.ID), CaseState: string(c.State())}
+}
+
+// onActionCompleted — FASE 4 — menutup jalur aksi setelah verifikasi nyata.
+// Ini satu-satunya jalan legal menuju RESOLVED:
+//
+//	EXECUTING → VERIFYING → RecordVerification(Passed) → RESOLVED
+//	EXECUTING → VERIFYING → RecordVerification(Passed=false) → FAILED → ESCALATION
+//
+// Verification dulu dicatat (hanya boleh saat VERIFYING), baru transisi:
+// Passed=true membuka RESOLVED; Passed=false (atau verifikasi tidak dapat
+// dicatat) memaksa FAILED → ESCALATION. Kode ini TIDAK PERNAH mengklaim
+// RESOLVED tanpa bukti yang tercatat (invariant caseengine).
+func (w *CaseWire) onActionCompleted(identity, tool string, verification caseengine.Verification) CaseSnapshot {
+	if w == nil || w.tracker == nil {
+		return CaseSnapshot{}
+	}
+	c, ok := w.tracker.Get(identity)
+	if !ok {
+		log.Printf("[verify] case untuk %s tidak ditemukan — hasil aksi %s tanpa case", identity, tool)
+		return CaseSnapshot{}
+	}
+
+	// Masuk ke VERIFYING dari EXECUTING (atau ACTION_PROPOSED/POLICY_CHECK bila
+	// action dieksekusi tanpa jejak mulai — tetap legal menuju VERIFYING hanya
+	// dari EXECUTING; state lain dicatat sebagai kondisi yang tidak bisa
+	// diverifikasi dan jatuh ke eskalasi).
+	switch c.State() {
+	case caseengine.StateExecuting:
+		// lanjut ke VERIFYING di bawah
+	case caseengine.StateActionProposed, caseengine.StatePolicyCheck:
+		// Action dieksekusi tanpa onActionStarted — lengkapi jejak dulu.
+		if c.State() == caseengine.StateActionProposed {
+			_ = c.Transition(caseengine.StatePolicyCheck, "policy", "kebijakan ALLOW: "+tool)
+		}
+		if c.State() == caseengine.StatePolicyCheck {
+			_ = c.Transition(caseengine.StateExecuting, "agent", "eksekusi aksi: "+tool)
+		}
+	case caseengine.StateVerifying:
+		// Sudah VERIFYING — catat langsung.
+	default:
+		log.Printf("[verify] state %s tidak bisa diverifikasi untuk %s (tool %s)", c.State(), identity, tool)
+	}
+
+	if c.State() != caseengine.StateVerifying {
+		if err := c.Transition(caseengine.StateVerifying, "agent", "mulai verifikasi: "+tool); err != nil {
+			log.Printf("[verify] transisi ->VERIFYING gagal untuk %s: %v", identity, err)
+		}
+	}
+
+	// Catat bukti verifikasi. Hanya boleh saat VERIFYING — bila state belum
+	// sampai VERIFYING (transisi gagal), RecordVerification akan menolak dan
+	// jalur di bawah memaksa eskalasi (fail-closed, tidak pernah RESOLVED).
+	recorded := false
+	if c.State() == caseengine.StateVerifying {
+		if err := c.RecordVerification(verification); err != nil {
+			log.Printf("[verify] RecordVerification gagal untuk %s: %v", identity, err)
+		} else {
+			recorded = true
+		}
+	}
+
+	if recorded && verification.Passed {
+		if err := c.Transition(caseengine.StateResolved, "verification", fmt.Sprintf("verifikasi lulus: %s", verification.Source)); err != nil {
+			log.Printf("[verify] transisi ->RESOLVED gagal untuk %s: %v", identity, err)
+		}
+	} else {
+		// Verifikasi gagal (atau tidak dapat dicatat) → FAILED → ESCALATION.
+		if c.State() == caseengine.StateVerifying {
+			_ = c.Transition(caseengine.StateFailed, "verification", "verifikasi tidak lulus")
+		}
+		if c.State() == caseengine.StateFailed {
+			if err := c.Transition(caseengine.StateEscalation, "verification", "verifikasi gagal → eskalasi"); err != nil {
+				log.Printf("[verify] transisi ->ESCALATION gagal untuk %s: %v", identity, err)
+			}
+		}
+	}
+	return CaseSnapshot{CaseID: string(c.ID), CaseState: string(c.State())}
+}
+
 //	ACTION_PROPOSED → POLICY_CHECK → ESCALATION
 //
 // Keputusan ALLOW tidak pernah lewat sini (LOW read-only dieksekusi inline di

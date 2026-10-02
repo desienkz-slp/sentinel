@@ -15,7 +15,7 @@
 | 1 | Wire Case Engine (state machine + Case ID) | ✅ selesai (commit `edc162b`, `7b534be`) |
 | 2 | Wire Escalation Engine (handoff ke NOC/Admin) | ✅ selesai (commit `a2866c1`, `a91258e`, `18f54bb`) |
 | 3 | Wire Policy gate untuk execute (deny-by-default) | ✅ selesai (commit `7da1e70`) |
-| 4 | Wire Verification Engine (resolved wajib verifikasi) | ⬜ belum |
+| 4 | Wire Verification Engine (resolved wajib verifikasi) | ✅ selesai (commit `(fase-4)`) |
 | 5 | Observability & audit lengkap (lifecycle + KPI) | ⬜ belum |
 | 6 | Deploy + validasi end-to-end | ⬜ belum |
 
@@ -63,6 +63,14 @@ Status: ✅ selesai. Implementasi:
 - `RecordVerification` (query ulang sistem → cek expected state), hanya `Passed=true` izinkan `RESOLVED`.
 - Gagal → `FAILED → ESCALATION`.
 - Test: RESOLVED ditolak tanpa verifikasi.
+
+Status: ✅ selesai. Implementasi:
+- `internal/agent/casewire.go` — `onActionStarted` (ACTION_PROPOSED → POLICY_CHECK → EXECUTING) + `onActionCompleted` (EXECUTING → VERIFYING → RecordVerification → RESOLVED, atau FAILED → ESCALATION). State machine caseengine menolak RESOLVED tanpa verification Passed (invariant fase 1).
+- `internal/agent/verifywire.go` — `VerificationGate`: jalur tunggal yang menutup aksi WRITE menjadi RESOLVED. `RunAction` menjalankan aksi → verifikasi (query ulang sistem lewat tool `verification` di registry → normalisasi ke state kanonik) → tutup loop. Rencana verifikasi kosong / bukan tool / query gagal → fail-closed (FAILED → ESCALATION, tidak pernah RESOLVED). `toolIsWrite` memisahkan READ (tanpa verifikasi) dari WRITE (wajib verifikasi).
+- Aksi READ-only (diagnostik LOW) TIDAK lewat gate — bukti probe sudah cukup (rekomendasi fase 4).
+- Gerbang dipasang di DUA jalur: loop tool-call LLM (`agent.go`) dan workflow deterministik (`workflow.go`). Tanpa gate, aksi WRITE TIDAK dieksekusi (fail-closed).
+- Wiring di `main.go`: `engine.Verify = agent.NewVerificationGate(...)`.
+- API success BUKAN berarti resolved (§53 rule 7) — verifier bawaan query ulang sistem dan hanya state kanonik "pulih" yang membuka RESOLVED.
 
 ### FASE 5 — Observability & audit
 - Dashboard tampilkan Case lifecycle (state, events, escalation target).
