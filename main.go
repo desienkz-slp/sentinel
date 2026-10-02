@@ -138,7 +138,20 @@ func main() {
 
 	// FASE 1: hubungkan Case Engine ke alur diagnosis (state machine per nomor).
 	// Additive — bila tidak di-set, alur diagnosis tetap jalan tanpa case.
-	engine.Case = agent.NewCaseWire()
+	casew := agent.NewCaseWire()
+	engine.Case = casew
+
+	// FASE 3: wire Policy gate untuk execute (deny-by-default).
+	// ExecutionGuard = allowlist aksi (dari registry + probe diag read-only) +
+	// binding approval. AI hanya mengeksekusi yang diputuskan ALLOW (LOW
+	// read-only); MEDIUM+/di luar allowlist → eskalasi ke manusia, tidak pernah
+	// dieksekusi otomatis. Keputusan tercatat ke audit append-only.
+	var diagNames []string
+	for _, t := range runner.Tools() {
+		diagNames = append(diagNames, t.Function.Name)
+	}
+	guard := policy.NewExecutionGuard(pol, agent.ActionDefinitions(reg.All(), diagNames))
+	engine.Policy = agent.NewPolicyGate(guard, reg, casew, aud)
 
 	// ---- Blueprint upgrade: health, cache, dedupe, db ----
 	// Semua opsional: sistem tetap jalan walau database belum menyala.

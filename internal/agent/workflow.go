@@ -18,6 +18,7 @@ import (
 
 	"ainoc/internal/correlation"
 	"ainoc/internal/llm"
+	"ainoc/internal/policy"
 	"ainoc/internal/workflow"
 )
 
@@ -94,6 +95,24 @@ func (e *Engine) runWorkflow(ctx context.Context, identity, target string, def w
 			record(Step{Kind: "tool", Tool: st.Tool, OK: false,
 				Output: "dilewati: " + err.Error()})
 			continue
+		}
+
+		// ---- FASE 3: gerbang kebijakan SEBELUM eksekusi ----
+		// Workflow deterministik pun tidak boleh mengeksekusi aksi berisiko.
+		// Hanya ALLOW (read-only LOW) yang diteruskan ke dispatcher; selainnya
+		// → eskalasi kebijakan (case ESCALATION), langkah dicatat, TIDAK invoke.
+		if e.Policy != nil {
+			if auth := e.Policy.Check("", st.Tool, args); auth.Decision != policy.Allow {
+				reason := strings.Join(auth.Reasons, "; ")
+				if reason == "" {
+					reason = "kebijakan menahan aksi — butuh keputusan manusia"
+				}
+				record(Step{Kind: "policy", Tool: st.Tool, OK: false,
+					Output: string(auth.Decision) + ": " + reason})
+				e.Policy.Escalate(identity, "", st.Tool, auth)
+				h.Aborted = "langkah " + st.Tool + " ditahan policy gate → eskalasi"
+				break
+			}
 		}
 
 		rres := e.Disp.Invoke(ctx, st.Tool, args)

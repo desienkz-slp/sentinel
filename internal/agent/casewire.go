@@ -130,6 +130,61 @@ func (w *CaseWire) onDiagnosis(identity string, intent standard.Intent) CaseSnap
 	return CaseSnapshot{CaseID: string(c.ID), CaseState: string(c.State())}
 }
 
+// Snapshot mengembalikan proyeksi read-only case untuk identity. Identity
+// tak dikenal mengembalikan snapshot kosong (bukan error).
+func (w *CaseWire) Snapshot(identity string) CaseSnapshot {
+	if w == nil || w.tracker == nil {
+		return CaseSnapshot{}
+	}
+	c, ok := w.tracker.Get(identity)
+	if !ok {
+		return CaseSnapshot{}
+	}
+	return CaseSnapshot{CaseID: string(c.ID), CaseState: string(c.State())}
+}
+
+// onPolicyBlock — FASE 3 — mendorong case lewat jalur aksi bila legal:
+//
+//	ACTION_PROPOSED → POLICY_CHECK → ESCALATION
+//
+// Keputusan ALLOW tidak pernah lewat sini (LOW read-only dieksekusi inline di
+// REASONING). Transisi ilegal hanya dicatat ke log — state machine caseengine
+// adalah otoritas final, kode ini tidak bisa melompati invariant.
+func (w *CaseWire) onPolicyBlock(identity, tool, decision, reason string) {
+	if w == nil || w.tracker == nil {
+		return
+	}
+	c, ok := w.tracker.Get(identity)
+	if !ok {
+		log.Printf("[policy] case untuk %s tidak ditemukan — eskalasi kebijakan tanpa case", identity)
+		return
+	}
+	// ACTION_PROPOSED legal dari REASONING atau INVESTIGATION (graph caseengine).
+	switch c.State() {
+	case caseengine.StateReasoning, caseengine.StateInvestigation, caseengine.StateActionProposed:
+		if c.State() == caseengine.StateReasoning || c.State() == caseengine.StateInvestigation {
+			if err := c.Transition(caseengine.StateActionProposed, "agent",
+				"aksi diusulkan AI: "+tool); err != nil {
+				log.Printf("[policy] transisi ->ACTION_PROPOSED gagal untuk %s: %v", identity, err)
+			}
+		}
+		if c.State() == caseengine.StateActionProposed {
+			if err := c.Transition(caseengine.StatePolicyCheck, "policy",
+				"evaluasi kebijakan: "+tool); err != nil {
+				log.Printf("[policy] transisi ->POLICY_CHECK gagal untuk %s: %v", identity, err)
+			}
+		}
+	default:
+		log.Printf("[policy] state %s tidak masuk jalur aksi untuk %s (tool %s)", c.State(), identity, tool)
+	}
+	if c.State() == caseengine.StatePolicyCheck {
+		if err := c.Transition(caseengine.StateEscalation, "policy",
+			"kebijakan menahan aksi "+tool+": "+decision+" ("+reason+")"); err != nil {
+			log.Printf("[policy] transisi ->ESCALATION gagal untuk %s: %v", identity, err)
+		}
+	}
+}
+
 // onResult dipanggil SETELAH diagnosis selesai: menutup jalur REASONING ->
 // INVESTIGATION, dan menandai ESCALATION bila diagnosis benar-benar berjalan
 // namun verdict tidak diketahui / keyakinan rendah. Pengiriman ke nomor tujuan

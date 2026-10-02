@@ -19,6 +19,7 @@ import (
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
 	"ainoc/internal/memory"
+	"ainoc/internal/policy"
 	"ainoc/internal/registry"
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
@@ -101,6 +102,12 @@ type Engine struct {
 	// (NEW->...->INVESTIGATION/ESCALATION). Bila nil, alur diagnosis jalan tanpa
 	// case (backward-compatible).
 	Case *CaseWire
+
+	// PolicyGate fase 3: satu-satunya jalur keputusan eksekusi aksi. Bila nil,
+	// agent TIDAK mengeksekusi tool eksternal (dispatcher tetap deny-by-default)
+	// — hanya probe jaringan read-only yang jalan. Bila terisi, setiap usulan
+	// aksi AI lewat Check() dulu: LOW read-only ALLOW, selainnya eskalasi.
+	Policy *PolicyGate
 
 	mu      sync.Mutex
 	reports []Report
@@ -455,6 +462,34 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 			args := map[string]any{}
 			_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
 
+			// ---- FASE 3: gerbang kebijakan SEBELUM eksekusi apa pun ----
+			// AI tidak pernah mengeksekusi tool tanpa policy check. Hanya
+			// ALLOW (read-only LOW) yang diteruskan; APPROVAL_REQUIRED/DENY
+			// (MEDIUM+) → eskalasi ke manusia, TIDAK dieksekusi otomatis.
+			if e.Policy != nil {
+				if auth := e.Policy.Check(rep.CaseID, tc.Function.Name, args); auth.Decision != policy.Allow {
+					usedTools[tc.Function.Name]++
+					reason := strings.Join(auth.Reasons, "; ")
+					if reason == "" {
+						reason = "kebijakan menahan aksi — butuh keputusan manusia"
+					}
+					add(Step{Kind: "policy", Tool: tc.Function.Name, OK: false,
+						Output: string(auth.Decision) + ": " + reason})
+					if snap := e.Policy.Escalate(klas.Key, rep.CaseID, tc.Function.Name, auth); snap.CaseID != "" {
+						rep.CaseID, rep.CaseState = snap.CaseID, snap.CaseState
+					}
+					payload, _ := json.Marshal(map[string]any{
+						"tool": tc.Function.Name, "ok": false, "decision": auth.Decision,
+						"output": "", "error": "ditahan policy gate: " + reason,
+						"request_id": "policy-gate",
+					})
+					msgs = append(msgs, llm.Message{
+						Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name, Content: string(payload),
+					})
+					continue
+				}
+			}
+
 			// Rutekan: tool eksternal (registry) vs probe jaringan bawaan (diag).
 			if e.Disp != nil && e.Reg != nil {
 				if _, isExternal := e.Reg.Get(tc.Function.Name); isExternal {
@@ -659,14 +694,35 @@ func probedTarget(steps []Step) string {
 	return ""
 }
 
-// shouldEscalate menentukan apakah analisis perlu dilanjutkan ke Codex CLI.
+// shouldEscalate — FASE 3 — memutuskan apakah analisis perlu eskalasi, dengan
+// dasar POLICY GATE (bukan hardcode return false):
+//
+//   - Aksi yang ditahan kebijakan (APPROVAL_REQUIRED/DENY pada usulan AI) →
+//     true, dan eskalasi disalurkan ke MANUSIA (CaseWire ESCALATION + handoff
+//     WA fase 2) — escalate() tidak pernah memanggil model lain untuk kasus ini
+//     (phase 0: otoritas manusia tidak didelegasikan ke model/CLI lain).
+//   - Keyakinan rendah tanpa aksi berisiko → tetap false di sini karena jalur
+//     manusianya sudah ditangani CaseWire.onResult + deliverEscalation.
 func (e *Engine) shouldEscalate(rep Report, used map[string]int) bool {
-	// Phase 0: low-confidence cases must be handed to a human authority, never
-	// silently delegated to another model/CLI.
-	return false
+	if e.Policy == nil {
+		return false
+	}
+	return e.Policy.RequiresHuman(rep.Steps)
 }
 
 func (e *Engine) escalate(ctx context.Context, rep *Report) {
+	// FASE 3: eskalasi kebijakan → manusia. Handoff WA (fase 2) terpicu oleh
+	// rep.CaseState == ESCALATION; di sini kita hanya menandai laporan dan
+	// TIDAK memanggil model lain — keputusan berisiko tidak boleh digeser ke
+	// Codex/model lain secara diam-diam (phase 0).
+	if e.Policy != nil && e.Policy.RequiresHuman(rep.Steps) {
+		rep.Escalated = true
+		rep.Escalation = "policy gate menahan aksi berisiko — butuh keputusan manusia (handoff NOC/Admin)"
+		rep.Steps = append(rep.Steps, Step{Kind: "escalate",
+			Text: "FASE 3: aksi ditahan kebijakan → eskalasi ke manusia, tanpa eksekusi otomatis"})
+		return
+	}
+
 	task := buildCodexTask(*rep)
 	rep.Steps = append(rep.Steps, Step{Kind: "escalate", Text: "Keyakinan rendah -> eskalasi analisis ke Codex CLI (" + e.Cfg.CodexModel + ")"})
 	res := e.Codex.Run(ctx, task)
