@@ -50,6 +50,9 @@ type Report struct {
 	Escalated  bool      `json:"escalated"`
 	Escalation string    `json:"escalation,omitempty"`
 	Error      string    `json:"error,omitempty"`
+	// Case ID + state dari Case Engine (fase 1). Kosong bila wiring tidak aktif.
+	CaseID    string `json:"case_id,omitempty"`
+	CaseState string `json:"case_state,omitempty"`
 	// Jejak standar & sesi — supaya laporan bisa diaudit: standar versi berapa,
 	// intent apa menurut kode, nomor siapa, dan apakah konteks lanjutan dipakai.
 	Standar  string `json:"standar,omitempty"`
@@ -93,6 +96,11 @@ type Engine struct {
 	// Bila ada workflow cocok untuk intent keluhan, KODE yang mengontrol urutan
 	// langkah — AI tidak mengimprovisasi tiap langkah operasional.
 	Wkf *workflow.Registry
+
+	// Case tracker fase 1: memetakan identity -> Case dan mendorong state machine
+	// (NEW->...->INVESTIGATION/ESCALATION). Bila nil, alur diagnosis jalan tanpa
+	// case (backward-compatible).
+	Case *CaseWire
 
 	mu      sync.Mutex
 	reports []Report
@@ -285,6 +293,14 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	rep.Signature = string(konteks.Signature)
 	rep.Ulang = konteks.Ulang
 
+	// ---- FASE 1: hubungkan Case Engine (buat/lanjutkan case per pengirim) ----
+	// Case ID + state disalin ke Report supaya muncul di laporan/audit. Bila
+	// wiring mati (e.Case nil), alur diagnosis tetap jalan seperti semula.
+	if e.Case != nil {
+		snap := e.Case.begin(klas.Key, "whatsapp")
+		rep.CaseID, rep.CaseState = snap.CaseID, snap.CaseState
+	}
+
 	// ---- CACHE: pertanyaan sama dari nomor sama dalam jendela waktu ----
 	if ans, verdict, conf, engine, elapsed, _, ok := e.Sesi.CacheLookup(klas.CacheKey); ok {
 		rep.Answer, rep.Verdict, rep.Confidence = ans, verdict, conf
@@ -306,6 +322,12 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	// Ini yang membuat standar tetap sama untuk model apa pun: model tidak bisa
 	// memaksa probe pada sapaan/informasi walaupun ia "berhalusinasi".
 	bolehProbe := standard.BolehProbe(klas.Intent)
+
+	// ---- FASE 1: dorong state case ke jalur diagnosis bila keluhan nyata ----
+	if e.Case != nil {
+		snap := e.Case.onDiagnosis(klas.Key, klas.Intent)
+		rep.CaseID, rep.CaseState = snap.CaseID, snap.CaseState
+	}
 
 	// ---- WORKFLOW DETERMINISTIK (blueprint §13) ----
 	// Bila ada workflow cocok untuk intent keluhan, KODE yang mengontrol urutan
@@ -338,6 +360,11 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 			if rep.Target == "" {
 				rep.Target = probedTarget(rep.Steps)
 			}
+			// FASE 1: tutup state case (INVESTIGATION/ESCALATION).
+			if e.Case != nil {
+				snap := e.Case.onResult(klas.Key, klas.Intent, rep.Verdict, rep.Confidence, h.RanAnyTool)
+				rep.CaseID, rep.CaseState = snap.CaseID, snap.CaseState
+			}
 			// Eskalasi ke Codex bila keyakinan rendah (analisis senior).
 			if e.shouldEscalate(rep, used) {
 				e.escalate(ctx, &rep)
@@ -347,6 +374,8 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 			return rep
 		}
 	}
+
+	// ---- FASE 1: lanjutkan state case setelah diagnosis selesai ----
 
 	tools := e.Diag.Tools()
 	// Tambahkan tool eksternal yang aktif (registry) bila ada dan diizinkan.
@@ -475,6 +504,12 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	}
 	rep.ElapsedMS = time.Since(start).Milliseconds()
 
+	// ---- FASE 1: tutup state case (INVESTIGATION/ESCALATION) ----
+	if e.Case != nil {
+		snap := e.Case.onResult(klas.Key, klas.Intent, rep.Verdict, rep.Confidence, len(usedTools) > 0)
+		rep.CaseID, rep.CaseState = snap.CaseID, snap.CaseState
+	}
+
 	// Bila agen menjawab tanpa pengecekan (sapaan, pertanyaan umum, minta perjelas),
 	// jangan eskalasi ke Codex — tidak ada yang perlu dianalisis dan verdict memang kosong.
 	if len(usedTools) == 0 {
@@ -568,12 +603,14 @@ func (e *Engine) catat(klas HasilKlasifikasi, konteks KonteksAI, rep Report) {
 		e.Aud.Record(audit.Entry{
 			EventType:  "diagnosis",
 			Actor:      "agent",
+			CaseID:     rep.CaseID,
 			EntityType: "incident",
 			EntityID:   rep.ID,
 			After: map[string]any{
 				"verdict":    rep.Verdict,
 				"confidence": rep.Confidence,
 				"engine":     rep.Engine,
+				"case_state": rep.CaseState,
 				"probes":     probes,
 			},
 			Note: "diagnosis selesai",

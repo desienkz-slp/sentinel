@@ -72,7 +72,10 @@ type Reply struct {
 	Confidence float64 `json:"confidence,omitempty"`
 	Engine     string  `json:"engine,omitempty"`
 	ElapsedMS  int64   `json:"elapsed_ms,omitempty"`
-	Note       string  `json:"note,omitempty"`
+	// Case ID + state dari Case Engine (fase 1) untuk observasi gateway/audit.
+	CaseID    string `json:"case_id,omitempty"`
+	CaseState string `json:"case_state,omitempty"`
+	Note      string `json:"note,omitempty"`
 }
 
 type Client struct {

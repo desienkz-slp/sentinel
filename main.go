@@ -135,6 +135,10 @@ func main() {
 	// diagnosis saat ada keluhan (blueprint §13).
 	engine.Wkf = wkf
 
+	// FASE 1: hubungkan Case Engine ke alur diagnosis (state machine per nomor).
+	// Additive — bila tidak di-set, alur diagnosis tetap jalan tanpa case.
+	engine.Case = agent.NewCaseWire()
+
 	// ---- Blueprint upgrade: health, cache, dedupe, db ----
 	// Semua opsional: sistem tetap jalan walau database belum menyala.
 	hreg := health.New()

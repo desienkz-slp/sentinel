@@ -978,6 +978,8 @@ func (s *Server) routes() http.Handler {
 			Confidence: rep.Confidence,
 			Engine:     rep.Engine,
 			ElapsedMS:  rep.ElapsedMS,
+			CaseID:     rep.CaseID,
+			CaseState:  rep.CaseState,
 			Report:     wa.FormatReport(toView(rep)),
 		}
 		// Hanya isi "reply" bila auto-reply aktif; kalau tidak, operator ambil dari dashboard.
