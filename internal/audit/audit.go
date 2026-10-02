@@ -10,23 +10,37 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
 
 // Entry adalah satu baris audit.
 type Entry struct {
-	ID         int64     `json:"id"`
-	EventType  string    `json:"event_type"`
-	OccurredAt time.Time `json:"occurred_at"`
-	Actor      string    `json:"actor"`
-	EntityType string    `json:"entity_type,omitempty"`
-	EntityID   string    `json:"entity_id,omitempty"`
-	Before     any       `json:"before,omitempty"`
-	After      any       `json:"after,omitempty"`
-	RequestID  string    `json:"request_id,omitempty"`
-	TraceID    string    `json:"trace_id,omitempty"`
-	Note       string    `json:"note,omitempty"`
+	ID              int64     `json:"id"`
+	EventType       string    `json:"event_type"`
+	OccurredAt      time.Time `json:"occurred_at"`
+	Actor           string    `json:"actor"`
+	CaseID          string    `json:"case_id,omitempty"`
+	Agent           string    `json:"agent,omitempty"`
+	Model           string    `json:"model,omitempty"`
+	PromptVersion   string    `json:"prompt_version,omitempty"`
+	Tool            string    `json:"tool,omitempty"`
+	Arguments       any       `json:"arguments,omitempty"`
+	Result          any       `json:"result,omitempty"`
+	RiskLevel       string    `json:"risk_level,omitempty"`
+	PolicyDecision  string    `json:"policy_decision,omitempty"`
+	ExecutionStatus string    `json:"execution_status,omitempty"`
+	Verification    string    `json:"verification,omitempty"`
+	HumanApproval   string    `json:"human_approval,omitempty"`
+	Error           string    `json:"error,omitempty"`
+	EntityType      string    `json:"entity_type,omitempty"`
+	EntityID        string    `json:"entity_id,omitempty"`
+	Before          any       `json:"before,omitempty"`
+	After           any       `json:"after,omitempty"`
+	RequestID       string    `json:"request_id,omitempty"`
+	TraceID         string    `json:"trace_id,omitempty"`
+	Note            string    `json:"note,omitempty"`
 }
 
 // Store adalah log audit thread-safe, append-only.
@@ -52,6 +66,10 @@ func New(path string, max int) *Store {
 func (s *Store) Record(e Entry) Entry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	e.Arguments = sanitize(e.Arguments)
+	e.Result = sanitize(e.Result)
+	e.Before = sanitize(e.Before)
+	e.After = sanitize(e.After)
 	if e.OccurredAt.IsZero() {
 		e.OccurredAt = time.Now()
 	}
@@ -108,10 +126,52 @@ func (s *Store) persist() error {
 		return err
 	}
 	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, s.path)
+}
+
+// sanitize menyalin data audit melalui JSON dan meredaksi key sensitif secara
+// rekursif. Caller tidak boleh mengandalkan audit sebagai tempat menyimpan rahasia.
+func sanitize(value any) any {
+	if value == nil {
+		return nil
+	}
+	b, err := json.Marshal(value)
+	if err != nil {
+		return "[TIDAK_DAPAT_DIAUDIT]"
+	}
+	var copied any
+	if err := json.Unmarshal(b, &copied); err != nil {
+		return "[TIDAK_DAPAT_DIAUDIT]"
+	}
+	return redact(copied)
+}
+
+func redact(value any) any {
+	switch data := value.(type) {
+	case map[string]any:
+		for key, item := range data {
+			if sensitiveKey(key) {
+				data[key] = "[REDACTED]"
+				continue
+			}
+			data[key] = redact(item)
+		}
+	case []any:
+		for i, item := range data {
+			data[i] = redact(item)
+		}
+	}
+	return value
+}
+
+func sensitiveKey(key string) bool {
+	key = strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+	return strings.Contains(key, "password") || strings.Contains(key, "passwd") ||
+		strings.Contains(key, "secret") || strings.Contains(key, "token") ||
+		strings.Contains(key, "api_key") || strings.Contains(key, "authorization")
 }
 
 func (s *Store) load() {

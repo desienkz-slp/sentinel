@@ -69,3 +69,35 @@ func TestRecordAutoTimestamp(t *testing.T) {
 		t.Error("ID harus terisi otomatis")
 	}
 }
+
+func TestRecordPreservesCaseAuditFields(t *testing.T) {
+	s := New("", 10)
+	e := s.Record(Entry{
+		EventType:       "case_transition",
+		Actor:           "agent:conversation",
+		CaseID:          "CASE-20261002-ABC123",
+		Agent:           "conversation",
+		Model:           "model-test",
+		PromptVersion:   "v1",
+		Tool:            "case.transition",
+		RiskLevel:       "LOW",
+		PolicyDecision:  "ALLOW",
+		ExecutionStatus: "SUCCEEDED",
+		Verification:    "NOT_REQUIRED",
+	})
+	if e.CaseID != "CASE-20261002-ABC123" || e.Tool != "case.transition" || e.PolicyDecision != "ALLOW" {
+		t.Fatalf("field audit case tidak utuh: %+v", e)
+	}
+}
+
+func TestRecordRedactsSensitiveAuditValues(t *testing.T) {
+	s := New("", 10)
+	e := s.Record(Entry{Arguments: map[string]any{"api_token": "rahasia", "aman": "nilai"}})
+	args, ok := e.Arguments.(map[string]any)
+	if !ok {
+		t.Fatalf("argumen audit bukan map: %#v", e.Arguments)
+	}
+	if args["api_token"] != "[REDACTED]" || args["aman"] != "nilai" {
+		t.Fatalf("argumen audit tidak tersanitasi: %#v", args)
+	}
+}
