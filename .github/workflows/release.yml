@@ -22,7 +22,7 @@ jobs:
           node-version: "20"
 
       - name: Build artefak rilis (linux/amd64)
-        run: ./deploy/build-release.sh "${GITHUB_REF_NAME#v}" amd64
+        run: bash ./deploy/build-release.sh "${GITHUB_REF_NAME#v}" amd64
 
       - name: Publikasi ke GitHub Releases
         uses: softprops/action-gh-release@v2
