@@ -20,6 +20,7 @@ import (
 	"ainoc/internal/correlation"
 	"ainoc/internal/dedupe"
 	"ainoc/internal/diag"
+	"ainoc/internal/escalation"
 	"ainoc/internal/genieacs"
 	"ainoc/internal/health"
 	"ainoc/internal/incident"
@@ -84,6 +85,10 @@ type Server struct {
 
 	// GenieACS adapter (TR-069 NBI) — nil bila belum dikonfigurasi.
 	genieacs *genieacs.Adapter
+
+	// Dedup eskalasi fase 2: satu case hanya mengirim handoff ke NOC/Admin
+	// satu kali (anti spam).
+	esc *escalation.Dedup
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -819,7 +824,9 @@ func (s *Server) routes() http.Handler {
 		defer cancel()
 
 		if !body.Stream {
-			writeJSON(w, 200, s.engine.Run(ctx, identity, body.Query, strings.TrimSpace(body.Target)))
+			rep := s.engine.Run(ctx, identity, body.Query, strings.TrimSpace(body.Target))
+			s.deliverEscalation(ctx, rep, identity, escalation.ClassifyDomain(body.Query))
+			writeJSON(w, 200, rep)
 			return
 		}
 
@@ -842,6 +849,7 @@ func (s *Server) routes() http.Handler {
 		rep := s.engine.RunWith(ctx, identity, body.Query, strings.TrimSpace(body.Target), func(st agent.Step) {
 			send("step", st)
 		})
+		s.deliverEscalation(ctx, rep, identity, escalation.ClassifyDomain(body.Query))
 		send("report", rep)
 	})
 
@@ -959,6 +967,7 @@ func (s *Server) routes() http.Handler {
 			})
 			go func(chatID string) {
 				rep := runWith(context.Background())
+				s.deliverEscalation(context.Background(), rep, id, escalation.ClassifyDomain(msg.Message))
 				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.WATimeout)*time.Second)
 				defer cancel()
 				if _, err := s.wa.Send(ctx, chatID, wa.FormatReport(toView(rep))); err != nil {
@@ -982,6 +991,7 @@ func (s *Server) routes() http.Handler {
 			CaseState:  rep.CaseState,
 			Report:     wa.FormatReport(toView(rep)),
 		}
+		s.deliverEscalation(r.Context(), rep, id, escalation.ClassifyDomain(msg.Message))
 		// Hanya isi "reply" bila auto-reply aktif; kalau tidak, operator ambil dari dashboard.
 		if s.cfg.WAAutoReply {
 			out.Reply = out.Report

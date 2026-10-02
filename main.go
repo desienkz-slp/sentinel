@@ -29,6 +29,7 @@ import (
 	"ainoc/internal/db"
 	"ainoc/internal/dedupe"
 	"ainoc/internal/diag"
+	"ainoc/internal/escalation"
 	"ainoc/internal/health"
 	"ainoc/internal/healthcheck"
 	"ainoc/internal/incident"
@@ -191,7 +192,7 @@ func main() {
 		}
 	}()
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, disp: disp}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, disp: disp, esc: escalation.NewDedup()}
 
 	// Selaraskan BillingAdapter dengan config saat ini (URL+token dari env/config).
 	srv.syncBillingAdapter()
