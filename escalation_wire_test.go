@@ -55,7 +55,7 @@ func TestBuildEscalationContextFillsHandoffFields(t *testing.T) {
 	}
 }
 
-func TestBuildEscalationContextDedupsConsecutiveToolSteps(t *testing.T) {
+func TestBuildEscalationContextDedupsDuplicateToolSteps(t *testing.T) {
 	rep := agent.Report{
 		CaseID:     "CASE-20261002-DEDUP",
 		CaseState:  "ESCALATION",
@@ -64,10 +64,12 @@ func TestBuildEscalationContextDedupsConsecutiveToolSteps(t *testing.T) {
 		Confidence: 20,
 		Answer:     "cek lanjut",
 		StartedAt:  time.Now(),
+		// Batch ganda dipisah langkah "thought" (persis pola workflow deterministik).
 		Steps: []agent.Step{
 			{Kind: "tool", Tool: "billing.get_customer", OK: false, Output: "dilewati: nonaktif"},
-			{Kind: "tool", Tool: "billing.get_customer", OK: false, Output: "dilewati: nonaktif"},
 			{Kind: "tool", Tool: "radius.get_session", OK: false, Output: "dilewati: nonaktif"},
+			{Kind: "thought", Text: "korelasi"},
+			{Kind: "tool", Tool: "billing.get_customer", OK: false, Output: "dilewati: nonaktif"},
 			{Kind: "tool", Tool: "radius.get_session", OK: false, Output: "dilewati: nonaktif"},
 		},
 	}

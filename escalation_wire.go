@@ -52,14 +52,14 @@ func buildEscalationContext(rep agent.Report, identity, domain string) escalatio
 	}
 
 	// Diagnostik + bukti dari langkah tool yang benar-benar dijalankan.
-	// Catatan: rep.Steps bisa memuat langkah yang sama dua kali (workflow
-	// deterministik mencatat lewat callback emit SEKALIGUS di-append ulang oleh
-	// RunWith). Untuk handoff manusia, langkah ganda beruntun yang identik
-	// diratakan supaya pesan tidak berisik (master spec §45: handoff jelas).
+	// Catatan: rep.Steps memuat langkah workflow DUA KALI (runWorkflow mencatat
+	// lewat callback emit, lalu RunWith menambahkan h.Steps lagi). Kedua batch
+	// identik tapi dipisah langkah "thought", jadi diratakan GLOBAL (bukan hanya
+	// beruntun) supaya handoff manusia bebas duplikat (master spec §45).
 	var diagnostics []string
 	var evidence []string
 	var performed []string
-	var lastLine string
+	seen := map[string]bool{}
 	for _, s := range rep.Steps {
 		switch s.Kind {
 		case "tool":
@@ -73,11 +73,11 @@ func buildEscalationContext(rep agent.Report, identity, domain string) escalatio
 			} else {
 				line += " ✗"
 			}
-			// Rata duplikat beruntun yang identik (tool+target+output sama).
-			if line == lastLine {
+			// Rata duplikat global (tool+target+output identik).
+			if seen[line] {
 				continue
 			}
-			lastLine = line
+			seen[line] = true
 			diagnostics = append(diagnostics, line)
 			if s.OK {
 				evidence = append(evidence, out)
