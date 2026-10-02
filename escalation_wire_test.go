@@ -55,6 +55,31 @@ func TestBuildEscalationContextFillsHandoffFields(t *testing.T) {
 	}
 }
 
+func TestBuildEscalationContextDedupsConsecutiveToolSteps(t *testing.T) {
+	rep := agent.Report{
+		CaseID:     "CASE-20261002-DEDUP",
+		CaseState:  "ESCALATION",
+		Query:      "internet putus",
+		Verdict:    "TIDAK DIKETAHUI",
+		Confidence: 20,
+		Answer:     "cek lanjut",
+		StartedAt:  time.Now(),
+		Steps: []agent.Step{
+			{Kind: "tool", Tool: "billing.get_customer", OK: false, Output: "dilewati: nonaktif"},
+			{Kind: "tool", Tool: "billing.get_customer", OK: false, Output: "dilewati: nonaktif"},
+			{Kind: "tool", Tool: "radius.get_session", OK: false, Output: "dilewati: nonaktif"},
+			{Kind: "tool", Tool: "radius.get_session", OK: false, Output: "dilewati: nonaktif"},
+		},
+	}
+	ctx := buildEscalationContext(rep, "628111222333", "network")
+	if len(ctx.Diagnostics) != 2 {
+		t.Fatalf("langkah ganda harus diratakan jadi 2, dapat %d: %v", len(ctx.Diagnostics), ctx.Diagnostics)
+	}
+	if len(ctx.Evidence) != 2 {
+		t.Fatalf("evidence ganda harus diratakan jadi 2, dapat %d", len(ctx.Evidence))
+	}
+}
+
 func TestDeliverEscalationSkipsNonEscalationState(t *testing.T) {
 	s := &Server{
 		cfg: &config.Config{NOCNumber: "628111222333"},
