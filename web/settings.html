@@ -195,6 +195,30 @@
     <div class="hint" id="intMsg"></div>
     <div class="status" id="intStatus"></div>
   </section>
+
+  <section class="card">
+    <h2>Direktori Staf &amp; Hak Akses</h2>
+    <p class="hint">Nomor internal per jabatan untuk identifikasi penelepon WhatsApp &amp; eskalasi. Saat ada WA masuk, sistem mengenali siapa pengirimnya (staf di sini, atau pelanggan dari billing) dan menyesuaikan hak aksesnya. Aksi berisiko (edit/hapus/putus layanan) butuh PIN.</p>
+    <div id="staffList" style="margin:12px 0"></div>
+    <h3 style="margin:18px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)">Tambah / Ubah Staf</h3>
+    <div class="row">
+      <div><label for="stfNumber">Nomor WhatsApp</label><input id="stfNumber" placeholder="628xxxxxxxxxx"></div>
+      <div><label for="stfName">Nama</label><input id="stfName" placeholder="Nama lengkap"></div>
+    </div>
+    <div class="row">
+      <div><label for="stfRole">Jabatan / Role</label><select id="stfRole"></select></div>
+      <div><label for="stfTitle">Titel (opsional)</label><input id="stfTitle" placeholder="mis. Manager NOC"></div>
+    </div>
+    <div class="row">
+      <div><label for="stfPin">PIN aksi berisiko (opsional)</label><input id="stfPin" type="password" placeholder="kosong = tidak diubah"></div>
+      <div><label for="stfActive">Status</label><select id="stfActive"><option value="true">Aktif</option><option value="false">Nonaktif</option></select></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button onclick="saveStaff()">Simpan Staf</button>
+      <button onclick="clearStaffForm()" style="background:var(--card2)">Bersihkan Form</button>
+    </div>
+    <div class="hint" id="staffMsg"></div>
+  </section>
 </main>
 
 <script>
@@ -606,7 +630,83 @@ async function pingEndpointB() {
   } catch(e) { setDot('Codex', false, 'B gagal'); msg('setMsg', false, 'Endpoint B gagal: ' + e.message.slice(0,120)); }
 }
 
+// ---------- Direktori Staf ----------
+let _staffRoles = [];
+async function loadStaff() {
+  try {
+    const d = await api('/api/staff');
+    _staffRoles = d.roles || [];
+    const sel = $('stfRole');
+    if (sel && !sel.dataset.filled) {
+      sel.innerHTML = _staffRoles.map(r => `<option value="${r.value}">${esc(r.label)}</option>`).join('');
+      sel.dataset.filled = '1';
+    }
+    const list = d.staff || [];
+    if (!list.length) {
+      $('staffList').innerHTML = '<div class="hint">Belum ada staf. Tambahkan nomor internal di bawah.</div>';
+      return;
+    }
+    $('staffList').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr style="text-align:left;color:var(--dim)"><th>Nama</th><th>Nomor</th><th>Jabatan</th><th>PIN</th><th>Status</th><th></th></tr>
+      ${list.map(s => `<tr style="border-top:1px solid var(--border)">
+        <td>${esc(s.name||'—')}${s.title?` <span style="color:var(--dim)">(${esc(s.title)})</span>`:''}</td>
+        <td>${esc(s.number)}</td>
+        <td>${esc(roleLabel(s.role))}</td>
+        <td>${s.pin_set===false?'<span style="color:var(--dim)">—</span>':'🔒'}</td>
+        <td>${s.active?'<span style="color:var(--ok,#3fb950)">Aktif</span>':'<span style="color:var(--dim)">Nonaktif</span>'}</td>
+        <td style="text-align:right">
+          <button onclick='editStaff(${JSON.stringify(JSON.stringify(s))})' style="padding:2px 8px">Edit</button>
+          <button onclick="delStaff('${esc(s.number)}')" style="padding:2px 8px;background:#da3633">Hapus</button>
+        </td></tr>`).join('')}
+    </table>`;
+  } catch(e) { $('staffList').innerHTML = '<div class="hint bad">Gagal memuat staf: '+esc(e.message)+'</div>'; }
+}
+function roleLabel(v){ const r=_staffRoles.find(x=>x.value===v); return r?r.label:v; }
+function editStaff(sjson){
+  const s = JSON.parse(JSON.parse(sjson));
+  $('stfNumber').value = s.number||'';
+  $('stfName').value = s.name||'';
+  $('stfRole').value = s.role||'';
+  $('stfTitle').value = s.title||'';
+  $('stfActive').value = String(!!s.active);
+  $('stfPin').value = '';
+  msg('staffMsg', null, 'Mengubah '+(s.name||s.number)+'. Kosongkan PIN bila tidak ingin mengganti.');
+  $('stfNumber').scrollIntoView({behavior:'smooth'});
+}
+function clearStaffForm(){
+  ['stfNumber','stfName','stfTitle','stfPin'].forEach(id=>$(id).value='');
+  $('stfActive').value='true'; msg('staffMsg', null, '');
+}
+async function saveStaff(){
+  const number = $('stfNumber').value.trim();
+  const name = $('stfName').value.trim();
+  if (!number || !name) { msg('staffMsg', false, 'Nomor dan nama wajib diisi'); return; }
+  const payload = {
+    number, name,
+    role: $('stfRole').value,
+    title: $('stfTitle').value.trim(),
+    active: $('stfActive').value === 'true'
+  };
+  const pin = $('stfPin').value.trim();
+  if (pin) payload.pin = pin;
+  try {
+    await api('/api/staff', {method:'POST', body: JSON.stringify(payload)});
+    msg('staffMsg', true, 'Staf tersimpan.');
+    clearStaffForm();
+    loadStaff();
+  } catch(e){ msg('staffMsg', false, 'Gagal: '+e.message); }
+}
+async function delStaff(number){
+  if (!confirm('Hapus staf '+number+'?')) return;
+  try {
+    await api('/api/staff?nomor='+encodeURIComponent(number), {method:'DELETE'});
+    msg('staffMsg', true, 'Staf dihapus.');
+    loadStaff();
+  } catch(e){ msg('staffMsg', false, 'Gagal: '+e.message); }
+}
+
 boot();
+loadStaff();
 </script>
 </body>
 </html>

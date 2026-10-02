@@ -220,4 +220,50 @@ func urlQueryEscape(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, " ", "%20"), "&", "%26")
 }
 
+// LookupByPhone mencari SATU pelanggan yang nomor WA-nya cocok persis dengan
+// `phone` (dinormalisasi oleh pemanggil). Dipakai untuk identifikasi penelepon
+// (master spec §6: jangan tanya "siapa Anda" bila bisa dideteksi dari data).
+//
+// Mengembalikan (Customer, true, nil) bila ada kecocokan nomor; (zero, false, nil)
+// bila tidak ada; error hanya untuk kegagalan API (jangan simpulkan "bukan
+// pelanggan" saat API gagal — master spec §52).
+func (a *Adapter) LookupByPhone(ctx context.Context, phone string) (Customer, bool, error) {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return Customer{}, false, fmt.Errorf("nomor kosong")
+	}
+	path := "/customers?search=" + urlQueryEscape(phone) + "&per_page=25"
+	var out customersResponse
+	if err := a.http.GetJSON(ctx, path, &out); err != nil {
+		return Customer{}, false, err
+	}
+	if out.Status != "success" {
+		return Customer{}, false, fmt.Errorf("respons billing tidak success: %s", out.Status)
+	}
+	// Cocokkan nomor secara ketat: bandingkan hanya digit (buang +, 0, 62 depan).
+	want := lastDigits(phone)
+	for _, c := range out.Data {
+		if c.Phone != "" && lastDigits(c.Phone) == want {
+			return c, true, nil
+		}
+	}
+	return Customer{}, false, nil
+}
+
+// lastDigits mengambil 9 digit terakhir nomor untuk pencocokan yang toleran
+// terhadap awalan (0 / +62 / 62). 9 digit cukup unik untuk nomor Indonesia.
+func lastDigits(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	d := b.String()
+	if len(d) > 9 {
+		d = d[len(d)-9:]
+	}
+	return d
+}
+
 var _ = json.Valid // jaga import json tetap terpakai bila struktur berubah

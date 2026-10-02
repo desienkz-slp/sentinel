@@ -252,6 +252,12 @@ func main() {
 	// Selaraskan GenieACSAdapter (host NBI dari env/config).
 	srv.syncGenieACSAdapter()
 
+	// Identifikasi penelepon + RBAC: bangun direktori staf & identifier.
+	// Harus SETELAH syncBillingAdapter (identifier memakai billing untuk lookup
+	// pelanggan). PIN berlaku 10 menit per nomor.
+	srv.pinSesi = newPINStore(10 * time.Minute)
+	srv.syncDirectory()
+
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv.routes(),

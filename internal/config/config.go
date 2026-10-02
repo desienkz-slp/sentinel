@@ -103,6 +103,12 @@ type Config struct {
 	// Catatan: GenieACS NBI tidak punya token auth (keamanan via jaringan).
 	// Tidak ada field token — hanya host.
 
+	// ---- Staff Directory (master spec §22) + RBAC berbasis identitas ----
+	// StaffMembers = daftar nomor internal per jabatan (admin/NOC/super admin)
+	// untuk identifikasi penelepon & eskalasi. Dikelola lewat dashboard Pengaturan.
+	// Disimpan di config.json (gitignored). PIN disimpan sebagai hash, bukan plaintext.
+	StaffMembers []StaffMember `json:"staff_members"`
+
 	// ---- Auto-update (cek rilis GitHub + apply 1-klik) ----
 	// UpdateOwner/UpdateRepo menunjuk repo GitHub sumber rilis. Default ke
 	// repo kanonik; bisa dioverride per-server lewat env NOC_UPDATE_OWNER/REPO.
@@ -126,6 +132,19 @@ type MikrotikRouter struct {
 	User string `json:"user"`
 	Pass string `json:"pass"`
 	TLS  bool   `json:"tls"`
+}
+
+// StaffMember adalah satu entri direktori staf internal (master spec §22).
+// Role: admin | noc_senior | super_admin (pelanggan tidak disimpan di sini —
+// pelanggan dikenali dari billing). PINHash = sha256(pin) hex, tidak pernah
+// plaintext; plaintext hanya diterima sesaat saat set lewat API lalu di-hash.
+type StaffMember struct {
+	Number  string `json:"number"`
+	Name    string `json:"name"`
+	Role    string `json:"role"`
+	Title   string `json:"title"`
+	Active  bool   `json:"active"`
+	PINHash string `json:"pin_hash"`
 }
 
 // SetPath mencatat file config yang sedang dipakai, agar Save() menulis ke sana.

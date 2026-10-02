@@ -23,6 +23,7 @@ import (
 	"ainoc/internal/correlation"
 	"ainoc/internal/dedupe"
 	"ainoc/internal/diag"
+	"ainoc/internal/directory"
 	"ainoc/internal/escalation"
 	"ainoc/internal/genieacs"
 	"ainoc/internal/health"
@@ -96,6 +97,12 @@ type Server struct {
 
 	// upd memeriksa rilis GitHub (cek otomatis + apply 1-klik). nil = fitur mati.
 	upd *updater.Checker
+
+	// dir = direktori staf; idf = identifikasi penelepon (staf/pelanggan) + RBAC.
+	dir *directory.Directory
+	idf *directory.Identifier
+	// pinSesi = verifikasi PIN sementara per nomor untuk aksi berisiko via WA.
+	pinSesi *pinStore
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -109,6 +116,9 @@ func (s *Server) routes() http.Handler {
 
 	static, _ := fs.Sub(webFS, "web")
 	mux.Handle("/", http.FileServer(http.FS(static)))
+
+	// Identifikasi penelepon + manajemen staf (RBAC).
+	s.registerIdentityRoutes(mux)
 
 	// Liveness tidak bergantung pada layanan lain: proses HTTP masih hidup.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -1037,12 +1047,26 @@ func (s *Server) routes() http.Handler {
 
 		log.Printf("[WA] masuk dari %s: %s", id, truncateLog(msg.Message, 120))
 
+		// Identifikasi penelepon (master spec §6): cari di direktori staf lalu
+		// billing. Hasilnya dilog + diselipkan ke context agar agent/eskalasi tahu
+		// siapa & perannya tanpa harus bertanya "siapa Anda".
+		idCtx, idCancel := context.WithTimeout(r.Context(), 12*time.Second)
+		caller := s.identifyCaller(idCtx, id)
+		idCancel()
+		if caller.IsStaff {
+			log.Printf("[WA] penelepon dikenali: %s (%s / %s)", caller.Name, directory.Role(caller.Role).Label(), caller.Role)
+		} else if caller.IsCustomer && caller.Customer != nil {
+			log.Printf("[WA] penelepon pelanggan: %s (status=%s)", caller.Customer.Name, caller.Customer.Status)
+		} else {
+			log.Printf("[WA] penelepon belum dikenal: %s (dilayani sebagai pelanggan)", id)
+		}
+
 		// PENTING: context request DIBATALKAN begitu handler selesai. Untuk mode
 		// async, diagnosis harus berjalan di atas context.Background() sendiri,
 		// kalau tidak LLM langsung gagal dengan "context canceled".
 		budget := time.Duration(s.cfg.LLMTimeout*2+s.cfg.MaxSteps*s.cfg.DiagTimeout+120) * time.Second
 		runWith := func(parent context.Context) agent.Report {
-			ctx, cancel := context.WithTimeout(parent, budget)
+			ctx, cancel := context.WithTimeout(withCaller(parent, caller), budget)
 			defer cancel()
 			return s.engine.Run(ctx, id, msg.Message, "")
 		}
