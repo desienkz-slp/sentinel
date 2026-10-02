@@ -33,9 +33,10 @@ const (
 type Risk string
 
 const (
-	RiskLow    Risk = "LOW"
-	RiskMedium Risk = "MEDIUM"
-	RiskHigh   Risk = "HIGH"
+	RiskLow      Risk = "LOW"
+	RiskMedium   Risk = "MEDIUM"
+	RiskHigh     Risk = "HIGH"
+	RiskCritical Risk = "CRITICAL"
 )
 
 // Decision adalah hasil evaluasi kebijakan.
@@ -126,9 +127,10 @@ func Load(path string) *Engine {
 			Unknown: "deny",
 		},
 		risk: map[string]riskCfg{
-			"LOW":    {MaxScope: 1, ApprovalRequired: false},
-			"MEDIUM": {MaxScope: 1, ApprovalRequired: true},
-			"HIGH":   {MaxScope: 0, ApprovalRequired: true},
+			"LOW":      {MaxScope: 1, ApprovalRequired: false},
+			"MEDIUM":   {MaxScope: 1, ApprovalRequired: true},
+			"HIGH":     {MaxScope: 1, ApprovalRequired: true},
+			"CRITICAL": {MaxScope: 1, ApprovalRequired: true},
 		},
 	}
 	if path == "" {
@@ -190,6 +192,8 @@ func normRisk(r Risk) Risk {
 		return RiskMedium
 	case RiskHigh:
 		return RiskHigh
+	case RiskCritical:
+		return RiskCritical
 	}
 	return ""
 }
@@ -256,6 +260,13 @@ func (e *Engine) Decide(req Request) Result {
 
 // applyGates menerapkan gerbang risiko dan mode di atas keputusan awal.
 func (e *Engine) applyGates(res Result, perm Permission, risk Risk, req Request) Result {
+	if res.Decision != Deny {
+		if cfg, ok := e.risk[string(risk)]; ok && cfg.MaxScope > 0 && scopeSize(req.Scope) > cfg.MaxScope {
+			res.Decision = Deny
+			res.Reasons = append(res.Reasons, fmt.Sprintf("risiko %s melampaui scope yang diizinkan", risk))
+			return res
+		}
+	}
 	// 3. Gerbang risiko: medium+ butuh persetujuan walau aturan bilang allow.
 	if res.Decision == Allow {
 		if rc, ok := e.risk[string(risk)]; ok && rc.ApprovalRequired {
@@ -281,6 +292,17 @@ func (e *Engine) applyGates(res Result, perm Permission, risk Risk, req Request)
 		res.Reasons = append(res.Reasons, "dry-run: tidak ada perubahan produksi")
 	}
 	return res
+}
+
+func scopeSize(scope string) int {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "", "single_customer":
+		return 1
+	case "multi_customer":
+		return 2
+	default:
+		return 2
+	}
 }
 
 func matchOptional(pattern, value string) bool {
