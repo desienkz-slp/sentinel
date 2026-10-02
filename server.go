@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
@@ -1456,22 +1455,15 @@ func (s *Server) syncGenieACSAdapter() {
 }
 
 // launchUpdate menjalankan skrip update secara DETACHED untuk versi target.
-// Detached penting: skrip akan me-restart service (termasuk proses ini), jadi
-// ia tidak boleh mati saat parent berhenti. Portabel: di Windows memanggil
-// bash (git-bash) bila ada, selain itu sh -c.
+// Skrip self-update memakai fitur Bash (pipefail/BASH_SOURCE), sehingga wajib
+// dijalankan dengan bash pada semua OS. /bin/sh di Debian/Ubuntu adalah dash
+// dan akan gagal sebelum proses update dimulai.
 func launchUpdate(script, version string) error {
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		// Cari bash untuk menjalankan skrip .sh; installer Windows .exe nanti
-		// bisa memakai jalur berbeda (ganti UpdateScript ke .ps1/.bat).
-		bash, err := exec.LookPath("bash")
-		if err != nil {
-			return fmt.Errorf("bash tidak ditemukan untuk menjalankan skrip update: %w", err)
-		}
-		cmd = exec.Command(bash, script, version)
-	} else {
-		cmd = exec.Command("/bin/sh", script, version)
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		return fmt.Errorf("bash tidak ditemukan untuk menjalankan skrip update: %w", err)
 	}
+	cmd := exec.Command(bash, script, version)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Stdin = nil
