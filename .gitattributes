@@ -1,0 +1,16 @@
+# Normalisasi akhir baris. Skrip shell WAJIB LF agar jalan di Linux
+# (CRLF membuat `#!/usr/bin/env bash\r` gagal / "bad interpreter").
+*.sh            text eol=lf
+deploy/*.service text eol=lf
+
+# Default: biarkan git menangani teks, binary ditandai eksplisit.
+*.go            text
+*.yaml          text
+*.yml           text
+*.json          text
+*.md            text
+
+*.png           binary
+*.ico           binary
+*.exe           binary
+*.tar.gz        binary
