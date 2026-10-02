@@ -42,6 +42,7 @@ import (
 	"ainoc/internal/session"
 	"ainoc/internal/supervisor"
 	"ainoc/internal/tool"
+	"ainoc/internal/updater"
 	"ainoc/internal/wa"
 	"ainoc/internal/workflow"
 )
@@ -215,6 +216,32 @@ func main() {
 	}()
 
 	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, disp: disp, esc: escalation.NewDedup()}
+
+	// Auto-update: inisialisasi checker bila owner/repo terisi. Cek awal + berkala
+	// (tiap 6 jam) di latar; hasilnya di-cache untuk dashboard. Tidak pernah
+	// apply sendiri — apply butuh aksi operator (POST /api/update/apply).
+	if cfg.UpdateOwner != "" && cfg.UpdateRepo != "" {
+		srv.upd = updater.NewChecker(cfg.UpdateOwner, cfg.UpdateRepo)
+		go func() {
+			cur := updater.CurrentVersion()
+			log.Printf("[update] versi berjalan: %s (sumber rilis: %s/%s)", cur.Version, cfg.UpdateOwner, cfg.UpdateRepo)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			st := srv.upd.Check(ctx)
+			cancel()
+			if st.Error != "" {
+				log.Printf("[update] cek awal gagal: %s", st.Error)
+			} else if st.UpdateAvailable {
+				log.Printf("[update] versi baru tersedia: v%s", st.Latest.Version)
+			}
+			t := time.NewTicker(6 * time.Hour)
+			defer t.Stop()
+			for range t.C {
+				c, cl := context.WithTimeout(context.Background(), 15*time.Second)
+				srv.upd.Check(c)
+				cl()
+			}
+		}()
+	}
 
 	// Selaraskan BillingAdapter dengan config saat ini (URL+token dari env/config).
 	srv.syncBillingAdapter()

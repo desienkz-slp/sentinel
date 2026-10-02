@@ -146,6 +146,8 @@
       <div class="pill"><span class="ep-tag b">B</span><span class="dot" id="dotCodex"></span><span id="txtCodex">B · Reasoning</span></div>
       <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WhatsApp…</span></div>
       <div class="pill" id="pillModel">model: —</div>
+      <div class="pill" id="pillVersion" title="Versi aplikasi">v—</div>
+      <button class="pill" id="btnUpdate" style="display:none;cursor:pointer;border:none;background:#1f6feb;color:#fff;font-weight:600" title="Pasang versi terbaru">⬆ Update tersedia</button>
     </div>
   </div>
 </header>
@@ -361,8 +363,65 @@ async function boot() {
   waStatus();
   muatSesi();
   refreshHistory();
+  checkVersion();
   setInterval(waGateway, 10000);
   setInterval(muatSesi, 15000);
+  setInterval(checkVersion, 60*60*1000); // cek update tiap jam dari cache server
+}
+
+// ---------- Auto-update (versi + tombol update) ----------
+async function checkVersion() {
+  try {
+    const v = await api('/api/version');
+    if (v && v.version) $('pillVersion').textContent = 'v' + v.version;
+  } catch (e) {}
+  try {
+    const u = await api('/api/update/check');
+    const btn = $('btnUpdate');
+    if (u && u.update_available && u.latest) {
+      btn.style.display = '';
+      btn.textContent = '⬆ Update ke v' + u.latest.version;
+      btn.onclick = () => applyUpdate(u.latest.version, u.latest.notes || '');
+    } else {
+      btn.style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+async function applyUpdate(version, notes) {
+  const msg = 'Pasang versi v' + version + ' sekarang?\n\n' +
+    'Layanan akan di-download, dipasang, lalu RESTART otomatis (beberapa detik tak bisa diakses).' +
+    (notes ? '\n\nCatatan rilis:\n' + notes.slice(0, 500) : '');
+  if (!confirm(msg)) return;
+  const btn = $('btnUpdate');
+  btn.disabled = true; btn.textContent = '⏳ Memasang v' + version + '…';
+  try {
+    const r = await api('/api/update/apply', { method: 'POST' });
+    if (r.ok) {
+      btn.textContent = '✅ Update dimulai, menunggu restart…';
+      // Poll /api/version sampai versi berubah (server restart).
+      let tries = 0;
+      const poll = setInterval(async () => {
+        tries++;
+        try {
+          const v = await api('/api/version');
+          if (v && v.version === version) {
+            clearInterval(poll);
+            btn.style.display = 'none';
+            $('pillVersion').textContent = 'v' + version;
+            alert('Update selesai: sekarang di v' + version);
+          }
+        } catch (e) {}
+        if (tries > 60) { clearInterval(poll); btn.disabled = false; checkVersion(); }
+      }, 3000);
+    } else {
+      alert('Gagal memulai update: ' + (r.error || 'tidak diketahui'));
+      btn.disabled = false; checkVersion();
+    }
+  } catch (e) {
+    alert('Gagal: ' + e.message);
+    btn.disabled = false; checkVersion();
+  }
 }
 
 // ---------- Standar konteks & sesi ----------

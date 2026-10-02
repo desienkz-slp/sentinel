@@ -33,7 +33,11 @@ mkdir -p "$STAGE/bin" "$STAGE/wa-gateway"
 
 echo "[1/5] build binary ai-noc-go (linux/$ARCH, static)..."
 ( cd "$ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" \
-  go build -trimpath -ldflags "-s -w" -o "$STAGE/bin/ai-noc-go" . )
+  go build -trimpath -ldflags "-s -w \
+    -X ainoc/internal/updater.buildVersion=$VERSION \
+    -X ainoc/internal/updater.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+    -X ainoc/internal/updater.buildCommit=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)" \
+  -o "$STAGE/bin/ai-noc-go" . )
 
 echo "[2/5] salin aset runtime (dibaca dari disk saat jalan)..."
 # web/* SUDAH di-embed ke binary — tidak perlu disalin.

@@ -103,6 +103,15 @@ type Config struct {
 	// Catatan: GenieACS NBI tidak punya token auth (keamanan via jaringan).
 	// Tidak ada field token — hanya host.
 
+	// ---- Auto-update (cek rilis GitHub + apply 1-klik) ----
+	// UpdateOwner/UpdateRepo menunjuk repo GitHub sumber rilis. Default ke
+	// repo kanonik; bisa dioverride per-server lewat env NOC_UPDATE_OWNER/REPO.
+	UpdateOwner string `json:"update_owner"`
+	UpdateRepo  string `json:"update_repo"`
+	// UpdateScript = path skrip apply (default deploy/self-update.sh di project
+	// root). Dijalankan detached saat operator menekan tombol Update.
+	UpdateScript string `json:"update_script"`
+
 	// path adalah lokasi file config yang sedang dipakai. Disimpan supaya
 	// perubahan dari dashboard bisa ditulis kembali ke file yang SAMA.
 	// Tanpa ini, pengaturan hanya hidup di memori dan hilang saat restart.
@@ -204,7 +213,17 @@ func Default() *Config {
 		WorkflowDir:  defaultWorkflowDir(),
 		IncidentPath: defaultIncidentPath(),
 		AuditPath:    defaultAuditPath(),
+
+		// Auto-update: default ke repo rilis kanonik + skrip apply standar.
+		UpdateOwner:  "desienkz-slp",
+		UpdateRepo:   "sentinel",
+		UpdateScript: defaultUpdateScript(),
 	}
+}
+
+// defaultUpdateScript mengembalikan path skrip apply update (relatif ke binary).
+func defaultUpdateScript() string {
+	return filepath.Join(projectRoot(), "deploy", "self-update.sh")
 }
 
 // defaultMemoryPath menentukan lokasi memory.json.
@@ -488,6 +507,15 @@ func Load(path string) *Config {
 	}
 	if v := getenv("NOC_GENIEACS_URL"); v != "" {
 		c.GenieACSURL = v
+	}
+	if v := getenv("NOC_UPDATE_OWNER"); v != "" {
+		c.UpdateOwner = v
+	}
+	if v := getenv("NOC_UPDATE_REPO"); v != "" {
+		c.UpdateRepo = v
+	}
+	if v := getenv("NOC_UPDATE_SCRIPT"); v != "" {
+		c.UpdateScript = v
 	}
 	if v := getenv("NOC_WA_DIR"); v != "" {
 		c.WADir = v

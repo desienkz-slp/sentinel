@@ -9,6 +9,9 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -37,6 +40,7 @@ import (
 	"ainoc/internal/standard"
 	"ainoc/internal/supervisor"
 	"ainoc/internal/tool"
+	"ainoc/internal/updater"
 	"ainoc/internal/wa"
 	"ainoc/internal/workflow"
 )
@@ -89,6 +93,9 @@ type Server struct {
 	// Dedup eskalasi fase 2: satu case hanya mengirim handoff ke NOC/Admin
 	// satu kali (anti spam).
 	esc *escalation.Dedup
+
+	// upd memeriksa rilis GitHub (cek otomatis + apply 1-klik). nil = fitur mati.
+	upd *updater.Checker
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -729,6 +736,85 @@ func (s *Server) routes() http.Handler {
 		})
 	})
 
+	// ---- Auto-update (cek rilis GitHub + apply 1-klik) ----
+	// GET /api/version — versi biner yang sedang berjalan (selalu tersedia).
+	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, updater.CurrentVersion())
+	})
+
+	// GET /api/update/check — status update terakhir. ?force=1 memicu cek baru
+	// ke GitHub (default memakai cache agar tidak kena rate-limit).
+	mux.HandleFunc("/api/update/check", func(w http.ResponseWriter, r *http.Request) {
+		if s.upd == nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":      false,
+				"error":   "fitur update tidak aktif (owner/repo kosong)",
+				"current": updater.CurrentVersion(),
+			})
+			return
+		}
+		if r.URL.Query().Get("force") == "1" {
+			ctx, cancel := timeoutCtx(r, 15*time.Second)
+			defer cancel()
+			st := s.upd.Check(ctx)
+			writeJSON(w, 200, st)
+			return
+		}
+		writeJSON(w, 200, s.upd.Last())
+	})
+
+	// POST /api/update/apply — jalankan skrip update detached untuk versi yang
+	// tersedia. Butuh aksi operator eksplisit (master spec: no silent change).
+	// Aman: hanya loopback/trusted (dilindungi security guard di luar mux), dan
+	// menolak bila tidak ada update atau skrip tidak ada.
+	mux.HandleFunc("/api/update/apply", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]any{"ok": false, "error": "pakai POST"})
+			return
+		}
+		if s.upd == nil {
+			writeJSON(w, 200, map[string]any{"ok": false, "error": "fitur update tidak aktif"})
+			return
+		}
+		st := s.upd.Last()
+		if st.CheckedAt.IsZero() {
+			ctx, cancel := timeoutCtx(r, 15*time.Second)
+			defer cancel()
+			st = s.upd.Check(ctx)
+		}
+		if !st.UpdateAvailable || st.Latest == nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":      false,
+				"error":   "tidak ada update tersedia",
+				"current": st.Current,
+			})
+			return
+		}
+		script := strings.TrimSpace(s.cfg.UpdateScript)
+		if script == "" {
+			writeJSON(w, 200, map[string]any{"ok": false, "error": "update_script tidak dikonfigurasi"})
+			return
+		}
+		if _, err := os.Stat(script); err != nil {
+			writeJSON(w, 200, map[string]any{
+				"ok":    false,
+				"error": fmt.Sprintf("skrip update tidak ditemukan: %s", script),
+			})
+			return
+		}
+		version := st.Latest.Version
+		if err := launchUpdate(script, version); err != nil {
+			writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		log.Printf("[update] apply dipicu operator: versi %s via %s", version, script)
+		writeJSON(w, 200, map[string]any{
+			"ok":      true,
+			"message": fmt.Sprintf("update ke v%s dimulai; layanan akan restart otomatis", version),
+			"version": version,
+		})
+	})
+
 	// Riwayat insiden terstruktur.
 	mux.HandleFunc("/api/incidents", func(w http.ResponseWriter, r *http.Request) {
 		identity := strings.TrimSpace(r.URL.Query().Get("nomor"))
@@ -1343,6 +1429,34 @@ func (s *Server) syncGenieACSAdapter() {
 		}
 		s.genieacs = nil
 	}
+}
+
+// launchUpdate menjalankan skrip update secara DETACHED untuk versi target.
+// Detached penting: skrip akan me-restart service (termasuk proses ini), jadi
+// ia tidak boleh mati saat parent berhenti. Portabel: di Windows memanggil
+// bash (git-bash) bila ada, selain itu sh -c.
+func launchUpdate(script, version string) error {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// Cari bash untuk menjalankan skrip .sh; installer Windows .exe nanti
+		// bisa memakai jalur berbeda (ganti UpdateScript ke .ps1/.bat).
+		bash, err := exec.LookPath("bash")
+		if err != nil {
+			return fmt.Errorf("bash tidak ditemukan untuk menjalankan skrip update: %w", err)
+		}
+		cmd = exec.Command(bash, script, version)
+	} else {
+		cmd = exec.Command("/bin/sh", script, version)
+	}
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("gagal memulai skrip update: %w", err)
+	}
+	// Lepaskan: jangan Wait (proses hidup mandiri, akan restart service).
+	go func() { _ = cmd.Wait() }()
+	return nil
 }
 
 func truncateLog(s string, n int) string {
