@@ -67,8 +67,8 @@ type Dispatcher struct {
 	adapters map[string]Adapter // key = nama tool
 }
 
-// New membuat dispatcher. reg/pol boleh nil (maka gerbang tidak aktif, tapi
-// sebaiknya selalu diisi agar aman).
+// New membuat dispatcher. Registry dan policy wajib tersedia saat Invoke;
+// dispatcher yang belum lengkap akan gagal tertutup.
 func New(reg *registry.Registry, pol *policy.Engine, timeout time.Duration) *Dispatcher {
 	if timeout <= 0 {
 		timeout = 8 * time.Second
@@ -113,45 +113,47 @@ func (d *Dispatcher) Adapters() []string {
 // Invoke menjalankan tool melalui seluruh gerbang keamanan.
 func (d *Dispatcher) Invoke(ctx context.Context, toolName string, args map[string]any) Result {
 	res := Result{Tool: toolName, RequestID: newID()}
+	if d.Reg == nil {
+		res.Decision = policy.Deny
+		res.Error = "tool gateway tidak siap: registry tidak tersedia"
+		return res
+	}
+	if d.Pol == nil {
+		res.Decision = policy.Deny
+		res.Error = "tool gateway tidak siap: policy tidak tersedia"
+		return res
+	}
 
 	// Gerbang 1: registry — terdaftar & aktif.
-	if d.Reg != nil {
-		if _, err := d.Reg.CanInvoke(toolName); err != nil {
-			res.Decision = policy.Deny
-			res.Error = err.Error()
-			return res
-		}
+	if _, err := d.Reg.CanInvoke(toolName); err != nil {
+		res.Decision = policy.Deny
+		res.Error = err.Error()
+		return res
 	}
 
 	// Meta tool dari registry (permission, risk, scope) untuk policy.
 	perm := registry.PermRead
 	risk := registry.RiskLow
 	scope := "single_customer"
-	if d.Reg != nil {
-		if t, ok := d.Reg.Get(toolName); ok {
-			perm, risk = t.Permission, t.Risk
-			if t.Scope != "" {
-				scope = t.Scope
-			}
+	if t, ok := d.Reg.Get(toolName); ok {
+		perm, risk = t.Permission, t.Risk
+		if t.Scope != "" {
+			scope = t.Scope
 		}
 	}
 
 	// Gerbang 2: policy.
-	if d.Pol != nil {
-		dec := d.Pol.Decide(policy.Request{
-			Tool:       toolName,
-			Permission: convertPerm(perm),
-			Scope:      scope,
-			Risk:       convertRisk(risk),
-		})
-		res.Decision = dec.Decision
-		res.RuleID = dec.RuleID
-		if dec.Decision != policy.Allow {
-			res.Error = fmt.Sprintf("ditolak kebijakan: %s", strings.Join(dec.Reasons, "; "))
-			return res
-		}
-	} else {
-		res.Decision = policy.Allow
+	dec := d.Pol.Decide(policy.Request{
+		Tool:       toolName,
+		Permission: convertPerm(perm),
+		Scope:      scope,
+		Risk:       convertRisk(risk),
+	})
+	res.Decision = dec.Decision
+	res.RuleID = dec.RuleID
+	if dec.Decision != policy.Allow {
+		res.Error = fmt.Sprintf("ditolak kebijakan: %s", strings.Join(dec.Reasons, "; "))
+		return res
 	}
 
 	// Gerbang 3: adapter.

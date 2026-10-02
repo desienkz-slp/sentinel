@@ -111,6 +111,44 @@ func TestInvokeUnregisteredDenied(t *testing.T) {
 	}
 }
 
+// TestInvokeWithoutRegistryDenied memastikan gateway gagal tertutup. Adapter
+// tidak boleh dapat dieksekusi hanya karena registry belum berhasil dimuat.
+func TestInvokeWithoutRegistryDenied(t *testing.T) {
+	d := New(nil, policy.Load(""), time.Second)
+	d.Register(&fakeAdapter{domain: "billing", configured: true})
+
+	res := d.Invoke(context.Background(), "billing.get_status", nil)
+	if res.OK {
+		t.Fatal("tanpa registry, adapter harus ditolak")
+	}
+	if res.Decision != policy.Deny {
+		t.Errorf("decision = %s, mau DENY", res.Decision)
+	}
+	if res.Error == "" {
+		t.Error("penolakan harus memiliki alasan untuk audit")
+	}
+}
+
+// TestInvokeWithoutPolicyDenied memastikan kebijakan juga wajib tersedia.
+func TestInvokeWithoutPolicyDenied(t *testing.T) {
+	reg := writeReg(t, `  - name: billing.get_status
+    domain: billing
+    enabled: true
+    permission: READ
+    risk: LOW
+`)
+	d := New(reg, nil, time.Second)
+	d.Register(&fakeAdapter{domain: "billing", configured: true})
+
+	res := d.Invoke(context.Background(), "billing.get_status", nil)
+	if res.OK {
+		t.Fatal("tanpa policy, adapter harus ditolak")
+	}
+	if res.Decision != policy.Deny {
+		t.Errorf("decision = %s, mau DENY", res.Decision)
+	}
+}
+
 func TestInvokePolicyDeniesWriteMultiCustomer(t *testing.T) {
 	// Tool terdaftar & aktif, tapi policy menolak WRITE multi_customer.
 	reg := writeReg(t, `  - name: mikrotik.reboot
