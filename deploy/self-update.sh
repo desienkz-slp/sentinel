@@ -81,7 +81,12 @@ tar -xzf "$TAR" -C stage --strip-components=1
 # Salin biner + aset yang dibaca dari disk (policies/tools/workflows/migrations,
 # wa-gateway/app, public). JANGAN timpa: data/, wa-gateway/data/, .env, config.json,
 # tools/registry.local.yaml (overlay operator).
-cp -a stage/bin/ai-noc-go "$APP_DIR/bin/ai-noc-go"
+# Jangan menulis langsung ke executable yang sedang berjalan (Linux dapat
+# mengembalikan ETXTBSY / "Text file busy"). Pasang lewat file baru lalu rename
+# atomik; proses lama tetap memakai inode lama sampai systemd restart.
+cp -a stage/bin/ai-noc-go "$APP_DIR/bin/ai-noc-go.new"
+chmod 0755 "$APP_DIR/bin/ai-noc-go.new"
+mv -f "$APP_DIR/bin/ai-noc-go.new" "$APP_DIR/bin/ai-noc-go"
 for d in policies workflows migrations; do
   [ -d "stage/$d" ] && cp -a "stage/$d/." "$APP_DIR/$d/"
 done
