@@ -114,7 +114,17 @@ func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	static, _ := fs.Sub(webFS, "web")
-	mux.Handle("/", http.FileServer(http.FS(static)))
+	staticHandler := http.FileServer(http.FS(static))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// HTML di-embed ke binary dan berubah saat upgrade. Larang browser/proxy
+		// mempertahankan halaman versi lama setelah service berganti binary.
+		if r.URL.Path == "/" || strings.HasSuffix(strings.ToLower(r.URL.Path), ".html") {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		}
+		staticHandler.ServeHTTP(w, r)
+	}))
 
 	// Identifikasi penelepon + manajemen staf (RBAC).
 	s.registerIdentityRoutes(mux)
