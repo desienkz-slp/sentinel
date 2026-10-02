@@ -78,8 +78,74 @@
 
 <main>
   <section class="card">
+    <h2>Conversation — Endpoint A <span class="ep-tag a">A</span></h2>
+    <div class="sub">LLM untuk percakapan &amp; diagnosis (loop OODA + balasan pelanggan).</div>
+
+    <div class="row">
+      <div><label for="sBase">Base URL</label><input id="sBase" placeholder="https://provider.example/v1"></div>
+      <div><label for="sKey">API Key (kosongkan bila sudah tersimpan)</label><input id="sKey" type="password" placeholder="•••• (tidak ditampilkan)"></div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="sModel">Model</label>
+        <select id="sModel"></select>
+      </div>
+      <div>
+        <label for="sWire">Tipe komunikasi</label>
+        <select id="sWire">
+          <option value="chat">Chat Completions (lainnya)</option>
+          <option value="responses">Responses (GPT)</option>
+          <option value="messages">Messages (Claude)</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint">Pilih tipe komunikasi native model: <b>Messages</b> untuk Claude, <b>Responses</b> untuk GPT/reasoning, <b>Chat Completions</b> untuk model lain — supaya thinking, prompt cache &amp; effort optimal.</div>
+    <div class="hint" id="setMsgA"></div>
+    <div class="btns">
+      <button class="ghost" onclick="loadModels('a')">Cek daftar model</button>
+      <button class="ghost" onclick="pingLLM()">Tes koneksi (completion nyata)</button>
+    </div>
+    <div class="status">
+      Conversation: base <b id="stBase">—</b> · model <b id="stModel">—</b> · key <b id="stKey">—</b>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Reasoning — Endpoint B <span class="ep-tag b">B</span></h2>
+    <div class="sub">Endpoint model eskalasi analisis mendalam (dipanggil saat keyakinan rendah).</div>
+
+    <div class="row">
+      <div><label for="sCodexBase">Base URL (opsional)</label><input id="sCodexBase" placeholder="https://provider.example/v1 (kosong = ikut Conversation)"></div>
+      <div><label for="sCodexKey">API Key (opsional)</label><input id="sCodexKey" type="password" placeholder="••••"></div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="sCodex">Model</label>
+        <select id="sCodex"></select>
+      </div>
+      <div>
+        <label for="sCodexWire">Tipe komunikasi</label>
+        <select id="sCodexWire">
+          <option value="chat">Chat Completions (lainnya)</option>
+          <option value="responses">Responses (GPT)</option>
+          <option value="messages">Messages (Claude)</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint">Pilih tipe komunikasi native model — sama seperti Conversation.</div>
+    <div class="hint" id="setMsgB"></div>
+    <div class="btns">
+      <button class="ghost" onclick="loadModels('b')">Cek daftar model</button>
+      <button class="ghost" onclick="pingEndpointB()">Tes koneksi (completion nyata)</button>
+    </div>
+    <div class="status">
+      Reasoning: <b id="stCodexEp">—</b> · model <b id="stCodex">—</b> · key <b id="stCodexKey">—</b>
+    </div>
+  </section>
+
+  <section class="card">
     <h2>Perilaku Agen</h2>
-    <div class="sub">Batas langkah dan kontak eskalasi operasional.</div>
+    <div class="sub">Batas langkah, kontak eskalasi &amp; simpan seluruh pengaturan (kedua endpoint).</div>
     <div class="row">
       <div><label for="sSteps">Maks langkah per sesi</label><input id="sSteps" type="number" min="1" max="20"></div>
       <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan Semua Pengaturan</button></div>
@@ -317,10 +383,23 @@ async function boot() {
   try {
     const st = await api('/api/status');
     const c = st.config;
+    $('sBase').value = c.llm_base_url; 
     $('sSteps').value = c.max_steps;
     $('sNoc').value = c.noc_number || '';
     $('sAdmin').value = c.admin_number || '';
+    $('sCodexBase').value = c.codex_base_url || '';
+    // Isi dropdown model dengan nilai tersimpan dulu (opsi lengkap dimuat
+    // via tombol "Cek daftar model" atau otomatis di bawah).
+    setSelectValue('sModel', c.llm_model);
+    setSelectValue('sCodex', c.codex_model);
+    $('sWire').value = c.llm_wire_api || 'chat';
+    $('sCodexWire').value = c.codex_wire_api || 'responses';
+    $('stBase').textContent = c.llm_base_url || '—';
+    $('stModel').textContent = c.llm_model || '—';
     $('stSteps').textContent = c.max_steps || '—';
+    $('stCodex').textContent = c.codex_model || '—';
+    $('stKey').textContent = c.llm_key_set ? 'tersimpan (••••)' : 'belum ada';
+    updateCodexStatus(c);
     $('billingUrl').value = c.billing_url || '';
     $('radiusUrl').value = c.radius_url || '';
     $('genieacsUrl').value = c.genieacs_url || '';
@@ -331,23 +410,92 @@ async function boot() {
     }));
     mkRender();
     statusIntegrasi(c);
+    // Auto-load daftar model kedua endpoint supaya dropdown langsung penuh.
+    // Tahan error: bila gagal, dropdown tetap menampilkan nilai tersimpan.
+    loadModels('a').catch(() => {});
+    loadModels('b').catch(() => {});
     // Perbarui dot header dengan status koneksi NYATA (probe semua sistem).
     refreshHeaderStatus();
   } catch (e) { console.error(e); }
+}
+
+async function loadModels(ep) {
+  const isA = ep !== 'b';
+  const msgEl = isA ? 'setMsgA' : 'setMsgB';
+  const selId = isA ? 'sModel' : 'sCodex';
+  msg(msgEl, null, `Memuat daftar model (${isA ? 'Conversation' : 'Reasoning'})…`);
+  try {
+    // Baca nilai kolom (base URL + key) yang sedang diketik — bukan yang
+    // tersimpan — supaya kolom langsung berpengaruh tanpa harus simpan dulu.
+    const base = (isA ? $('sBase').value : $('sCodexBase').value).trim();
+    const key = (isA ? $('sKey').value : $('sCodexKey').value).trim();
+    const body = JSON.stringify({ base_url: base || undefined, api_key: key || undefined });
+    const d = await api('/api/models?endpoint=' + (isA ? 'a' : 'b'),
+      { method: 'POST', body });
+    const nice = ['ag/gemini','cx/gpt','grip/gpt','grip/deepseek','grip/glm','grip/qwen'];
+    const sorted = d.models.slice().sort((a,b)=>{
+      const ra = nice.findIndex(p=>a.startsWith(p)), rb = nice.findIndex(p=>b.startsWith(p));
+      return (ra<0?99:ra)-(rb<0?99:rb) || a.localeCompare(b);
+    });
+    populateSelect(selId, sorted, $(selId).value);
+    msg(msgEl, true, `${sorted.length} model dimuat — pilih dari dropdown.`);
+  } catch(e){ msg(msgEl, false, 'Gagal memuat model: ' + e.message); }
+}
+
+// populateSelect mengisi <select> dengan opsi, mempertahankan nilai terpilih
+// (bila ada) atau memilih opsi pertama.
+function populateSelect(id, models, keep) {
+  const sel = $(id);
+  const prev = keep || sel.value || '';
+  sel.innerHTML = models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  if (prev && models.includes(prev)) {
+    sel.value = prev;
+  }
+}
+
+// setSelectValue memastikan sebuah <select> menampilkan nilai tertentu, menambah
+// opsi sementara bila belum ada (supaya nilai tersimpan selalu terlihat).
+function setSelectValue(id, value) {
+  const sel = $(id);
+  if (!value) { sel.innerHTML = '<option value="">— pilih model —</option>'; return; }
+  const exists = [...sel.options].some(o => o.value === value);
+  if (!exists) {
+    sel.innerHTML = `<option value="${esc(value)}">${esc(value)}</option>`;
+  }
+  sel.value = value;
 }
 
 async function saveSettings() {
   msg('setMsg', null, 'Menyimpan…');
   try {
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
+      llm_base_url: $('sBase').value, llm_api_key: $('sKey').value || undefined,
+      llm_model: $('sModel').value, llm_wire_api: $('sWire').value,
       max_steps: parseInt($('sSteps').value,10)||undefined,
       noc_number: $('sNoc').value,
-      admin_number: $('sAdmin').value
+      admin_number: $('sAdmin').value,
+      codex_model: $('sCodex').value,
+      codex_base_url: $('sCodexBase').value || undefined,
+      codex_api_key: $('sCodexKey').value || undefined,
+      codex_wire_api: $('sCodexWire').value
     })});
     const c = d.config;
-    $('stSteps').textContent = c.max_steps;
-    msg('setMsg', true, 'Pengaturan perilaku agen tersimpan.');
+    $('stBase').textContent = c.llm_base_url; $('stModel').textContent = c.llm_model;
+    $('stSteps').textContent = c.max_steps; $('stCodex').textContent = c.codex_model;
+    $('stKey').textContent = c.llm_key_set ? 'tersimpan (••••)' : 'belum ada';
+    $('sKey').value = ''; $('sCodexKey').value = '';
+    updateCodexStatus(c);
+    msg('setMsg', true, `Tersimpan. Conversation: ${c.llm_model} (${c.llm_wire_api}) · Reasoning: ${c.codex_model} (${c.codex_wire_api})`);
   } catch(e){ msg('setMsg', false, 'Gagal: ' + e.message); }
+}
+
+function updateCodexStatus(c) {
+  if (c.codex_base_url) {
+    $('stCodexEp').textContent = `override @ ${c.codex_base_url}`;
+  } else {
+    $('stCodexEp').textContent = 'pakai ~/.codex/config.toml';
+  }
+  $('stCodexKey').textContent = c.codex_key_set ? 'tersimpan (••••)' : 'dari config.toml';
 }
 
 async function saveIntegrations(silent) {
@@ -434,6 +582,35 @@ async function checkGenieacs() {
       msg('intMsg', false, 'GenieACS GAGAL: ' + (d.error || 'tidak terhubung'));
     }
   } catch(e){ setDot('Genieacs', false, 'GenieACS error'); msg('intMsg', false, 'Gagal: ' + e.message); }
+}
+
+async function pingLLM() {
+  msg('setMsg', null, 'Menguji LLM…');
+  try {
+    // Uji nilai kolom yang sedang diketik (bukan yang tersimpan), supaya
+    // tombol tes langsung memakai base URL + key + model yang baru diisi.
+    const d = await api('/api/llm/ping', {method:'POST', body: JSON.stringify({
+      base_url: $('sBase').value.trim() || undefined,
+      api_key: $('sKey').value.trim() || undefined,
+      model: $('sModel').value || undefined,
+      wire_api: $('sWire').value || undefined
+    })});
+    msg('setMsg', true, `LLM menjawab dalam ${d.latency_ms}ms (model: ${d.model}).`);
+  } catch(e) { msg('setMsg', false, 'LLM gagal: ' + e.message.slice(0,120)); }
+}
+
+async function pingEndpointB() {
+  msg('setMsg', null, 'Menguji endpoint B…');
+  try {
+    // Uji endpoint B (Reasoning) langsung — nilai dari kolom, bukan Codex CLI.
+    const d = await api('/api/llm/ping', {method:'POST', body: JSON.stringify({
+      base_url: $('sCodexBase').value.trim() || undefined,
+      api_key: $('sCodexKey').value.trim() || undefined,
+      model: $('sCodex').value || undefined,
+      wire_api: $('sCodexWire').value || undefined
+    })});
+    msg('setMsg', true, `Endpoint B menjawab dalam ${d.latency_ms}ms (model: ${d.model}).`);
+  } catch(e) { msg('setMsg', false, 'Endpoint B gagal: ' + e.message.slice(0,120)); }
 }
 
 // ---------- Direktori Staf ----------

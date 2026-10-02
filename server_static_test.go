@@ -24,9 +24,16 @@ func TestSettingsHTMLDisablesBrowserCache(t *testing.T) {
 		t.Fatalf("Cache-Control=%q, want no-store + must-revalidate", got)
 	}
 	body := w.Body.String()
-	for _, legacy := range []string{"dotLLM", "dotCodex", "Conversation — Endpoint A", "Reasoning — Endpoint B"} {
+	// Status LLM/Codex tidak lagi memenuhi header Settings.
+	for _, legacy := range []string{"dotLLM", "dotCodex", "txtLLM", "txtCodex"} {
 		if strings.Contains(body, legacy) {
-			t.Errorf("settings masih memuat elemen legacy %q", legacy)
+			t.Errorf("header settings masih memuat elemen status legacy %q", legacy)
+		}
+	}
+	// Form konfigurasi endpoint tetap wajib tersedia untuk operator.
+	for _, required := range []string{"sBase", "sModel", "sCodexBase", "sCodex"} {
+		if !strings.Contains(body, `id="`+required+`"`) {
+			t.Errorf("settings kehilangan field endpoint %q", required)
 		}
 	}
 }
