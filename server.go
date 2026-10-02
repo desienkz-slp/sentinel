@@ -155,9 +155,12 @@ func (s *Server) routes() http.Handler {
 		writeJSON(w, http.StatusOK, s.obs.Snapshot())
 	})
 
-	mux.HandleFunc("/api/kpi", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, observability.BuildKPI(s.observabilityOutcomes()))
-	})
+	// KPI §40 dihitung dari case engine (tracker), bukan hardcode (FASE 5).
+	mux.HandleFunc("/api/kpi", s.handleCaseKPI)
+
+	// Lifecycle case aktif: state, events, escalation target, verification
+	// result — dari case engine + audit append-only (FASE 5).
+	mux.HandleFunc("/api/cases", s.handleCases)
 
 	mux.HandleFunc("/api/alerts", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, observability.BuildAlerts(s.observabilityDependencies(), s.observabilityOutcomes()))

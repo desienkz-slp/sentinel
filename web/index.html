@@ -271,6 +271,17 @@
     </section>
 
     <section class="card" style="margin-bottom:0">
+      <h2>Case Aktif <span class="pill" id="caseCount" style="font-size:11px;padding:3px 8px">—</span></h2>
+      <div class="hint" id="caseStat">Memuat lifecycle case…</div>
+      <div class="table-wrap" style="margin-top:10px">
+        <table>
+          <thead><tr><th>Case ID</th><th>State</th><th>Events</th><th>Eskalasi</th><th>Verifikasi</th></tr></thead>
+          <tbody id="caseRows"><tr><td colspan="5" style="color:var(--dim)">Belum ada case.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" style="margin-bottom:0">
       <h2>Standar Konteks &amp; Sesi <span class="pill" id="stdTag" style="font-size:11px;padding:3px 8px">v—</span></h2>
       <div class="hint" id="sesiStat">memuat…</div>
       <div class="btns">
@@ -691,14 +702,56 @@ async function refreshObservability() {
     const [kpi, alerts] = await Promise.all([api('/api/kpi'), api('/api/alerts')]);
     $('obsAlertTag').textContent = (alerts||[]).length ? `${alerts.length} alert` : 'tanpa alert';
     $('obsStat').innerHTML =
-      `kasus diproses: <b>${kpi.cases_processed||0}</b> · ` +
+      `kasus diproses: <b>${kpi.total_cases||kpi.cases_processed||0}</b> · ` +
+      `aktif: <b>${kpi.active_cases||0}</b> · resolved: <b>${kpi.resolved||0}</b> · ` +
       `eskalasi: <b>${kpi.escalated||0}</b> · gagal: <b>${kpi.failed||0}</b> · ` +
       `resolusi terverifikasi: <b>${kpi.verified_resolved||0}</b> · ` +
-      `rata-rata diagnosis: <b>${kpi.average_diagnosis_ms||0}ms</b>` +
+      `eskalasi: <b>${kpi.escalation_rate_percent||0}%</b> · ` +
+      `rata-rata resolusi: <b>${kpi.avg_resolution_ms||0}ms</b>` +
       ((alerts||[]).length ? `<br><span style="color:var(--warn)">${esc(alerts.slice(0,3).map(a=>`${a.subject}: ${a.message||a.severity}`).join(' · '))}</span>` : '');
   } catch(e) {
     $('obsAlertTag').textContent = 'tidak tersedia';
     $('obsStat').textContent = 'Gagal memuat observabilitas: ' + e.message;
+  }
+}
+
+// ---------- Case lifecycle (FASE 5) ----------
+function stateColor(s) {
+  switch (s) {
+    case 'RESOLVED': return 'var(--ok)';
+    case 'ESCALATION': case 'HUMAN_HANDLING': return '#a855f7';
+    case 'FAILED': return 'var(--bad)';
+    case 'VERIFYING': case 'EXECUTING': case 'POLICY_CHECK': case 'ACTION_PROPOSED': return 'var(--warn)';
+    default: return 'var(--acc)';
+  }
+}
+
+async function refreshCases() {
+  try {
+    const d = await api('/api/cases');
+    const cases = d.cases || [];
+    $('caseCount').textContent = (d.count != null ? d.count : cases.length) + ' case';
+    if (!cases.length) {
+      $('caseRows').innerHTML = '<tr><td colspan="5" style="color:var(--dim)">Belum ada case.</td></tr>';
+      $('caseStat').textContent = 'Belum ada case di tracker.';
+      return;
+    }
+    $('caseStat').textContent = `Menampilkan ${cases.length} case lifecycle (state, events, escalation target, verification).`;
+    $('caseRows').innerHTML = cases.map(c => {
+      const escTxt = c.escalation
+        ? `${esc(c.escalation.role||'—')} · ${esc(c.escalation.phone||'—')}${c.escalation.sent ? ' · terkirim' : ' · belum terkirim'}`
+        : '—';
+      const ver = (c.verifications||[]).map(v => `${v.passed ? '✔' : '✘'} ${esc(v.source||'')}`).join('; ') || '—';
+      const evs = (c.events||[]).map(e => `${e.from}→${e.to}`).join(' · ');
+      return `<tr>
+        <td><span class="tag">${esc(c.case_id)}</span></td>
+        <td style="color:${stateColor(c.state)}"><b>${esc(c.state)}</b></td>
+        <td style="color:var(--dim);font-family:var(--mono);font-size:11px">${esc(evs)}</td>
+        <td>${escTxt}</td>
+        <td style="font-family:var(--mono);font-size:11px">${ver}</td></tr>`;
+    }).join('');
+  } catch(e) {
+    $('caseStat').textContent = 'Gagal memuat case: ' + e.message;
   }
 }
 
@@ -722,8 +775,10 @@ boot();
 setInterval(refreshHistory, 15000);
 setInterval(refreshBlueprint, 15000);
 setInterval(refreshObservability, 15000);
+setInterval(refreshCases, 15000);
 refreshBlueprint();
 refreshObservability();
+refreshCases();
 </script>
 </body>
 </html>

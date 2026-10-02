@@ -138,7 +138,9 @@ func main() {
 
 	// FASE 1: hubungkan Case Engine ke alur diagnosis (state machine per nomor).
 	// Additive — bila tidak di-set, alur diagnosis tetap jalan tanpa case.
-	casew := agent.NewCaseWire()
+	// FASE 5: CaseWire kini juga mencatat setiap transisi state ke audit
+	// append-only (audit trail lengkap per §25) via store yang sama.
+	casew := agent.NewCaseWireWithAudit(aud)
 	engine.Case = casew
 
 	// FASE 3: wire Policy gate untuk execute (deny-by-default).

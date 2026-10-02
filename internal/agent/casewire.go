@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 
+	"ainoc/internal/audit"
 	"ainoc/internal/caseengine"
 	"ainoc/internal/standard"
 )
@@ -23,11 +24,33 @@ import (
 // "melompati" state machine.
 type CaseWire struct {
 	tracker *caseengine.Tracker
+	aud     *audit.Store
 }
 
 // NewCaseWire membuat wiring dengan tracker in-memory.
 func NewCaseWire() *CaseWire {
 	return &CaseWire{tracker: caseengine.NewTracker()}
+}
+
+// NewCaseWireWithAudit membuat wiring yang turut mencatat setiap transisi state
+// case ke audit append-only (FASE 5: audit trail lengkap per §25).
+func NewCaseWireWithAudit(aud *audit.Store) *CaseWire {
+	return &CaseWire{tracker: caseengine.NewTracker(), aud: aud}
+}
+
+// SetAudit memasang store audit (idempotent). Bila nil, transisi tetap jalan
+// tanpa jejak audit (backward-compatible).
+func (w *CaseWire) SetAudit(aud *audit.Store) {
+	if w == nil {
+		return
+	}
+	w.aud = aud
+}
+
+// transition menerapkan transisi dan mencatatnya ke audit bila berhasil.
+// Merupakan satu-satunya jalur mutasi state di package ini.
+func (w *CaseWire) transition(c *caseengine.Case, next caseengine.State, actor, reason string) error {
+	return recordTransition(w.aud, c, next, actor, reason)
 }
 
 // CaseSnapshot adalah proyeksi read-only yang disalin ke Report, supaya Report
@@ -55,7 +78,7 @@ func (w *CaseWire) begin(identity, channel string) CaseSnapshot {
 		// Gagal transisi di sini tidak pernah dibiarkan membatalkan diagnosis:
 		// kita hanya log dan lanjut (case tetap NEW dengan ID yang valid).
 		for _, next := range []caseengine.State{caseengine.StateIdentifying, caseengine.StateConversation} {
-			if err := c.Transition(next, "system", "pesan masuk"); err != nil {
+			if err := w.transition(c, next, "system", "pesan masuk"); err != nil {
 				log.Printf("[case] transisi pembuka %s->%s gagal untuk %s: %v", c.State(), next, key, err)
 				break
 			}
@@ -69,20 +92,20 @@ func (w *CaseWire) begin(identity, channel string) CaseSnapshot {
 		// ESCALATION). Pesan baru berarti kontak baru -> case baru.
 		c = w.tracker.Replace(key, channel)
 		for _, next := range []caseengine.State{caseengine.StateIdentifying, caseengine.StateConversation} {
-			if err := c.Transition(next, "system", "kontak baru setelah investigasi"); err != nil {
+			if err := w.transition(c, next, "system", "kontak baru setelah investigasi"); err != nil {
 				log.Printf("[case] transisi pembuka %s->%s gagal untuk %s: %v", c.State(), next, key, err)
 				break
 			}
 		}
 	case caseengine.StateWaitingCustomer:
 		// Pelanggan menjawab pertanyaan -> kembali ke CONVERSATION.
-		_ = c.Transition(caseengine.StateConversation, "system", "pelanggan menjawab")
+		_ = w.transition(c, caseengine.StateConversation, "system", "pelanggan menjawab")
 	case caseengine.StateConversation, caseengine.StateInformationGathering:
 		// Sudah dalam percakapan aktif: lanjutkan.
 	default:
 		// State lain (baru sebagian terbentuk, dsb.) -> dorong ke CONVERSATION
 		// bila legal; kalau tidak, biarkan di state sekarang.
-		if err := c.Transition(caseengine.StateConversation, "system", "lanjut percakapan"); err != nil {
+		if err := w.transition(c, caseengine.StateConversation, "system", "lanjut percakapan"); err != nil {
 			log.Printf("[case] transisi lanjut %s->CONVERSATION gagal untuk %s: %v", c.State(), key, err)
 		}
 	}
@@ -104,7 +127,7 @@ func (w *CaseWire) onDiagnosis(identity string, intent standard.Intent) CaseSnap
 		// Non-keluhan (CHAT/INFO/UNCLEAR) tetap di CONVERSATION; UNCLEAR yang
 		// butuh klarifikasi bisa masuk WAITING_CUSTOMER.
 		if intent == standard.IntentUnclear && c.State() == caseengine.StateConversation {
-			_ = c.Transition(caseengine.StateWaitingCustomer, "system", "perlu klarifikasi")
+			_ = w.transition(c, caseengine.StateWaitingCustomer, "system", "perlu klarifikasi")
 		}
 		return CaseSnapshot{CaseID: string(c.ID), CaseState: string(c.State())}
 	}
@@ -114,13 +137,13 @@ func (w *CaseWire) onDiagnosis(identity string, intent standard.Intent) CaseSnap
 	// baru saja dibuka (sudah CONVERSATION) atau berada di INFORMATION_GATHERING.
 	switch c.State() {
 	case caseengine.StateConversation, caseengine.StateInformationGathering, caseengine.StateWaitingCustomer:
-		if err := c.Transition(caseengine.StateReadyForDiagnosis, "system", "keluhan terkonfirmasi"); err != nil {
+		if err := w.transition(c, caseengine.StateReadyForDiagnosis, "system", "keluhan terkonfirmasi"); err != nil {
 			log.Printf("[case] transisi ->READY_FOR_DIAGNOSIS gagal untuk %s: %v", identity, err)
 			break
 		}
 		fallthrough
 	case caseengine.StateReadyForDiagnosis:
-		if err := c.Transition(caseengine.StateReasoning, "system", "mulai diagnosis"); err != nil {
+		if err := w.transition(c, caseengine.StateReasoning, "system", "mulai diagnosis"); err != nil {
 			log.Printf("[case] transisi ->REASONING gagal untuk %s: %v", identity, err)
 		}
 	case caseengine.StateReasoning, caseengine.StateInvestigation:
@@ -142,6 +165,23 @@ func (w *CaseWire) Snapshot(identity string) CaseSnapshot {
 		return CaseSnapshot{}
 	}
 	return CaseSnapshot{CaseID: string(c.ID), CaseState: string(c.State())}
+}
+
+// AllCases mengembalikan salinan semua case yang sedang terlacak (terbaru dulu)
+// untuk observabilitas FASE 5: tabel case aktif + KPI dari case engine.
+func (w *CaseWire) AllCases() []*caseengine.Case {
+	if w == nil || w.tracker == nil {
+		return nil
+	}
+	return w.tracker.All()
+}
+
+// Tracker mengembalikan tracker underlying (untuk restore/persist observabilitas).
+func (w *CaseWire) Tracker() *caseengine.Tracker {
+	if w == nil {
+		return nil
+	}
+	return w.tracker
 }
 
 // ---- FASE 4: Verification Engine ----
@@ -171,17 +211,17 @@ func (w *CaseWire) onActionStarted(identity, tool string) CaseSnapshot {
 	switch c.State() {
 	case caseengine.StateReasoning, caseengine.StateInvestigation, caseengine.StateActionProposed:
 		if c.State() == caseengine.StateReasoning || c.State() == caseengine.StateInvestigation {
-			if err := c.Transition(caseengine.StateActionProposed, "agent", "aksi diusulkan AI: "+tool); err != nil {
+			if err := w.transition(c, caseengine.StateActionProposed, "agent", "aksi diusulkan AI: "+tool); err != nil {
 				log.Printf("[verify] transisi ->ACTION_PROPOSED gagal untuk %s: %v", identity, err)
 			}
 		}
 		if c.State() == caseengine.StateActionProposed {
-			if err := c.Transition(caseengine.StatePolicyCheck, "policy", "kebijakan ALLOW: "+tool); err != nil {
+			if err := w.transition(c, caseengine.StatePolicyCheck, "policy", "kebijakan ALLOW: "+tool); err != nil {
 				log.Printf("[verify] transisi ->POLICY_CHECK gagal untuk %s: %v", identity, err)
 			}
 		}
 		if c.State() == caseengine.StatePolicyCheck {
-			if err := c.Transition(caseengine.StateExecuting, "agent", "eksekusi aksi: "+tool); err != nil {
+			if err := w.transition(c, caseengine.StateExecuting, "agent", "eksekusi aksi: "+tool); err != nil {
 				log.Printf("[verify] transisi ->EXECUTING gagal untuk %s: %v", identity, err)
 			}
 		}
@@ -223,10 +263,10 @@ func (w *CaseWire) onActionCompleted(identity, tool string, verification caseeng
 	case caseengine.StateActionProposed, caseengine.StatePolicyCheck:
 		// Action dieksekusi tanpa onActionStarted — lengkapi jejak dulu.
 		if c.State() == caseengine.StateActionProposed {
-			_ = c.Transition(caseengine.StatePolicyCheck, "policy", "kebijakan ALLOW: "+tool)
+			_ = w.transition(c, caseengine.StatePolicyCheck, "policy", "kebijakan ALLOW: "+tool)
 		}
 		if c.State() == caseengine.StatePolicyCheck {
-			_ = c.Transition(caseengine.StateExecuting, "agent", "eksekusi aksi: "+tool)
+			_ = w.transition(c, caseengine.StateExecuting, "agent", "eksekusi aksi: "+tool)
 		}
 	case caseengine.StateVerifying:
 		// Sudah VERIFYING — catat langsung.
@@ -235,7 +275,7 @@ func (w *CaseWire) onActionCompleted(identity, tool string, verification caseeng
 	}
 
 	if c.State() != caseengine.StateVerifying {
-		if err := c.Transition(caseengine.StateVerifying, "agent", "mulai verifikasi: "+tool); err != nil {
+		if err := w.transition(c, caseengine.StateVerifying, "agent", "mulai verifikasi: "+tool); err != nil {
 			log.Printf("[verify] transisi ->VERIFYING gagal untuk %s: %v", identity, err)
 		}
 	}
@@ -253,16 +293,16 @@ func (w *CaseWire) onActionCompleted(identity, tool string, verification caseeng
 	}
 
 	if recorded && verification.Passed {
-		if err := c.Transition(caseengine.StateResolved, "verification", fmt.Sprintf("verifikasi lulus: %s", verification.Source)); err != nil {
+		if err := w.transition(c, caseengine.StateResolved, "verification", fmt.Sprintf("verifikasi lulus: %s", verification.Source)); err != nil {
 			log.Printf("[verify] transisi ->RESOLVED gagal untuk %s: %v", identity, err)
 		}
 	} else {
 		// Verifikasi gagal (atau tidak dapat dicatat) → FAILED → ESCALATION.
 		if c.State() == caseengine.StateVerifying {
-			_ = c.Transition(caseengine.StateFailed, "verification", "verifikasi tidak lulus")
+			_ = w.transition(c, caseengine.StateFailed, "verification", "verifikasi tidak lulus")
 		}
 		if c.State() == caseengine.StateFailed {
-			if err := c.Transition(caseengine.StateEscalation, "verification", "verifikasi gagal → eskalasi"); err != nil {
+			if err := w.transition(c, caseengine.StateEscalation, "verification", "verifikasi gagal → eskalasi"); err != nil {
 				log.Printf("[verify] transisi ->ESCALATION gagal untuk %s: %v", identity, err)
 			}
 		}
@@ -288,13 +328,13 @@ func (w *CaseWire) onPolicyBlock(identity, tool, decision, reason string) {
 	switch c.State() {
 	case caseengine.StateReasoning, caseengine.StateInvestigation, caseengine.StateActionProposed:
 		if c.State() == caseengine.StateReasoning || c.State() == caseengine.StateInvestigation {
-			if err := c.Transition(caseengine.StateActionProposed, "agent",
+			if err := w.transition(c, caseengine.StateActionProposed, "agent",
 				"aksi diusulkan AI: "+tool); err != nil {
 				log.Printf("[policy] transisi ->ACTION_PROPOSED gagal untuk %s: %v", identity, err)
 			}
 		}
 		if c.State() == caseengine.StateActionProposed {
-			if err := c.Transition(caseengine.StatePolicyCheck, "policy",
+			if err := w.transition(c, caseengine.StatePolicyCheck, "policy",
 				"evaluasi kebijakan: "+tool); err != nil {
 				log.Printf("[policy] transisi ->POLICY_CHECK gagal untuk %s: %v", identity, err)
 			}
@@ -303,7 +343,7 @@ func (w *CaseWire) onPolicyBlock(identity, tool, decision, reason string) {
 		log.Printf("[policy] state %s tidak masuk jalur aksi untuk %s (tool %s)", c.State(), identity, tool)
 	}
 	if c.State() == caseengine.StatePolicyCheck {
-		if err := c.Transition(caseengine.StateEscalation, "policy",
+		if err := w.transition(c, caseengine.StateEscalation, "policy",
 			"kebijakan menahan aksi "+tool+": "+decision+" ("+reason+")"); err != nil {
 			log.Printf("[policy] transisi ->ESCALATION gagal untuk %s: %v", identity, err)
 		}
@@ -335,7 +375,7 @@ func (w *CaseWire) onResult(identity string, intent standard.Intent, verdict str
 	// Tutup REASONING/READY_FOR_DIAGNOSIS -> INVESTIGATION supaya case tidak
 	// tersangkut di state pertengahan.
 	if c.State() == caseengine.StateReasoning || c.State() == caseengine.StateReadyForDiagnosis {
-		if err := c.Transition(caseengine.StateInvestigation, "system", "diagnosis selesai"); err != nil {
+		if err := w.transition(c, caseengine.StateInvestigation, "system", "diagnosis selesai"); err != nil {
 			log.Printf("[case] transisi ->INVESTIGATION gagal untuk %s: %v", identity, err)
 		}
 	}
@@ -344,7 +384,7 @@ func (w *CaseWire) onResult(identity string, intent standard.Intent, verdict str
 	// ESCALATION (hanya state; pengiriman handoff = fase 2).
 	if diagnosed && c.State() == caseengine.StateInvestigation {
 		if verdict == "" || verdict == "TIDAK DIKETAHUI" || confidence < 60 {
-			if err := c.Transition(caseengine.StateEscalation, "system", "verdict tidak pasti / keyakinan rendah"); err != nil {
+			if err := w.transition(c, caseengine.StateEscalation, "system", "verdict tidak pasti / keyakinan rendah"); err != nil {
 				log.Printf("[case] transisi ->ESCALATION gagal untuk %s: %v", identity, err)
 			}
 		}

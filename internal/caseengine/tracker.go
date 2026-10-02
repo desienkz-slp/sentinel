@@ -58,6 +58,19 @@ func (t *Tracker) Replace(identity, channel string) *Case {
 	return c
 }
 
+// Put menyimpan case yang sudah ada (mis. dipulihkan dari persistence) ke
+// tracker dengan kunci dari identity case. Berguna untuk observabilitas/restore
+// tanpa menjalankan alur begin lagi. Mengembalikan case yang tersimpan.
+func (t *Tracker) Put(c *Case) *Case {
+	if t == nil || c == nil {
+		return c
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.cases[normalizeIdentity(c.Identity)] = c
+	return c
+}
+
 // All mengembalikan salinan semua case (terbaru dulu) untuk observasi/audit.
 func (t *Tracker) All() []*Case {
 	if t == nil {

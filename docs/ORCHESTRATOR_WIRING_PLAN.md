@@ -16,7 +16,7 @@
 | 2 | Wire Escalation Engine (handoff ke NOC/Admin) | ✅ selesai (commit `a2866c1`, `a91258e`, `18f54bb`) |
 | 3 | Wire Policy gate untuk execute (deny-by-default) | ✅ selesai (commit `7da1e70`) |
 | 4 | Wire Verification Engine (resolved wajib verifikasi) | ✅ selesai (commit `(fase-4)`) |
-| 5 | Observability & audit lengkap (lifecycle + KPI) | ⬜ belum |
+| 5 | Observability & audit lengkap (lifecycle + KPI) | ✅ selesai (commit fase 5) |
 | 6 | Deploy + validasi end-to-end | ⬜ belum |
 
 ---
@@ -76,6 +76,17 @@ Status: ✅ selesai. Implementasi:
 - Dashboard tampilkan Case lifecycle (state, events, escalation target).
 - Audit log: transisi state, policy decision, escalation, verification.
 - KPI (§40) terisi dari case engine.
+
+Status: ✅ selesai. Implementasi:
+- `internal/caseengine/case.go` — `Verifications()` (bukti verifikasi) + `internal/caseengine/tracker.go` — `Put()` (restore case ke tracker).
+- `internal/audit/audit.go` — `ByCase(caseID)` (jejak audit per case untuk merangkai escalation target).
+- `internal/agent/auditwire.go` — `auditTransition`/`recordTransition`: setiap transisi state case yang berhasil dicatat ke audit append-only (`event_type=case_transition`, before/after state + version + reason).
+- `internal/agent/casewire.go` — `CaseWire` kini memegang `*audit.Store`; SEMUA transisi (begin/onDiagnosis/onResult/onActionStarted/onActionCompleted/onPolicyBlock) dialihkan lewat `w.transition` → audit. `NewCaseWireWithAudit` + `SetAudit` + `AllCases()` + `Tracker()`.
+- `internal/observability/casekpi.go` — `CaseKPI` + `BuildCaseKPI`: KPI §40 (total/active/resolved/escalated/failed/human_handling/verified_resolved/avg_resolution_ms/rates) dihitung DARI case tracker, bukan hardcode; eskalasi yang pernah dilewati (ESCALATION→HUMAN_HANDLING) tetap terhitung dari riwayat event.
+- `observability_wire.go` (main) — endpoint `GET /api/cases` (lifecycle case: state, events, escalation target dari audit, verification) + `GET /api/kpi` kini dari case engine (`handleCaseKPI`).
+- `web/index.html` — panel "Case Aktif" (tabel case_id+state+events+eskalasi+verifikasi) + KPI counter diperbarui; TIDAK rewrite dashboard, hanya panel tambahan.
+- `main.go` — `agent.NewCaseWireWithAudit(aud)` (casewire berbagi store audit yang sama).
+- Test: `internal/agent/auditwire_test.go` (audit mencatat transisi), `internal/observability/casekpi_test.go` (KPI dari tracker), `observability_wire_test.go` (endpoint lifecycle + KPI + escalation target dari audit).
 
 ### FASE 6 — Deploy + validasi end-to-end
 - Build Linux → deploy 133 (git pull + binary).

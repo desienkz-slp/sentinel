@@ -151,6 +151,15 @@ func (c *Case) Events() []Event {
 	return append([]Event(nil), c.events...)
 }
 
+// Verifications mengembalikan salinan catatan verifikasi (bukti resolusi) agar
+// pemanggil observabilitas dapat menampilkan lifecycle tanpa mengubah case.
+func (c *Case) Verifications() []Verification {
+	if c == nil {
+		return nil
+	}
+	return append([]Verification(nil), c.verifications...)
+}
+
 func allowed(from, to State) bool {
 	if from == to {
 		return false

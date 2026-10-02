@@ -100,6 +100,22 @@ func (s *Store) Recent(n int) []Entry {
 	return out
 }
 
+// ByCase mengembalikan entri audit untuk satu case_id (terbaru dulu). Berguna
+// untuk merangkai lifecycle observabilitas: escalation target, policy decision,
+// verification, dan transisi state per case.
+func (s *Store) ByCase(caseID string) []Entry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	caseID = strings.TrimSpace(caseID)
+	out := make([]Entry, 0)
+	for i := len(s.entries) - 1; i >= 0; i-- {
+		if s.entries[i].CaseID == caseID {
+			out = append(out, s.entries[i])
+		}
+	}
+	return out
+}
+
 // Len mengembalikan jumlah baris.
 func (s *Store) Len() int {
 	s.mu.Lock()
