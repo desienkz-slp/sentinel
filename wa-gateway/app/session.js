@@ -13,6 +13,7 @@ import {
 import pino from 'pino';
 import { qrManager } from './qr.js';
 import { webhookDispatcher } from './webhook.js';
+import { splitReply } from './split.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -524,7 +525,27 @@ class SessionManager {
     return { success: true, message: 'Logged out successfully' };
   }
 
+  // sendMessage memecah balasan panjang (> MAX_REPLY_CHARS) menjadi beberapa
+  // pesan berurutan "(i/n)", lalu mengirimnya satu per satu. Hasil = hasil
+  // pesan terakhir (+ daftar id semua bagian). Bila satu bagian gagal, error
+  // dilempar dan bagian berikutnya TIDAK dikirim (urutan tidak boleh loncat).
   async sendMessage(to, text) {
+    const parts = splitReply(text);
+    if (parts.length === 0) throw new Error('Cannot send message: empty text');
+    if (parts.length === 1) return this.sendOne(to, parts[0]);
+    this.addLog(`Balasan ${String(text).length} chars dipecah menjadi ${parts.length} pesan`);
+    const ids = [];
+    let last;
+    for (let i = 0; i < parts.length; i++) {
+      last = await this.sendOne(to, parts[i]);
+      if (last?.message_id) ids.push(last.message_id);
+      // Jeda singkat agar urutan tiba benar dan tidak dianggap spam.
+      if (i < parts.length - 1) await new Promise(r => setTimeout(r, 700));
+    }
+    return { ...last, parts: parts.length, message_ids: ids };
+  }
+
+  async sendOne(to, text) {
     if (this.status === 'CONNECTING') {
       this.addLog('Gateway currently connecting. Waiting up to 10s for connection ready...');
       for (let i = 0; i < 20; i++) {
