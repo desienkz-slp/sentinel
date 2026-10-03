@@ -117,6 +117,10 @@ type Engine struct {
 	// produksi (dipasang di main.go). Read-only tidak membutuhkan gate ini.
 	Verify *VerificationGate
 
+	// ScopeHook dipanggil saat pembatas tim menolak/menimpa pemanggilan tool
+	// (metrik + audit). Opsional.
+	ScopeHook func(ScopeEvent)
+
 	mu      sync.Mutex
 	reports []Report
 }
@@ -365,7 +369,7 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 				}
 			}
 			// LLM menyusun balasan manusiawi dari bukti (bukan memutuskan langkah).
-			rep.Balasan, rep.Answer = e.buildWorkflowBalasan(klas.Key, query, h)
+			rep.Balasan, rep.Answer = e.buildWorkflowBalasan(ctx, klas.Key, query, h)
 			rep.Answer, rep.Verdict, rep.Confidence = parseVerdict(rep.Answer)
 			if rep.Balasan == "" {
 				rep.Balasan = rep.Answer
@@ -401,6 +405,8 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	if e.Reg != nil && bolehProbe {
 		tools = append(tools, e.Reg.LLMTools()...)
 	}
+	// Pembatas tim (Fase 2): tim CS hanya melihat tool data-pelanggan + probe aman.
+	tools = e.filterToolsForCaller(ctx, tools)
 	if !bolehProbe {
 		tools = nil
 		add(Step{Kind: "intent", Text: fmt.Sprintf(
@@ -411,7 +417,7 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	// ---- KONTEKS KE AI: riwayat percakapan + memory + pembelajaran ----
 	// Inilah yang membuat AI tahu banyak konteks saat ada pesan WhatsApp masuk,
 	// bukan hanya pesan terakhir.
-	msgs := []llm.Message{{Role: "system", Content: e.buildSystemPrompt()}}
+	msgs := []llm.Message{{Role: "system", Content: e.buildSystemPrompt() + e.teamProfileBlock(ctx)}}
 	msgs = append(msgs, e.Sesi.History(klas.Key)...)
 
 	user := query
@@ -472,6 +478,27 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 		for _, tc := range msg.ToolCalls {
 			args := map[string]any{}
 			_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+
+			// ---- Pembatas tim (Fase 2) ----
+			// Dijalankan SEBELUM gerbang kebijakan dan untuk SEMUA tool call (registry
+			// maupun probe bawaan). Tim CS: tool di luar daftar ditolak, dan argumen
+			// identitas dari model dibuang lalu diganti identitas pelanggan
+			// terverifikasi. Model tidak bisa menembus ini lewat prompt.
+			scopedArgs, scopeOK, scopeWhy := e.scopeCheck(ctx, tc.Function.Name, args)
+			if !scopeOK {
+				usedTools[tc.Function.Name]++
+				add(Step{Kind: "policy", Tool: tc.Function.Name, OK: false, Output: "DITOLAK (batas tim): " + scopeWhy})
+				payload, _ := json.Marshal(map[string]any{
+					"tool": tc.Function.Name, "ok": false, "decision": policy.Deny,
+					"output": "", "error": "ditolak batas tim: " + scopeWhy,
+					"request_id": "team-scope",
+				})
+				msgs = append(msgs, llm.Message{
+					Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name, Content: string(payload),
+				})
+				continue
+			}
+			args = scopedArgs
 
 			// ---- FASE 3: gerbang kebijakan SEBELUM eksekusi apa pun ----
 			// AI tidak pernah mengeksekusi tool tanpa policy check. Hanya

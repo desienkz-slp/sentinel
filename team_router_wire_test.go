@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"ainoc/internal/agent"
 	"ainoc/internal/config"
 	"ainoc/internal/directory"
 	"ainoc/internal/observability"
@@ -131,4 +132,29 @@ func TestRouterPelangganTakPernahJalurKodeDiSemuaMode(t *testing.T) {
 		}
 	}
 	_ = directory.RoleCustomer
+}
+
+func TestRecordScopeEventKeAuditDanMetrik(t *testing.T) {
+	s := routerServer(t, "on")
+	s.recordScopeEvent(agent.ScopeEvent{Actor: "628111000111 (customer)", Team: "cs", Tool: "billing.list_customers", Mode: "on", Allowed: false, Reason: "tim CS tidak boleh"})
+	s.recordScopeEvent(agent.ScopeEvent{Actor: "628111000111 (customer)", Team: "cs", Tool: "radius.get_session", Mode: "on", Allowed: true, Rewritten: true})
+	m := s.teams.Snapshot()
+	if m.ScopeDenied != 1 || m.ScopeRewritten != 1 {
+		t.Fatalf("metrik scope: denied=%d rewritten=%d, mau 1/1", m.ScopeDenied, m.ScopeRewritten)
+	}
+	var got []string
+	for _, e := range s.aud.Recent(20) {
+		if e.EventType == "team_scope" {
+			got = append(got, e.Tool+"="+e.PolicyDecision)
+		}
+	}
+	if len(got) != 2 {
+		t.Fatalf("audit team_scope = %v, mau 2 entri", got)
+	}
+	// audit tidak boleh memuat argumen
+	for _, e := range s.aud.Recent(20) {
+		if e.EventType == "team_scope" && e.Arguments != nil {
+			t.Errorf("audit team_scope tidak boleh memuat argumen: %v", e.Arguments)
+		}
+	}
 }

@@ -2,7 +2,10 @@ package main
 
 import (
 	"log"
+	"time"
 
+	"ainoc/internal/agent"
+	"ainoc/internal/audit"
 	"ainoc/internal/config"
 	"ainoc/internal/directory"
 	"ainoc/internal/router"
@@ -56,4 +59,27 @@ func (s *Server) compareRouter(caller directory.Caller, msg string, actual actua
 	log.Printf("[router] SELISIH mode=%s tim=%s handler=%s router=%s nyata=%s",
 		mode, dec.Team, dec.Handler, want, actual)
 	return false
+}
+
+// recordScopeEvent mencatat penolakan/penimpaan identitas oleh pembatas tim.
+// Audit memuat peran, tim, nama tool, dan keputusan — TIDAK memuat argumen,
+// nomor pelanggan, atau isi pesan.
+func (s *Server) recordScopeEvent(ev agent.ScopeEvent) {
+	decision := "ALLOW_REWRITTEN"
+	if !ev.Allowed {
+		decision = "DENY"
+	}
+	log.Printf("[batas-tim] mode=%s tim=%s tool=%s keputusan=%s", ev.Mode, ev.Team, ev.Tool, decision)
+	s.teams.RecordScope(ev.Allowed, ev.Rewritten)
+	if s.aud == nil {
+		return
+	}
+	s.aud.Record(audit.Entry{
+		EventType:      "team_scope",
+		OccurredAt:     time.Now().UTC(),
+		Actor:          ev.Actor,
+		Tool:           ev.Tool,
+		PolicyDecision: decision,
+		Note:           "tim=" + ev.Team + " mode=" + ev.Mode + " " + ev.Reason,
+	})
 }

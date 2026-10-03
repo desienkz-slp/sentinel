@@ -30,13 +30,15 @@ type TeamMetric struct {
 
 // TeamSnapshot aman dipublikasikan ke dashboard.
 type TeamSnapshot struct {
-	Total      int64            `json:"total"`
-	HandledBy  map[string]int64 `json:"handled_by"` // code | llm
-	ByTeam     map[string]int64 `json:"by_team"`
-	ToolCalls  map[string]int64 `json:"tool_calls"`
-	CodeShare  float64          `json:"code_share"` // 0..1, bagian yang ditangani kode
-	Rows       []TeamMetric     `json:"rows"`
-	Mismatches int64            `json:"shadow_mismatches"`
+	Total          int64            `json:"total"`
+	HandledBy      map[string]int64 `json:"handled_by"` // code | llm
+	ByTeam         map[string]int64 `json:"by_team"`
+	ToolCalls      map[string]int64 `json:"tool_calls"`
+	CodeShare      float64          `json:"code_share"` // 0..1, bagian yang ditangani kode
+	Rows           []TeamMetric     `json:"rows"`
+	Mismatches     int64            `json:"shadow_mismatches"`
+	ScopeDenied    int64            `json:"scope_denied"`
+	ScopeRewritten int64            `json:"scope_rewritten"`
 }
 
 type teamKey struct{ team, handler, by string }
@@ -44,10 +46,11 @@ type teamCounter struct{ n, errs, lat int64 }
 
 // TeamCollector aman untuk goroutine; nil aman dipakai (no-op).
 type TeamCollector struct {
-	mu         sync.Mutex
-	rows       map[teamKey]*teamCounter
-	tools      map[string]int64
-	mismatches int64
+	mu                          sync.Mutex
+	rows                        map[teamKey]*teamCounter
+	tools                       map[string]int64
+	mismatches                  int64
+	scopeDenied, scopeRewritten int64
 }
 
 // NewTeamCollector membuat collector kosong.
@@ -88,6 +91,21 @@ func (c *TeamCollector) RecordMismatch() {
 	c.mu.Unlock()
 }
 
+// RecordScope mencatat satu kejadian pembatas tim CS.
+func (c *TeamCollector) RecordScope(allowed, rewritten bool) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !allowed {
+		c.scopeDenied++
+	}
+	if rewritten {
+		c.scopeRewritten++
+	}
+}
+
 // Snapshot mengembalikan salinan stabil.
 func (c *TeamCollector) Snapshot() TeamSnapshot {
 	out := TeamSnapshot{
@@ -113,6 +131,7 @@ func (c *TeamCollector) Snapshot() TeamSnapshot {
 		out.ToolCalls[t] = n
 	}
 	out.Mismatches = c.mismatches
+	out.ScopeDenied, out.ScopeRewritten = c.scopeDenied, c.scopeRewritten
 	if out.Total > 0 {
 		out.CodeShare = float64(out.HandledBy["code"]) / float64(out.Total)
 	}

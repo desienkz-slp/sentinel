@@ -98,6 +98,19 @@ func (e *Engine) runWorkflow(ctx context.Context, identity, target string, def w
 			continue
 		}
 
+		// ---- Pembatas tim (Fase 2) ----
+		// Workflow adalah jalur lain ke dispatcher: batas yang sama berlaku di sini,
+		// supaya tim CS tidak punya jalan samping. Identitas pelanggan terverifikasi
+		// menggantikan identitas apa pun di parameter langkah. Bila ditolak, langkah
+		// dicatat dan dilewati (bukti domain itu tetap UNKNOWN — tidak ditebak).
+		scoped, scopeOK, scopeWhy := e.scopeCheck(ctx, st.Tool, args)
+		if !scopeOK {
+			record(Step{Kind: "policy", Tool: st.Tool, OK: false,
+				Output: "DITOLAK (batas tim): " + scopeWhy})
+			continue
+		}
+		args = scoped
+
 		// ---- FASE 3: gerbang kebijakan SEBELUM eksekusi ----
 		// Workflow deterministik pun tidak boleh mengeksekusi aksi berisiko.
 		// Hanya ALLOW (read-only LOW) yang diteruskan ke dispatcher; selainnya
@@ -176,7 +189,7 @@ func (e *Engine) runWorkflow(ctx context.Context, identity, target string, def w
 // buildWorkflowBalasan menyusun prompt bagi LLM untuk menulis balasan manusiawi
 // dari bukti yang sudah dikumpulkan secara deterministik. LLM TIDAK memutuskan
 // langkah diagnosis — hanya merapikan bahasa untuk pelanggan.
-func (e *Engine) buildWorkflowBalasan(identity, query string, h hasilWorkflow) (balasan, teknis string) {
+func (e *Engine) buildWorkflowBalasan(ctx context.Context, identity, query string, h hasilWorkflow) (balasan, teknis string) {
 	var b strings.Builder
 	b.WriteString("Anda adalah NOC Sentinel. Bukti diagnosis di bawah SUDAH dikumpulkan oleh workflow deterministik — jangan menjalankan langkah baru.\n\n")
 	b.WriteString("KELUHAN PELANGGAN: " + query + "\n\n")
@@ -208,7 +221,7 @@ func (e *Engine) buildWorkflowBalasan(identity, query string, h hasilWorkflow) (
 
 	// Panggil LLM untuk menyusun bahasa manusiawi (tanpa tool).
 	msg, err := e.LLM.Chat(context.Background(), []llm.Message{
-		{Role: "system", Content: e.buildSystemPrompt()},
+		{Role: "system", Content: e.buildSystemPrompt() + e.teamProfileBlock(ctx)},
 		{Role: "user", Content: prompt},
 	}, nil)
 	if err != nil {

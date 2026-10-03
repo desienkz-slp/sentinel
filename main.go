@@ -216,6 +216,9 @@ func main() {
 	}()
 
 	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, teams: observability.NewTeamCollector(), disp: disp, esc: escalation.NewDedup()}
+	// Pembatas tim CS (Fase 2): penolakan/penimpaan identitas tercatat ke audit
+	// dan metrik. Tanpa isi pesan, nomor pelanggan, atau data akun.
+	engine.ScopeHook = srv.recordScopeEvent
 
 	// Auto-update: inisialisasi checker bila owner/repo terisi. Cek awal + berkala
 	// (tiap 6 jam) di latar; hasilnya di-cache untuk dashboard. Tidak pernah
