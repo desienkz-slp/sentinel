@@ -178,3 +178,8 @@ func (s *Server) rateSeverity(rep agent.Report) string {
 		fmt.Sprintf("level=%s affected=%d alasan=%s mode=%s", res.Level, affected, strings.Join(res.Reasons, ";"), s.cfg.Teams().Severity))
 	return string(res.Level)
 }
+
+// nonStaffCmdReply: jawaban tetap untuk non-staf yang mengirim perintah staf.
+// Tidak menyebut nama/nomor staf, tidak menyebut ID kasus, tidak mengklaim apa pun.
+const nonStaffCmdReply = "Maaf, perintah itu hanya bisa digunakan oleh tim internal kami. " +
+	"Jika ada kendala, sampaikan keluhan Anda dan kami bantu cek."

@@ -34,3 +34,6 @@ NOC_AGENT_API.md
 # local tool enablement (operator step-2, never committed)
 tools/registry.local.yaml
 dist/
+
+# Rig uji lokal (config + data uji, bisa memuat salinan kunci LLM)
+.localtest/

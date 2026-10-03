@@ -1177,6 +1177,21 @@ func (s *Server) routes() http.Handler {
 			}
 		}
 
+		// Perintah serah-terima (tutup/update CASE-...) hanya untuk staf. Dari
+		// non-staf JANGAN diteruskan ke LLM: LLM bisa membalas "tiket sudah
+		// ditutup" padahal tidak terjadi apa-apa. Dijawab kode, tanpa LLM.
+		if !caller.IsStaff && s.routerMode() == config.TeamOn {
+			if _, isCmd := directory.ParseHandoffCommand(msg.Message); isCmd {
+				s.auditHandoff("handoff_update_denied", id+" (non-staf)", "", "perintah staf dari non-staf ditolak")
+				out := wa.Reply{Accepted: true, MessageID: msg.MessageID, Engine: "code-deny", Report: nonStaffCmdReply}
+				if s.cfg.WAAutoReply {
+					out.Reply = nonStaffCmdReply
+				}
+				writeJSON(w, 200, out)
+				return
+			}
+		}
+
 		// PENTING: context request DIBATALKAN begitu handler selesai. Untuk mode
 		// async, diagnosis harus berjalan di atas context.Background() sendiri,
 		// kalau tidak LLM langsung gagal dengan "context canceled".
