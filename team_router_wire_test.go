@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"ainoc/internal/agent"
@@ -156,5 +157,109 @@ func TestRecordScopeEventKeAuditDanMetrik(t *testing.T) {
 		if e.EventType == "team_scope" && e.Arguments != nil {
 			t.Errorf("audit team_scope tidak boleh memuat argumen: %v", e.Arguments)
 		}
+	}
+}
+
+// ---- Fase 3: penyaring presentasi di titik keluar ----
+
+func presenterServer(t *testing.T, mode string) *Server {
+	t.Helper()
+	s := routerServer(t, "off")
+	s.cfg.TeamPresenter = mode
+	return s
+}
+
+const balasanBocor = "Sudah saya cek ke 172.16.0.10, nomor 628999000111 aktif. Hubungi Staf Uji. Tagihan Rp150.000."
+
+func TestPresenterOffApaAdanya(t *testing.T) {
+	s := presenterServer(t, "off")
+	cust := s.identifyCaller(context.Background(), "628999000111")
+	if got := s.presentReply(cust, balasanBocor); got != balasanBocor {
+		t.Fatalf("off harus apa adanya: %q", got)
+	}
+}
+
+func TestPresenterOnMenyuntingUntukPelanggan(t *testing.T) {
+	s := presenterServer(t, "on")
+	cust := directory.Caller{Number: "628111000111", Role: directory.RoleCustomer, IsCustomer: true,
+		Customer: &directory.CustomerInfo{Phone: "628111000111"}}
+	got := s.presentReply(cust, "IP 172.16.0.10, nomor Anda 628111000111, nomor lain 628999000222. Tagihan Rp150.000.")
+	for _, bocor := range []string{"172.16.0.10", "628999000222"} {
+		if strings.Contains(got, bocor) {
+			t.Errorf("masih bocor %q: %q", bocor, got)
+		}
+	}
+	if !strings.Contains(got, "628111000111") {
+		t.Errorf("nomor pelanggan sendiri harus tetap ada: %q", got)
+	}
+	if !strings.Contains(got, "Rp150.000") {
+		t.Errorf("angka tagihan sah tidak boleh rusak: %q", got)
+	}
+	if s.teams.Snapshot().Redactions != 1 {
+		t.Errorf("redactions = %d, mau 1", s.teams.Snapshot().Redactions)
+	}
+}
+
+// Shadow: dicatat, tetapi TEKS ASLI yang dikirim.
+func TestPresenterShadowMencatatTanpaMengubah(t *testing.T) {
+	s := presenterServer(t, "shadow")
+	cust := directory.Caller{Number: "628111000111", Role: directory.RoleCustomer}
+	if got := s.presentReply(cust, balasanBocor); got != balasanBocor {
+		t.Fatalf("shadow tidak boleh mengubah teks: %q", got)
+	}
+	if s.teams.Snapshot().Redactions != 1 {
+		t.Fatal("shadow harus mencatat penyuntingan")
+	}
+}
+
+// Staf TIDAK disaring: berhak melihat data internal.
+func TestPresenterStafTidakDisaring(t *testing.T) {
+	s := presenterServer(t, "on")
+	staf := s.identifyCaller(context.Background(), "628111222333")
+	if !staf.IsStaff {
+		t.Fatal("harus staf")
+	}
+	if got := s.presentReply(staf, balasanBocor); got != balasanBocor {
+		t.Fatalf("balasan staf tidak boleh disaring: %q", got)
+	}
+}
+
+// Audit hanya memuat KATEGORI, tidak pernah isi yang disunting.
+func TestPresenterAuditTanpaIsiAsli(t *testing.T) {
+	s := presenterServer(t, "on")
+	cust := directory.Caller{Number: "628111000111", Role: directory.RoleCustomer}
+	_ = s.presentReply(cust, "alamat 172.16.0.10 dan nomor 628999000222 serta billing.get_customer")
+	n := 0
+	for _, e := range s.aud.Recent(50) {
+		if e.EventType != "reply_redaction" {
+			continue
+		}
+		n++
+		for _, bocor := range []string{"172.16.0.10", "628999000222", "billing.get_customer"} {
+			if strings.Contains(e.Note, bocor) {
+				t.Errorf("audit memuat isi asli %q: %s", bocor, e.Note)
+			}
+		}
+		if !strings.Contains(e.Note, "host_internal") || !strings.Contains(e.Note, "nomor_telepon") {
+			t.Errorf("audit harus memuat kategori: %s", e.Note)
+		}
+	}
+	if n != 1 {
+		t.Fatalf("entri audit = %d, mau 1", n)
+	}
+}
+
+func TestPresenterBalasanKosongDanBersih(t *testing.T) {
+	s := presenterServer(t, "on")
+	cust := directory.Caller{Number: "628111000111", Role: directory.RoleCustomer}
+	if got := s.presentReply(cust, ""); got != "" {
+		t.Errorf("kosong harus tetap kosong: %q", got)
+	}
+	bersih := "Koneksi Anda normal, ping 12 ms. Terima kasih."
+	if got := s.presentReply(cust, bersih); got != bersih {
+		t.Errorf("balasan bersih tidak boleh berubah: %q", got)
+	}
+	if s.teams.Snapshot().Redactions != 0 {
+		t.Error("tidak ada penyuntingan untuk balasan bersih")
 	}
 }

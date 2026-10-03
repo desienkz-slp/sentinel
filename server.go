@@ -1169,7 +1169,7 @@ func (s *Server) routes() http.Handler {
 				s.deliverEscalation(context.Background(), rep, id, escalation.ClassifyDomain(msg.Message))
 				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.WATimeout)*time.Second)
 				defer cancel()
-				if _, err := s.wa.Send(ctx, chatID, wa.FormatReport(toView(rep))); err != nil {
+				if _, err := s.wa.Send(ctx, chatID, s.presentReply(caller, wa.FormatReport(toView(rep)))); err != nil {
 					log.Printf("[WA] gagal kirim hasil async ke %s: %v", chatID, err)
 					return
 				}
@@ -1191,7 +1191,7 @@ func (s *Server) routes() http.Handler {
 			ElapsedMS:  rep.ElapsedMS,
 			CaseID:     rep.CaseID,
 			CaseState:  rep.CaseState,
-			Report:     wa.FormatReport(toView(rep)),
+			Report:     s.presentReply(caller, wa.FormatReport(toView(rep))),
 		}
 		s.deliverEscalation(r.Context(), rep, id, escalation.ClassifyDomain(msg.Message))
 		// Hanya isi "reply" bila auto-reply aktif; kalau tidak, operator ambil dari dashboard.
