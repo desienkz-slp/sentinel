@@ -116,6 +116,30 @@ func main() {
 	learn := learning.New()
 	engine := agent.New(cfg, client, runner, bridge, sesi, mem, learn)
 
+	// Endpoint B (reasoning): klien LLM kedua untuk investigasi mendalam. Pakai
+	// endpoint & model Codex (terpisah dari Endpoint A) tapi lewat HTTP langsung
+	// (BUKAN Codex CLI), supaya tidak butuh dependensi codex binary. Bila
+	// CodexBaseURL/CodexModel tidak terisi, ReasonLLM nil = deep-dive nonaktif
+	// dan sistem langsung eskalasi ke manusia (perilaku lama).
+	if cfg.CodexModel != "" {
+		base := cfg.CodexBaseURL
+		if base == "" {
+			base = cfg.LLMBaseURL // fallback: ikut endpoint A
+		}
+		key := cfg.CodexAPIKey
+		if key == "" {
+			key = cfg.LLMAPIKey
+		}
+		rllm := llm.New(base, key, cfg.CodexModel, cfg.LLMTimeout)
+		rllm.WireAPI = cfg.CodexWireAPI
+		if rllm.WireAPI == "" {
+			rllm.WireAPI = cfg.LLMWireAPI
+		}
+		engine.ReasonLLM = rllm
+	}
+	// Resep "cara pengecekan" Endpoint B (persist ke disk, bertahan restart).
+	engine.Recipes = learning.NewRecipeStore(filepath.Join(filepath.Dir(cfg.IncidentPath), "recipes.json"))
+
 	// ---- Blueprint upgrade: policy, registry, workflow, incident, audit ----
 	// Semua deny-by-default. Policy & registry memuat file YAML; workflow dimuat
 	// dari direktori; incident & audit dipersist ke JSON (PostgreSQL menyusul).

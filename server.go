@@ -635,6 +635,18 @@ func (s *Server) routes() http.Handler {
 		})
 	})
 
+	// Resep "cara pengecekan" Endpoint B (deep-dive) yang terbukti konklusif.
+	mux.HandleFunc("/api/recipes", func(w http.ResponseWriter, r *http.Request) {
+		if s.engine == nil || s.engine.Recipes == nil {
+			writeJSON(w, 200, map[string]any{"statistik": map[string]any{"resep": 0, "signature": 0, "tersimpan": false}, "resep": []map[string]any{}})
+			return
+		}
+		writeJSON(w, 200, map[string]any{
+			"statistik": s.engine.Recipes.Stats(),
+			"resep":     s.engine.Recipes.Semua(),
+		})
+	})
+
 	// ---- Blueprint upgrade: policy, registry, workflow, incident, audit ----
 
 	// Ringkasan komponen blueprint (untuk dashboard).

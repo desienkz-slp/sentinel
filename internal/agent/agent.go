@@ -123,6 +123,14 @@ type Engine struct {
 	// NOCHook dipanggil saat penjaga klaim NOC menandai jawaban tanpa bukti (Fase A).
 	NOCHook func(NOCToolEvent)
 
+	// Endpoint B (reasoning): klien LLM kedua untuk investigasi mendalam saat
+	// workflow deterministik tidak konklusif. Bila nil, deep-dive nonaktif dan
+	// sistem langsung eskalasi ke manusia (perilaku lama).
+	ReasonLLM *llm.Client
+	// RecipeStore menyimpan "cara pengecekan" (urutan tool READ) yang terbukti
+	// menghasilkan diagnosis pasti, untuk dipakai ulang di keluhan serupa.
+	Recipes *learning.RecipeStore
+
 	mu      sync.Mutex
 	reports []Report
 }
@@ -397,6 +405,30 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 				snap := e.Case.onResult(klas.Key, klas.Intent, rep.Verdict, rep.Confidence, true)
 				rep.CaseID, rep.CaseState = snap.CaseID, snap.CaseState
 			}
+
+			// ---- ENDPOINT B: investigasi mendalam bila workflow tidak konklusif ----
+			// Sebelum eskalasi ke manusia, biarkan Endpoint B (ReasonLLM) mencoba
+			// cara pengecekan tambahan memakai tool READ yang lebih luas. Bila ia
+			// menemukan diagnosis pasti, balasan & verdict diperbarui dari bukti
+			// baru itu — dan resep (urutan tool) disimpan untuk dipakai ulang.
+			if e.ReasonLLM != nil && shouldDeepDive(rep.Verdict, rep.Confidence, true) {
+				add(Step{Kind: "thought", Text: "Endpoint B: investigasi mendalam (workflow dasar tidak konklusif)"})
+				if diag, tools, ok := e.deepDive(ctx, klas.Key, query, konteks.Signature, add); ok {
+					if b2, _ := PisahBalasan(diag); strings.TrimSpace(b2) != "" {
+						rep.Balasan = b2
+					}
+					if a, v, c := parseVerdict(diag); v != "" && v != "TIDAK DIKETAHUI" {
+						rep.Verdict = v
+						if c > 0 {
+							rep.Confidence = c
+						}
+						rep.Answer = a
+					}
+					rep.Engine = "workflow+deepdive"
+					_ = tools
+				}
+			}
+
 			// Eskalasi ke Codex bila keyakinan rendah (analisis senior).
 			if e.shouldEscalate(rep, used) {
 				e.escalate(ctx, &rep)
