@@ -17,6 +17,7 @@ const (
 	CmdNone    CommandKind = ""        // bukan perintah staf -> alur biasa
 	CmdPPPoE   CommandKind = "pppoe"   // cek akun/sesi PPPoE satu user
 	CmdTraffic CommandKind = "traffic" // cek traffic satu user
+	CmdBilling CommandKind = "billing" // cek data billing satu pelanggan
 )
 
 // Command adalah hasil parsing pesan staf.
@@ -34,12 +35,16 @@ var (
 		"traffic": true, "traffict": true, "trafic": true, "trafik": true,
 		"bandwidth": true, "usage": true, "pemakaian": true,
 	}
+	billingWords = map[string]bool{
+		"billing": true, "tagihan": true, "tunggakan": true, "isolir": true, "paket": true,
+	}
 	// Kata pengisi yang tidak mungkin menjadi username.
 	cmdStop = map[string]bool{
 		"user": true, "pppoe": true, "ppp": true, "akun": true, "pelanggan": true,
 		"dong": true, "ya": true, "nya": true, "si": true, "untuk": true, "milik": true,
 		"yang": true, "dari": true, "di": true, "ini": true, "tadi": true, "lagi": true,
 		"mohon": true, "bantu": true, "pak": true, "bu": true, "kak": true, "mas": true,
+		"saya": true, "aku": true, "kamu": true, "anda": true, "kok": true, "bisa": true,
 	}
 	reUsername = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{2,63}$`)
 )
@@ -65,8 +70,11 @@ func ParseCommand(msg string) Command {
 	}
 
 	first := toks[0]
-	hasTraffic, hasPPPoE := false, false
+	hasTraffic, hasPPPoE, hasBilling := false, false, false
 	for _, t := range toks {
+		if billingWords[t] {
+			hasBilling = true
+		}
 		if trafficWords[t] {
 			hasTraffic = true
 		}
@@ -74,17 +82,17 @@ func ParseCommand(msg string) Command {
 			hasPPPoE = true
 		}
 	}
-	if !cmdVerbs[first] && !trafficWords[first] && !isPPPoEWord(first) {
+	if !cmdVerbs[first] && !trafficWords[first] && !isPPPoEWord(first) && !billingWords[first] {
 		return Command{}
 	}
-	if !hasTraffic && !hasPPPoE {
+	if !hasTraffic && !hasPPPoE && !hasBilling {
 		return Command{}
 	}
 
 	// Target = token pertama (kapitalisasi asli) yang bukan kata perintah/pengisi.
 	target := ""
 	for i, t := range toks {
-		if cmdVerbs[t] || trafficWords[t] || isPPPoEWord(t) || cmdStop[t] {
+		if cmdVerbs[t] || trafficWords[t] || isPPPoEWord(t) || billingWords[t] || cmdStop[t] {
 			continue
 		}
 		cand := strings.Trim(raw[i], ".,;:!?\"'()[]*_")
@@ -94,8 +102,16 @@ func ParseCommand(msg string) Command {
 		}
 	}
 
-	if hasTraffic {
+	switch {
+	case hasTraffic:
 		return Command{Kind: CmdTraffic, Target: target}
+	case hasBilling && !hasPPPoE:
+		// Kata seperti "tagihan"/"paket" sering muncul di keluhan biasa; perintah
+		// staf itu pendek (<= 5 kata) dan WAJIB punya target atau kata kerja cek.
+		if len(toks) > 5 || (target == "" && !cmdVerbs[first]) {
+			return Command{}
+		}
+		return Command{Kind: CmdBilling, Target: target}
 	}
 	return Command{Kind: CmdPPPoE, Target: target}
 }

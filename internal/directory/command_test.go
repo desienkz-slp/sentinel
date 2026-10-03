@@ -29,3 +29,24 @@ func TestParseCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestParseCommandBilling(t *testing.T) {
+	cases := []struct {
+		in   string
+		kind CommandKind
+		tgt  string
+	}{
+		{"cek billing pelanggan-uji", CmdBilling, "pelanggan-uji"},
+		{"tagihan pelanggan-uji", CmdBilling, "pelanggan-uji"},
+		{"cek tunggakan budi", CmdBilling, "budi"},
+		{"cek user pppoe pelanggan-uji", CmdPPPoE, "pelanggan-uji"},
+		{"cek traffic pelanggan-uji", CmdTraffic, "pelanggan-uji"},
+		{"tagihan saya bulan ini kok mahal sekali ya kenapa bisa begitu", CmdNone, ""},
+	}
+	for _, c := range cases {
+		got := ParseCommand(c.in)
+		if got.Kind != c.kind || got.Target != c.tgt {
+			t.Errorf("ParseCommand(%q) = %+v, mau {%s %s}", c.in, got, c.kind, c.tgt)
+		}
+	}
+}

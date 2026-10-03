@@ -36,12 +36,15 @@ func (s *Server) handleStaffCommand(ctx context.Context, caller directory.Caller
 		target = s.sesi.LastTarget(sessKey) // "cek traffic" setelah "cek user X" -> X
 	}
 	if target == "" {
-		return "Username PPPoE-nya apa? Contoh: cek user pppoe namauser", true
+		return "Username/nama pelanggannya siapa? Contoh: cek billing namauser", true
 	}
 
 	var tools []string
 	var title string
 	switch cmd.Kind {
+	case directory.CmdBilling:
+		title = "Billing"
+		tools = []string{"billing.get_customer"}
 	case directory.CmdTraffic:
 		title = "Traffic"
 		tools = []string{"mikrotik.get_customer_traffic"}

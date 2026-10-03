@@ -91,7 +91,20 @@ func TestStaffCommandRunsForNOCAndSkipsCustomers(t *testing.T) {
 	}
 	// Tanpa target sama sekali -> minta username, bukan menebak.
 	text, ok = s.handleStaffCommand(context.Background(), noc, "628000", "cek traffic")
-	if !ok || !strings.Contains(text, "Username PPPoE") {
+	if !ok || !strings.Contains(text, "Username/nama pelanggan") {
 		t.Fatalf("tanpa target harus minta username: %q", text)
+	}
+}
+
+func TestStaffCommandBilling(t *testing.T) {
+	s := staffCmdServer(t)
+	s.syncDirectory()
+	noc := s.identifyCaller(context.Background(), "628111222333")
+	text, ok := s.handleStaffCommand(context.Background(), noc, "628111222333", "cek billing pelanggan-uji")
+	if !ok || !strings.Contains(text, "*Billing*") || !strings.Contains(text, "status=AKTIF") {
+		t.Fatalf("balasan billing tidak sesuai: ok=%v %q", ok, text)
+	}
+	if strings.Contains(text, "RADIUS") || strings.Contains(text, "MikroTik") {
+		t.Fatalf("perintah billing hanya boleh memanggil billing: %q", text)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -35,6 +36,13 @@ type Customer struct {
 	IsolatedSince *string `json:"isolated_since"`
 	JenisBayar    string  `json:"jenis_bayar"`
 	AutoIsolir    bool    `json:"auto_isolir"`
+	BillingDate   int     `json:"billing_date"`
+	TglIsolir     int     `json:"tgl_isolir"`
+	MaxTunggakan  int     `json:"max_tunggakan"`
+	RegisteredAt  string  `json:"registration_date"`
+	IsOnLeave     bool    `json:"is_on_leave"`
+	CustomPrice   *int    `json:"custom_price"`
+	Diskon        *int    `json:"diskon"`
 	Area          struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
@@ -161,7 +169,7 @@ func (a *Adapter) getCustomer(ctx context.Context, args map[string]any) (tool.Ou
 		return tool.Output{}, fmt.Errorf("billing.get_customer butuh identity (nomor WA / username / nama)")
 	}
 
-	path := "/customers?search=" + urlQueryEscape(identity) + "&per_page=10"
+	path := "/customers?search=" + url.QueryEscape(identity) + "&per_page=10"
 	var out customersResponse
 	if err := a.http.GetJSON(ctx, path, &out); err != nil {
 		return tool.Output{}, err
@@ -189,6 +197,24 @@ func (a *Adapter) getCustomer(ctx context.Context, args map[string]any) (tool.Ou
 		}
 		if c.Package.Name != "" {
 			fmt.Fprintf(&b, ", paket=%s", c.Package.Name)
+			if c.Package.Price > 0 {
+				fmt.Fprintf(&b, " (Rp%d)", c.Package.Price)
+			}
+		}
+		if c.JenisBayar != "" {
+			fmt.Fprintf(&b, ", bayar=%s", c.JenisBayar)
+		}
+		if c.BillingDate > 0 {
+			fmt.Fprintf(&b, ", tgl_tagih=%d", c.BillingDate)
+		}
+		if c.TglIsolir > 0 {
+			fmt.Fprintf(&b, ", tgl_isolir=%d", c.TglIsolir)
+		}
+		if c.IsIsolated && c.IsolatedSince != nil {
+			fmt.Fprintf(&b, ", isolir_sejak=%s", *c.IsolatedSince)
+		}
+		if c.IsOnLeave {
+			b.WriteString(", CUTI")
 		}
 		if c.Area.Name != "" {
 			fmt.Fprintf(&b, ", area=%s", c.Area.Name)
@@ -216,10 +242,6 @@ func firstString(m map[string]any, keys ...string) string {
 	return ""
 }
 
-func urlQueryEscape(s string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(s, " ", "%20"), "&", "%26")
-}
-
 // LookupByPhone mencari SATU pelanggan yang nomor WA-nya cocok persis dengan
 // `phone` (dinormalisasi oleh pemanggil). Dipakai untuk identifikasi penelepon
 // (master spec §6: jangan tanya "siapa Anda" bila bisa dideteksi dari data).
@@ -232,22 +254,74 @@ func (a *Adapter) LookupByPhone(ctx context.Context, phone string) (Customer, bo
 	if phone == "" {
 		return Customer{}, false, fmt.Errorf("nomor kosong")
 	}
-	path := "/customers?search=" + urlQueryEscape(phone) + "&per_page=25"
-	var out customersResponse
-	if err := a.http.GetJSON(ctx, path, &out); err != nil {
-		return Customer{}, false, err
-	}
-	if out.Status != "success" {
-		return Customer{}, false, fmt.Errorf("respons billing tidak success: %s", out.Status)
-	}
-	// Cocokkan nomor secara ketat: bandingkan hanya digit (buang +, 0, 62 depan).
+	// Billing menyimpan nomor dalam banyak format (62812..., 0812...,
+	// "+62 812-3456-7890") dan search-nya hanya mencocokkan teks mentah. Jadi
+	// coba beberapa varian, lalu cocokkan SECARA KETAT lewat 9 digit terakhir.
 	want := lastDigits(phone)
-	for _, c := range out.Data {
-		if c.Phone != "" && lastDigits(c.Phone) == want {
-			return c, true, nil
+	if len(want) < 9 {
+		return Customer{}, false, nil // terlalu pendek -> pasti bukan nomor valid
+	}
+	var firstErr error
+	answered := false
+	for _, q := range phoneVariants(phone) {
+		var out customersResponse
+		if err := a.http.GetJSON(ctx, "/customers?search="+url.QueryEscape(q)+"&per_page=200", &out); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if out.Status != "success" {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("respons billing tidak success: %s", out.Status)
+			}
+			continue
+		}
+		answered = true
+		for _, c := range out.Data {
+			if c.Phone != "" && lastDigits(c.Phone) == want {
+				return c, true, nil
+			}
 		}
 	}
+	// Bila SEMUA percobaan gagal, laporkan error (jangan simpulkan "bukan
+	// pelanggan" saat API bermasalah — master spec §52).
+	if !answered && firstErr != nil {
+		return Customer{}, false, firstErr
+	}
 	return Customer{}, false, nil
+}
+
+// phoneVariants menghasilkan kata kunci pencarian untuk satu nomor. Search
+// billing mencocokkan SUBSTRING teks mentah, sedangkan nomor tersimpan dalam
+// banyak format: "62812...", "0812...", "+62 812-3456-7890". Maka:
+//  1. nomor inti tanpa awalan 0/62 -> kena format polos (62.. dan 0..),
+//  2. 4 digit terakhir -> kena format bertanda baca/spasi (grup terakhir).
+//
+// Hasil tetap disaring ketat lewat 9 digit terakhir oleh pemanggil.
+func phoneVariants(phone string) []string {
+	var b strings.Builder
+	for _, r := range phone {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	d := b.String()
+	core := d
+	switch {
+	case strings.HasPrefix(d, "62"):
+		core = d[2:]
+	case strings.HasPrefix(d, "0"):
+		core = d[1:]
+	}
+	out := []string{}
+	if core != "" {
+		out = append(out, core)
+	}
+	if len(d) >= 4 {
+		out = append(out, d[len(d)-4:])
+	}
+	return out
 }
 
 // lastDigits mengambil 9 digit terakhir nomor untuk pencocokan yang toleran
