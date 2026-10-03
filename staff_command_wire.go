@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"ainoc/internal/directory"
+	"ainoc/internal/router"
 )
 
 // ============================================================================
@@ -26,20 +27,18 @@ func (s *Server) handleStaffCommand(ctx context.Context, caller directory.Caller
 	if !caller.IsStaff || s.disp == nil {
 		return "", false
 	}
-	// Pertanyaan status koneksi ("sudah bisa terhubung ke billing?") dijawab dari
-	// pengecekan adaptor nyata, sebelum ParseCommand agar "cek koneksi billing"
-	// tidak dibaca sebagai username "koneksi".
-	if doms, all := directory.ParseStatusQuestion(msg); len(doms) > 0 || all {
-		return s.integrationStatusReply(ctx, doms, all), true
-	}
-	// Daftar/ringkasan pelanggan ("daftar pelanggan", "pelanggan isolir", "cari budi").
-	if lq, ok := directory.ParseListQuery(msg); ok {
-		return s.customerListReply(ctx, caller, sessKey, msg, lq), true
-	}
-	cmd := directory.ParseCommand(msg)
-	if cmd.Kind == directory.CmdNone {
+	// Satu pintu keputusan: router.Route (deterministik, tanpa LLM). Urutan
+	// pemilahan: status integrasi -> daftar pelanggan -> perintah cek -> LLM.
+	dec := router.Route(caller, msg)
+	switch dec.Handler {
+	case router.HStatusIntegrasi:
+		return s.integrationStatusReply(ctx, dec.Domains, dec.AllDomains), true
+	case router.HDaftarPelanggan:
+		return s.customerListReply(ctx, caller, sessKey, msg, dec.List), true
+	case router.HLLM:
 		return "", false
 	}
+	cmd := dec.Cmd
 
 	target := cmd.Target
 	if target == "" && s.sesi != nil {

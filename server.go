@@ -35,6 +35,7 @@ import (
 	"ainoc/internal/policy"
 	"ainoc/internal/radius"
 	"ainoc/internal/registry"
+	"ainoc/internal/router"
 	"ainoc/internal/security"
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
@@ -68,9 +69,9 @@ type Server struct {
 	aud *audit.Store
 
 	// Blueprint upgrade: health, dedupe.
-	hreg *health.Registry
-	ded  *dedupe.Store
-	obs  *observability.Collector
+	hreg  *health.Registry
+	ded   *dedupe.Store
+	obs   *observability.Collector
 	teams *observability.TeamCollector // metrik keputusan tim CS/NOC (tanpa data pribadi)
 
 	// Blueprint upgrade: tool dispatcher (registry -> policy -> adapter).
@@ -1129,8 +1130,10 @@ func (s *Server) routes() http.Handler {
 			text, handled := s.handleStaffCommand(cmdCtx, caller, session.Key(id), msg.Message)
 			cmdCancel()
 			if handled {
-				s.teams.Record(observability.TeamDecision{Team: "noc", Handler: "perintah_staf", HandledBy: "code",
-					Latency: time.Since(cmdStart), OK: true, Mode: string(s.cfg.Teams().Routing)})
+				dec := router.Route(caller, msg.Message)
+				s.teams.Record(observability.TeamDecision{Team: string(dec.Team), Handler: string(dec.Handler), HandledBy: "code",
+					Latency: time.Since(cmdStart), OK: true, Mode: string(s.routerMode())})
+				s.compareRouter(caller, msg.Message, pathCode)
 			}
 			if handled {
 				log.Printf("[WA] perintah staf %s (%s) ditangani kode", caller.Name, caller.Role)
@@ -1160,6 +1163,7 @@ func (s *Server) routes() http.Handler {
 				MessageID: msg.MessageID,
 				Note:      "async: hasil akan dikirim menyusul",
 			})
+			s.compareRouter(caller, msg.Message, pathLLM)
 			go func(chatID string) {
 				rep := runWith(context.Background())
 				s.deliverEscalation(context.Background(), rep, id, escalation.ClassifyDomain(msg.Message))
@@ -1177,6 +1181,7 @@ func (s *Server) routes() http.Handler {
 		llmStart := time.Now()
 		rep := runWith(r.Context())
 		s.recordLLMDecision(caller, rep, time.Since(llmStart))
+		s.compareRouter(caller, msg.Message, pathLLM)
 		out := wa.Reply{
 			Accepted:   true,
 			MessageID:  msg.MessageID,
