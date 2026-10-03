@@ -113,6 +113,9 @@ type Server struct {
 	idf *directory.Identifier
 	// pinSesi = verifikasi PIN sementara per nomor untuk aksi berisiko via WA.
 	pinSesi *pinStore
+	// csUnknown = alur CS untuk penelepon tak dikenal (tanya lokasi -> eskalasi
+	// Admin). Lihat cs_unknown_wire.go.
+	csUnknown *csUnknownState
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -1150,6 +1153,25 @@ func (s *Server) routes() http.Handler {
 			log.Printf("[WA] penelepon pelanggan: %s (status=%s)", caller.Customer.Name, caller.Customer.Status)
 		} else {
 			log.Printf("[WA] penelepon belum dikenal: %s (dilayani sebagai pelanggan)", id)
+		}
+
+		// Alur CS untuk penelepon TAK DIKENAL (bukan staf & bukan pelanggan):
+		// tanya lokasi dulu, cari di billing, dan eskalasi ke Admin bila tidak
+		// ditemukan. Dijalankan KODE (bukan LLM) — lihat cs_unknown_wire.go.
+		// Bila pelanggan berhasil di-resolve lewat lokasi, lanjut diagnosis
+		// normal dengan identitas tersebut.
+		if !caller.IsStaff && !caller.IsCustomer {
+			if r, handled, enriched := s.resolveUnknownCaller(r.Context(), caller, session.Key(id), msg.Message); handled {
+				out := wa.Reply{Accepted: true, MessageID: msg.MessageID, Engine: "cs-unknown", Report: r}
+				if s.cfg.WAAutoReply {
+					out.Reply = r
+				}
+				writeJSON(w, 200, out)
+				return
+			} else if enriched != nil {
+				caller = *enriched
+				log.Printf("[WA] penelepon tak dikenal %s di-resolve via lokasi -> pelanggan %s", id, caller.Customer.Username)
+			}
 		}
 
 		// Staf internal (NOC Senior/Admin/Super Admin) bukan pelanggan: perintah

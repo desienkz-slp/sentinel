@@ -342,4 +342,30 @@ func lastDigits(s string) string {
 	return d
 }
 
+// SearchByName mencari pelanggan lewat nama / nama WiFi / lokasi (area, dusun,
+// desa). Dipakai CS saat pelanggan TIDAK teridentifikasi lewat nomor WA — CS
+// menanyakan nama lokasi, lalu mencari di billing lewat kata kunci ini.
+// Search billing mencocokkan SUBSTRING pada name/username/phone; area pun ikut
+// (search "Jombor" mengembalikan pelanggan area Jombor, terverifikasi di NETORA).
+//
+// Mengembalikan hingga limit pelanggan (diurutkan seperti API). Error hanya
+// untuk kegagalan API — bukan "tidak ditemukan" (master spec §52).
+func (a *Adapter) SearchByName(ctx context.Context, query string, limit int) ([]Customer, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	var out customersResponse
+	if err := a.http.GetJSON(ctx, "/customers?search="+url.QueryEscape(query)+"&per_page="+url.QueryEscape(fmt.Sprintf("%d", limit)), &out); err != nil {
+		return nil, err
+	}
+	if out.Status != "success" {
+		return nil, fmt.Errorf("respons billing tidak success: %s", out.Status)
+	}
+	return out.Data, nil
+}
+
 var _ = json.Valid // jaga import json tetap terpakai bila struktur berubah

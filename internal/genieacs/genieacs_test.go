@@ -155,3 +155,60 @@ func TestParamValue(t *testing.T) {
 		t.Errorf("model = %q, mau kosong (tidak ada ModelName)", got)
 	}
 }
+
+// TestGetDeviceStateByUsername: device ditemukan lewat username PPPoE (field
+// WANPPPConnection.1.Username) — bukan _id. Ini memungkinkan pelanggan di-link
+// ke GenieACS lewat username PPPoE (jembatan yang sama dipakai RADIUS/MikroTik).
+func TestGetDeviceStateByUsername(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("query")
+		// Query pertama (_id) tidak cocok -> kosong; query kedua (username) cocok.
+		if strings.Contains(q, "_id") {
+			w.Write([]byte(`[]`))
+			return
+		}
+		if strings.Contains(q, "WANPPPConnection.1.Username") {
+			recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
+			w.Write([]byte(`[` + recent + `]`))
+			return
+		}
+		w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	a := New(srv.URL, "")
+	out, err := a.Invoke(context.Background(), "genieacs.get_device_state", map[string]any{"identity": "jttcitra"})
+	if err != nil {
+		t.Fatalf("Invoke error: %v", err)
+	}
+	if !strings.Contains(out.Text, "ditemukan lewat username") {
+		t.Errorf("Text = %q, mau memuat penanda 'ditemukan lewat username'", out.Text)
+	}
+	if !strings.Contains(out.Text, "ONT-AAA-001") {
+		t.Errorf("Text = %q, mau memuat _id device", out.Text)
+	}
+}
+
+// TestGetDeviceStateBySSID: device ditemukan lewat nama WiFi/SSID. Pelanggan
+// sering menyebut nama WiFi saat komplain — jalur ini memetakannya ke device.
+func TestGetDeviceStateBySSID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("query")
+		if strings.Contains(q, "WLANConfiguration.1.SSID") {
+			recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
+			w.Write([]byte(`[` + recent + `]`))
+			return
+		}
+		w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	a := New(srv.URL, "")
+	out, err := a.Invoke(context.Background(), "genieacs.get_device_state", map[string]any{"identity": "RIFKI ZAIN"})
+	if err != nil {
+		t.Fatalf("Invoke error: %v", err)
+	}
+	if !strings.Contains(out.Text, "ditemukan lewat ssid") {
+		t.Errorf("Text = %q, mau memuat penanda 'ditemukan lewat ssid'", out.Text)
+	}
+}

@@ -87,6 +87,40 @@ func TestGetCustomerEscapesQuery(t *testing.T) {
 	}
 }
 
+// TestSearchByName: cari pelanggan lewat kata kunci lokasi/nama (bukan nomor).
+func TestSearchByName(t *testing.T) {
+	rows := []Customer{
+		{Name: "Bu Citra Jatitengah", Username: "jttcitra", Phone: "6281210797235", Area: struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		}{Name: "Jatitengah"}},
+		{Name: "Farid", Username: "gdhfarid", Phone: "6281332885565"},
+	}
+	a := fakeBilling(t, rows, false)
+
+	got, err := a.SearchByName(context.Background(), "Jatitengah", 10)
+	if err != nil {
+		t.Fatalf("SearchByName error: %v", err)
+	}
+	if len(got) != 1 || got[0].Username != "jttcitra" {
+		t.Fatalf("SearchByName(Jatitengah) = %+v, mau 1 (jttcitra)", got)
+	}
+
+	// Tak ada -> kosong, bukan error.
+	got, err = a.SearchByName(context.Background(), "tidak-ada", 10)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("SearchByName(tidak-ada) = %d err=%v, mau kosong tanpa error", len(got), err)
+	}
+}
+
+// TestSearchByNameAPIFailureIsError: API gagal -> error, bukan "tidak ditemukan".
+func TestSearchByNameAPIFailureIsError(t *testing.T) {
+	a := fakeBilling(t, nil, true)
+	if _, err := a.SearchByName(context.Background(), "Jombor", 10); err == nil {
+		t.Fatal("API gagal harus error")
+	}
+}
+
 // Payload meniru bentuk NYATA API NETORA yang pernah merusak decode:
 // diskon berupa STRING ("10000.00"), tgl_isolir/registration_date bisa null,
 // custom_price selalu null, field tak dikenal harus diabaikan.

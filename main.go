@@ -243,7 +243,7 @@ func main() {
 		}
 	}()
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, teams: observability.NewTeamCollector(), disp: disp, esc: escalation.NewDedup(), ho: handoff.New(filepath.Join(filepath.Dir(cfg.IncidentPath), "handoffs.json"))}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, teams: observability.NewTeamCollector(), disp: disp, esc: escalation.NewDedup(), ho: handoff.New(filepath.Join(filepath.Dir(cfg.IncidentPath), "handoffs.json")), csUnknown: newCSUnknownState()}
 	// Pembatas tim CS (Fase 2): penolakan/penimpaan identitas tercatat ke audit
 	// dan metrik. Tanpa isi pesan, nomor pelanggan, atau data akun.
 	srv.pg = pgs

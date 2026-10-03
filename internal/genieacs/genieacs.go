@@ -119,25 +119,56 @@ func (a *Adapter) Invoke(ctx context.Context, name string, args map[string]any) 
 }
 
 // getDeviceState membaca status satu device (online/offline + info dasar).
+//
+// Resolusi identitas device dicoba dalam urutan berikut (sesuai kebutuhan
+// operasional NetLayer — pelanggan bisa dikenal lewat username PPPoE ATAU nama
+// WiFi/SSID, bukan hanya serial _id):
+//   1. _id / serial number (device_id / _id / serial / identity)
+//   2. username PPPoE  (field TR-069 WANPPPConnection.1.Username)
+//   3. nama WiFi/SSID  (field TR-069 LANDevice.1.WLANConfiguration.1.SSID)
+// Bila salah satu cocok, kembalikan device; bila tidak ada, laporkan jujur
+// "tidak ditemukan" (UNKNOWN — jangan ditebak).
 func (a *Adapter) getDeviceState(ctx context.Context, args map[string]any) (tool.Output, error) {
 	deviceID := firstString(args, "device_id", "_id", "serial", "identity")
 	if deviceID == "" {
-		return tool.Output{}, fmt.Errorf("genieacs.get_device_state butuh device_id (serial number ONT/CPE)")
+		return tool.Output{}, fmt.Errorf("genieacs.get_device_state butuh device_id (serial / username PPPoE / nama WiFi)")
 	}
-	q := `{"_id":` + jsonString(deviceID) + `}`
-	var devices []map[string]any
-	if err := a.http.GetJSON(ctx, "/devices/?query="+url.QueryEscape(q), &devices); err != nil {
-		return tool.Output{}, err
+
+	// Kandidat query berurutan: _id persis, username PPPoE, lalu SSID.
+	candidates := []struct {
+		label string
+		query string
+	}{
+		{"_id", `{"_id":` + jsonString(deviceID) + `}`},
+		{"username", `{"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username":` + jsonString(deviceID) + `}`},
+		{"ssid", `{"InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID":` + jsonString(deviceID) + `}`},
 	}
-	if len(devices) == 0 {
-		return tool.Output{Text: fmt.Sprintf("Device %q tidak ditemukan di GenieACS.", deviceID)}, nil
+
+	var lastErr error
+	for _, c := range candidates {
+		var devices []map[string]any
+		if err := a.http.GetJSON(ctx, "/devices/?query="+url.QueryEscape(c.query), &devices); err != nil {
+			lastErr = err
+			continue
+		}
+		if len(devices) == 0 {
+			continue
+		}
+		d := devices[0]
+		state := deviceState(d)
+		// Bila ditemukan lewat username/SSID (bukan _id), beri tahu sumbernya
+		// supaya operator tahu identitas pelanggan ter-resolve lewat jalur mana.
+		if c.label != "_id" {
+			state = fmt.Sprintf("[ditemukan lewat %s %q] %s", c.label, deviceID, state)
+		}
+		return tool.Output{Data: d, Text: state}, nil
 	}
-	d := devices[0]
-	state := deviceState(d)
-	return tool.Output{
-		Data: d,
-		Text: state,
-	}, nil
+
+	if lastErr != nil {
+		// Ada respons bermasalah dari NBI — laporkan error, bukan "tidak ditemukan".
+		return tool.Output{}, lastErr
+	}
+	return tool.Output{Text: fmt.Sprintf("Device %q tidak ditemukan di GenieACS (dicoba: _id, username PPPoE, nama WiFi).", deviceID)}, nil
 }
 
 // getDevices membaca daftar device (opsional filter online/offline). Pakai
