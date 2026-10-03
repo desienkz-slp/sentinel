@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"ainoc/internal/tool"
 )
@@ -44,8 +45,20 @@ type historyResponse struct {
 	Status string `json:"status"`
 	Data   struct {
 		// Dikelompokkan per tahun; wa_template sengaja tidak didekode.
-		History map[string][]historyItem `json:"history"`
+		History     map[string][]historyItem `json:"history"`
+		BillingInfo struct {
+			JenisBayar string `json:"jenis_bayar"`
+		} `json:"billing_info"`
 	} `json:"data"`
+}
+
+// nowFn dipisah agar test bisa menetapkan "bulan berjalan".
+var nowFn = time.Now
+
+// bulanBerjalan = periode YYYY-MM menurut WIB (zona billing).
+func bulanBerjalan() string {
+	loc := time.FixedZone("WIB", 7*3600)
+	return nowFn().In(loc).Format("2006-01")
 }
 
 // resolveCustomer mencari pelanggan lewat NOC search. Username persis menang;
@@ -108,23 +121,34 @@ func (a *Adapter) getHistory(ctx context.Context, args map[string]any) (tool.Out
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].Period > all[j].Period })
 
+	// API memberi hingga 6 bulan ke DEPAN (tagihan di muka) — itu bukan
+	// tunggakan. Tunggakan = unpaid dengan periode <= bulan berjalan.
+	now := bulanBerjalan()
 	var unpaid []historyItem
 	var unpaidTotal float64
+	paidAhead := 0
 	lastPaid := ""
-	for _, it := range all {
-		switch it.Status {
-		case "unpaid":
+	for _, it := range all { // all sudah urut periode menurun
+		if it.Status == "paid" && lastPaid == "" {
+			lastPaid = it.Period
+		}
+		if it.Period > now {
+			if it.Status == "paid" {
+				paidAhead++
+			}
+			continue
+		}
+		if it.Status == "unpaid" {
 			unpaid = append(unpaid, it)
 			unpaidTotal += float64(it.ChargeAmount)
-		case "paid":
-			if lastPaid == "" {
-				lastPaid = it.Period
-			}
 		}
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s (%s) — riwayat tagihan:\n", cust.Name, cust.Username)
+	fmt.Fprintf(&b, "%s (%s) — riwayat tagihan (s/d %s):\n", cust.Name, cust.Username, now)
+	if jb := resp.Data.BillingInfo.JenisBayar; jb != "" {
+		fmt.Fprintf(&b, "Jenis bayar: %s\n", jb)
+	}
 	if len(unpaid) == 0 {
 		b.WriteString("Tidak ada tunggakan.\n")
 	} else {
@@ -135,20 +159,27 @@ func (a *Adapter) getHistory(ctx context.Context, args map[string]any) (tool.Out
 	}
 	if lastPaid != "" {
 		fmt.Fprintf(&b, "Terakhir lunas: %s\n", lastPaid)
+	} else {
+		b.WriteString("Belum ada periode lunas dalam riwayat.\n")
+	}
+	if paidAhead > 0 {
+		fmt.Fprintf(&b, "Dibayar di muka: %d bulan\n", paidAhead)
 	}
 	b.WriteString("Terbaru:")
-	n := len(all)
-	if n > 6 {
-		n = 6
-	}
-	for _, it := range all[:n] {
-		st := it.Status
-		if st == "paid" {
+	shown := 0
+	for _, it := range all {
+		if it.Period > now {
+			continue
+		}
+		if shown == 6 {
+			break
+		}
+		st := "belum bayar"
+		if it.Status == "paid" {
 			st = "lunas"
-		} else if st == "unpaid" {
-			st = "belum bayar"
 		}
 		fmt.Fprintf(&b, "\n- %s %s %s", it.Period, rupiah(float64(it.ChargeAmount)), st)
+		shown++
 	}
 
 	raw, _ := json.Marshal(all)
