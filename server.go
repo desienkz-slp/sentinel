@@ -18,6 +18,7 @@ import (
 
 	"ainoc/internal/agent"
 	"ainoc/internal/audit"
+	"ainoc/internal/auth"
 	"ainoc/internal/billing"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
@@ -122,6 +123,8 @@ type Server struct {
 	customTools *customtool.Store
 	// customExec = executor generic untuk tool custom yang sudah active.
 	customExec *customtool.Executor
+	// auth = autentikasi login dashboard (cookie session + reset via WA).
+	auth *auth.Store
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -154,6 +157,9 @@ func (s *Server) routes() http.Handler {
 
 	// Pemasangan tool jaringan (inspeksi NOC) — superadmin + PIN.
 	s.registerNetInstallRoutes(mux)
+
+	// Autentikasi login dashboard (cookie session).
+	s.registerAuthRoutes(mux)
 
 	// Liveness tidak bergantung pada layanan lain: proses HTTP masih hidup.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -1202,6 +1208,17 @@ func (s *Server) routes() http.Handler {
 		// cek ("cek user pppoe X", "cek traffic") dijalankan KODE lewat gerbang
 		// otorisasi + dispatcher, tanpa LLM, lalu dibalas dengan data nyata.
 		if caller.IsStaff {
+			// Reset password login via WA — HANYA superadmin (sebelum perintah staf lain).
+			if caller.Role == directory.RoleSuperAdmin {
+				if text, handled := s.resetLoginViaWA(caller, msg.Message); handled {
+					out := wa.Reply{Accepted: true, MessageID: msg.MessageID, Engine: "auth-reset", Report: text}
+					if s.cfg.WAAutoReply {
+						out.Reply = text
+					}
+					writeJSON(w, 200, out)
+					return
+				}
+			}
 			cmdCtx, cmdCancel := context.WithTimeout(r.Context(), 40*time.Second)
 			cmdStart := time.Now()
 			text, handled := s.handleStaffCommand(cmdCtx, caller, session.Key(id), msg.Message)
@@ -1451,7 +1468,7 @@ func (s *Server) routes() http.Handler {
 		}
 		mux.ServeHTTP(w, r)
 	})
-	return withObservability(protected, s.obs, s.aud)
+	return withObservability(s.authRequired(protected), s.obs, s.aud)
 }
 
 func (s *Server) observabilityOutcomes() []observability.CaseOutcome {

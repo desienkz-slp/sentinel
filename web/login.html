@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login — NOC Sentinel</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121922; --line:#1f2a37;
+    --txt:#dbe4ee; --dim:#8296ab; --acc:#22d3ee; --bad:#ef4444;
+    --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif;
+    min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:32px;width:340px}
+  .logo{font-weight:700;font-size:20px;text-align:center;margin-bottom:4px}
+  .logo span{color:var(--acc)}
+  .sub{text-align:center;color:var(--dim);font-size:12px;margin-bottom:20px}
+  label{display:block;font-size:12px;color:var(--dim);margin:12px 0 4px}
+  input{font:inherit;color:var(--txt);background:#0f151d;border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;width:100%}
+  button{font:inherit;cursor:pointer;background:#16323d;border:1px solid #1e4a58;color:#c9f5ff;font-weight:600;
+    border-radius:8px;padding:11px;width:100%;margin-top:18px}
+  button:hover{background:#1b3d4a}
+  .err{color:var(--bad);font-size:12px;margin-top:10px;display:none}
+  .err.show{display:block}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">NOC <span>Sentinel</span></div>
+  <div class="sub">Login untuk mengakses konsol</div>
+  <form id="f">
+    <label for="u">Username</label>
+    <input id="u" name="username" autocomplete="username" required>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Masuk</button>
+    <div class="err" id="err">Username atau password salah.</div>
+  </form>
+</div>
+<script>
+document.getElementById('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const u = document.getElementById('u').value.trim();
+  const p = document.getElementById('p').value;
+  const err = document.getElementById('err');
+  err.classList.remove('show');
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username: u, password: p})
+    });
+    if (r.ok) {
+      location.href = '/';
+    } else {
+      err.classList.add('show');
+    }
+  } catch {
+    err.classList.add('show');
+  }
+});
+</script>
+</body>
+</html>

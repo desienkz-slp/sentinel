@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -21,6 +22,11 @@ type Config struct {
 	// TrustedCIDRs: jaringan yang dipercaya seperti loopback (tanpa token
 	// operator). Contoh "172.18.20.0/25". Kosong = hanya loopback dipercaya.
 	TrustedCIDRs []string `json:"trusted_cidrs"`
+	// AuthUsers = kredensial login dashboard (username -> hash password). Login
+	// dashboard wajib bila diisi; kosong = hanya loopback/tepercaya tanpa login.
+	// Hash = HMAC-SHA256(password, AuthSalt) hex. Tidak pernah menyimpan plaintext.
+	AuthUsers map[string]string `json:"auth_users,omitempty"`
+	AuthSalt  string            `json:"auth_salt,omitempty"`
 	// DiagAllowlist berisi CIDR/IP/hostname yang boleh menjadi target diagnostik manual.
 	// Kosong = semua diagnostic network ditolak.
 	DiagAllowlist []string `json:"diag_allowlist"`
@@ -603,6 +609,8 @@ func (c *Config) Redacted() map[string]any {
 		"addr":               c.Addr,
 		"operator_token_set": c.OperatorToken != "",
 		"webhook_token_set":  c.WebhookToken != "",
+		"auth_users":         authUserNames(c.AuthUsers),
+		"auth_enabled":       len(c.AuthUsers) > 0,
 		"llm_base_url":       c.LLMBaseURL,
 		"llm_model":          c.LLMModel,
 		"llm_wire_api":       c.LLMWireAPI,
@@ -680,6 +688,19 @@ func maskSecret(s string) string {
 		return "••••"
 	}
 	return "••••" + s[len(s)-4:]
+}
+
+// authUserNames mengembalikan daftar nama user login (urut), tanpa hash.
+func authUserNames(m map[string]string) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m))
+	for name := range m {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Routers mengembalikan daftar router MikroTik yang terkonfigurasi. Bila

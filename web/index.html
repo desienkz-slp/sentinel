@@ -132,7 +132,6 @@
 <body>
 <header>
   <div class="header-inner">
-    <a class="gear" href="/settings.html" title="Pengaturan" aria-label="Pengaturan">⚙</a>
     <a class="brand-link" href="/" title="Ke Dashboard">
       <img class="brand-logo" src="/logo.png" alt="NOC Sentinel" width="40" height="40">
     </a>
@@ -142,12 +141,13 @@
     </div>
     <div class="spacer"></div>
     <div class="pills">
-      <div class="pill"><span class="ep-tag a">A</span><span class="dot" id="dotLLM"></span><span id="txtLLM">A · Conversation</span></div>
-      <div class="pill"><span class="ep-tag b">B</span><span class="dot" id="dotCodex"></span><span id="txtCodex">B · Reasoning</span></div>
-      <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WhatsApp…</span></div>
-      <div class="pill" id="pillModel">model: —</div>
+      <div class="pill"><span class="dot" id="dotLLM"></span><span id="txtLLM">A</span></div>
+      <div class="pill"><span class="dot" id="dotCodex"></span><span id="txtCodex">B</span></div>
+      <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WA</span></div>
+      <div class="pill" id="pillModel">—</div>
       <div class="pill" id="pillVersion" title="Versi aplikasi">v—</div>
-      <button class="pill" id="btnUpdate" style="display:none;cursor:pointer;border:none;background:#1f6feb;color:#fff;font-weight:600" title="Pasang versi terbaru">⬆ Update tersedia</button>
+      <button class="pill" id="btnUpdate" style="display:none;cursor:pointer;border:none;background:#1f6feb;color:#fff;font-weight:600" title="Pasang versi terbaru">⬆ Update</button>
+      <a class="gear" href="/settings.html" title="Pengaturan" aria-label="Pengaturan">⚙</a>
     </div>
   </div>
 </header>
@@ -345,12 +345,11 @@ async function boot() {
     const st = await api('/api/status');
     const c = st.config;
     window._model = c.llm_model;
-    $('pillModel').textContent = 'model: ' + c.llm_model;
-    // Endpoint B = Reasoning (bukan Codex CLI). Tampilkan status berdasar
-    // key tersimpan (sama seperti pill A), bukan codex_ready.
-    setDot('Codex', !!c.codex_key_set, c.codex_key_set ? 'B · Reasoning' : 'B · key belum ada');
-    if (!c.llm_key_set) setDot('LLM', false, 'A · API key belum ada');
-    else setDot('LLM', true, 'A · Conversation');
+    $('pillModel').textContent = c.llm_model;
+    // Endpoint B = Reasoning (bukan Codex CLI). Label ringkas.
+    setDot('Codex', !!c.codex_key_set, c.codex_key_set ? 'B' : 'B·key?');
+    if (!c.llm_key_set) setDot('LLM', false, 'A·key?');
+    else setDot('LLM', true, 'A');
     blList = (c.wa_blocklist||[]).slice();
     renderBlCount();
     $('sWAGroup').value = String(!!c.wa_group);
@@ -588,11 +587,11 @@ async function removeBlocked(i) {
 }
 
 async function waStatus() {
-  setDot('WA', false, 'WhatsApp: cek…');
+  setDot('WA', false, 'WA…');
   try {
     const d = await api('/api/wa/status');
-    if (!d.enabled) { setDot('WA', false, 'WA: gateway belum diset'); setWAMsg('Gateway belum aktif. Tekan ▶ Mulai.'); return; }
-    setDot('WA', !!d.connected, d.connected ? 'WhatsApp tersambung' : 'WA: belum login (scan QR)');
+    if (!d.enabled) { setDot('WA', false, 'WA?'); setWAMsg('Gateway belum aktif. Tekan ▶ Mulai.'); return; }
+    setDot('WA', !!d.connected, d.connected ? 'WA' : 'WA?');
     const s = d.gateway || {};
     setWAMsg('Status: ' + (s.status||s.state||'—') + (d.error ? ' · error: '+d.error : ''));
   } catch(e) { setDot('WA', false, 'WA: error'); setWAMsg('Gagal cek status: ' + e.message); }

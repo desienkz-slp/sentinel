@@ -329,6 +329,9 @@ func main() {
 	}
 	srv.syncDirectory()
 
+	// Autentikasi login dashboard (bootstrap superadmin default + cookie session).
+	srv.bootstrapAuth()
+
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv.routes(),
