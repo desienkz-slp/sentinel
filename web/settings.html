@@ -233,6 +233,27 @@
     </div>
     <div class="hint" id="staffMsg"></div>
   </section>
+
+  <section class="card">
+    <h2>Aturan Kebijakan (Rules)</h2>
+    <p class="hint">Aturan deny-by-default yang dievaluasi deterministik (bukan LLM) untuk tiap tindakan. Edit menimpa baseline via overlay lokal <code>policies/policy.local.yaml</code> (baseline rilis tidak diubah). Perubahan butuh superadmin + PIN.</p>
+    <div id="rulesList" style="margin:12px 0"></div>
+    <div class="row" style="margin-top:10px">
+      <button onclick="loadRules()">↻ Muat ulang</button>
+      <button onclick="saveRules()" style="background:var(--card2)">Simpan Perubahan</button>
+    </div>
+    <div class="hint" id="rulesMsg"></div>
+  </section>
+
+  <section class="card">
+    <h2>Skill / Resep (Self-learning)</h2>
+    <p class="hint">Urutan pengecekan yang terbukti konklusif (ditemukan Endpoint B). Hapus resep yang salah; sistem akan belajar ulang. Hapus butuh superadmin + PIN.</p>
+    <div id="recipesList" style="margin:12px 0"></div>
+    <div class="row" style="margin-top:10px">
+      <button onclick="loadRecipes()">↻ Muat ulang</button>
+    </div>
+    <div class="hint" id="recipesMsg"></div>
+  </section>
 </main>
 
 <script>
@@ -744,8 +765,98 @@ async function delStaff(number){
   } catch(e){ msg('staffMsg', false, 'Gagal: '+e.message); }
 }
 
+// ---------- Aturan Kebijakan (Rules) ----------
+let _rules = [];
+async function loadRules(){
+  try {
+    const d = await api('/api/rules');
+    _rules = d.rules || [];
+    $('rulesList').innerHTML = _rules.map((r, i) => `
+      <div class="rule-row" style="display:grid;grid-template-columns:1fr 90px 110px 30px;gap:6px;align-items:center;margin-bottom:6px">
+        <div>
+          <div style="font-weight:600">${esc(r.id)}</div>
+          <div class="hint" style="margin:0">${esc(r.description||'')}</div>
+        </div>
+        <input value="${esc(r.permission||'')}" placeholder="permission" data-r="${i}" data-f="permission" style="font-size:12px">
+        <select data-r="${i}" data-f="decision" style="font-size:12px">
+          ${['ALLOW','APPROVAL_REQUIRED','DENY','REMOVE'].map(o => `<option ${(r.decision||'').toUpperCase()===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+        <button class="ghost" style="color:var(--bad);padding:2px" title="hapus rule" onclick="delRule(${i})">🗑</button>
+        <div style="grid-column:1/-1" class="hint">tool: <b>${esc(r.tool||'—')}</b> · scope: <b>${esc(r.scope||'—')}</b> · risk: <b>${esc(r.risk||'—')}</b>${r.requires&&r.requires.length?' · requires: <b>'+esc(r.requires.join(', '))+'</b>':''}</div>
+      </div>`).join('');
+  } catch(e){ $('rulesList').innerHTML = '<div class="hint bad">Gagal: '+esc(e.message)+'</div>'; }
+}
+function delRule(i){ _rules.splice(i,1); loadRulesLocal(); }
+function loadRulesLocal(){
+  $('rulesList').innerHTML = _rules.map((r, i) => `
+    <div class="rule-row" style="display:grid;grid-template-columns:1fr 90px 110px 30px;gap:6px;align-items:center;margin-bottom:6px">
+      <div style="font-weight:600">${esc(r.id)}</div>
+      <input value="${esc(r.permission||'')}" data-r="${i}" data-f="permission" style="font-size:12px">
+      <select data-r="${i}" data-f="decision" style="font-size:12px">
+        ${['ALLOW','APPROVAL_REQUIRED','DENY','REMOVE'].map(o => `<option ${(r.decision||'').toUpperCase()===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+      <button class="ghost" style="color:var(--bad);padding:2px" onclick="delRule(${i})">🗑</button>
+    </div>`).join('');
+}
+// Baca nilai input/select hasil edit user sebelum simpan.
+function collectRules(){
+  const rows = document.querySelectorAll('#rulesList .rule-row');
+  rows.forEach(row => {
+    const idx = row.querySelector('input')?.dataset.r;
+    if (idx === undefined) return;
+    const i = Number(idx);
+    row.querySelectorAll('[data-f]').forEach(el => {
+      const f = el.dataset.f;
+      _rules[i][f] = el.value;
+    });
+  });
+}
+async function saveRules(){
+  collectRules();
+  const number = prompt('Nomor WhatsApp superadmin (contoh 6281333678765):');
+  if (!number) return;
+  const pin = prompt('PIN superadmin:');
+  if (pin === null) return;
+  try {
+    const d = await api('/api/rules', {method:'POST', body: JSON.stringify({number, pin, rules: _rules})});
+    msg('rulesMsg', true, 'Aturan tersimpan ke overlay: ' + (d.overlay||''));
+    await loadRules();
+  } catch(e){ msg('rulesMsg', false, 'Gagal: '+e.message); }
+}
+
+// ---------- Skill / Resep ----------
+async function loadRecipes(){
+  try {
+    const d = await api('/api/recipes');
+    const list = d.resep || [];
+    if (!list.length) { $('recipesList').innerHTML = '<div class="hint">Belum ada resep tersimpan.</div>'; return; }
+    $('recipesList').innerHTML = list.map(r => `
+      <div class="rule-row" style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px">
+        <div style="flex:1">
+          <div style="font-weight:600">${esc(r.signature)}</div>
+          <div class="hint" style="margin:0">${esc((r.tools||[]).join(' → '))} · verdict: <b>${esc(r.verdict)}</b> · hits: ${r.hits}</div>
+        </div>
+        <button class="ghost" style="color:var(--bad);padding:2px" title="hapus resep" onclick="delRecipe(${JSON.stringify(esc(r.signature))}, ${JSON.stringify((r.tools||[]).join('|'))})">🗑</button>
+      </div>`).join('');
+  } catch(e){ $('recipesList').innerHTML = '<div class="hint bad">Gagal: '+esc(e.message)+'</div>'; }
+}
+async function delRecipe(signature, tools){
+  if (!confirm('Hapus resep untuk "'+signature+'"?')) return;
+  const number = prompt('Nomor WhatsApp superadmin:');
+  if (!number) return;
+  const pin = prompt('PIN superadmin:');
+  if (pin === null) return;
+  try {
+    await api('/api/recipes', {method:'DELETE', body: JSON.stringify({number, pin, signature, tools})});
+    msg('recipesMsg', true, 'Resep dihapus.');
+    await loadRecipes();
+  } catch(e){ msg('recipesMsg', false, 'Gagal: '+e.message); }
+}
+
 boot();
 loadStaff();
+loadRules();
+loadRecipes();
 
 // Tombol logout.
 document.getElementById('btnLogout').addEventListener('click', async (e) => {

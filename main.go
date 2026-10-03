@@ -144,7 +144,7 @@ func main() {
 	// ---- Blueprint upgrade: policy, registry, workflow, incident, audit ----
 	// Semua deny-by-default. Policy & registry memuat file YAML; workflow dimuat
 	// dari direktori; incident & audit dipersist ke JSON (PostgreSQL menyusul).
-	pol := policy.Load(cfg.PolicyPath)
+	pol := policy.LoadMerged(cfg.PolicyPath, config.PolicyOverlayPath())
 	reg := registry.LoadMerged(cfg.RegistryPath, config.RegistryOverlayPath())
 	wkf, wfErr := workflow.LoadDir(cfg.WorkflowDir)
 	if wfErr != nil {

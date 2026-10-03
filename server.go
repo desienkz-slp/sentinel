@@ -161,6 +161,9 @@ func (s *Server) routes() http.Handler {
 	// Autentikasi login dashboard (cookie session).
 	s.registerAuthRoutes(mux)
 
+	// List + edit Skill (resep) & Rule (policy) dari UI Settings.
+	s.registerSettingsCRUDRoutes(mux)
+
 	// Liveness tidak bergantung pada layanan lain: proses HTTP masih hidup.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "ai-noc-go"})
@@ -654,16 +657,8 @@ func (s *Server) routes() http.Handler {
 	})
 
 	// Resep "cara pengecekan" Endpoint B (deep-dive) yang terbukti konklusif.
-	mux.HandleFunc("/api/recipes", func(w http.ResponseWriter, r *http.Request) {
-		if s.engine == nil || s.engine.Recipes == nil {
-			writeJSON(w, 200, map[string]any{"statistik": map[string]any{"resep": 0, "signature": 0, "tersimpan": false}, "resep": []map[string]any{}})
-			return
-		}
-		writeJSON(w, 200, map[string]any{
-			"statistik": s.engine.Recipes.Stats(),
-			"resep":     s.engine.Recipes.Semua(),
-		})
-	})
+	// List + delete resep ada di settings_crud_wire.go (/api/recipes GET/DELETE).
+
 
 	// ---- Blueprint upgrade: policy, registry, workflow, incident, audit ----
 

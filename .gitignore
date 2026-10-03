@@ -33,6 +33,8 @@ NOC_AGENT_API.md
 
 # local tool enablement (operator step-2, never committed)
 tools/registry.local.yaml
+# local policy rule overrides (operator superadmin edit, never committed)
+policies/policy.local.yaml
 dist/
 
 # Rig uji lokal (config + data uji, bisa memuat salinan kunci LLM)

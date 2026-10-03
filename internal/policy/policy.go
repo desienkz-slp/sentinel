@@ -73,18 +73,57 @@ type Result struct {
 	Reasons  []string `json:"reasons,omitempty"`
 }
 
+// Match adalah kriteria pencocokan satu aturan. Field kosong = wildcard.
+type Match struct {
+	Tool       string `yaml:"tool" json:"tool"`
+	Permission string `yaml:"permission" json:"permission"`
+	Scope      string `yaml:"scope" json:"scope"`
+	Risk       string `yaml:"risk" json:"risk"`
+}
+
 // rule adalah satu aturan dari file kebijakan.
 type rule struct {
-	ID          string `yaml:"id"`
-	Description string `yaml:"description"`
-	Match       struct {
-		Tool       string `yaml:"tool"`
-		Permission string `yaml:"permission"`
-		Scope      string `yaml:"scope"`
-		Risk       string `yaml:"risk"`
-	} `yaml:"match"`
-	Decision string   `yaml:"decision"`
-	Requires []string `yaml:"requires"`
+	ID          string   `yaml:"id" json:"id"`
+	Description string   `yaml:"description" json:"description"`
+	Match       Match    `yaml:"match" json:"match"`
+	Decision    string   `yaml:"decision" json:"decision"`
+	Requires    []string `yaml:"requires" json:"requires"`
+}
+
+// Rule adalah bentuk publik (diekspos) dari satu aturan kebijakan, dipakai oleh
+// API/UI untuk list + edit.
+type Rule struct {
+	ID          string   `json:"id" yaml:"id"`
+	Description string   `json:"description" yaml:"description"`
+	Tool        string   `json:"tool,omitempty" yaml:"tool,omitempty"`
+	Permission  string   `json:"permission,omitempty" yaml:"permission,omitempty"`
+	Scope       string   `json:"scope,omitempty" yaml:"scope,omitempty"`
+	Risk        string   `json:"risk,omitempty" yaml:"risk,omitempty"`
+	Decision    string   `json:"decision" yaml:"decision"`
+	Requires    []string `json:"requires,omitempty" yaml:"requires,omitempty"`
+}
+
+func (r Rule) toInternal() rule {
+	return rule{
+		ID:          r.ID,
+		Description: r.Description,
+		Match:       Match{Tool: r.Tool, Permission: r.Permission, Scope: r.Scope, Risk: r.Risk},
+		Decision:    r.Decision,
+		Requires:    r.Requires,
+	}
+}
+
+func (r rule) toPublic() Rule {
+	return Rule{
+		ID:          r.ID,
+		Description: r.Description,
+		Tool:        r.Match.Tool,
+		Permission:  r.Match.Permission,
+		Scope:       r.Match.Scope,
+		Risk:        r.Match.Risk,
+		Decision:    r.Decision,
+		Requires:    r.Requires,
+	}
 }
 
 type riskCfg struct {
@@ -171,6 +210,15 @@ func Load(path string) *Engine {
 
 // Mode mengembalikan mode otonomi aktif.
 func (e *Engine) Mode() Mode { return e.mode }
+
+// Rules mengembalikan semua aturan eksplisit (bentuk publik) untuk list/UI.
+func (e *Engine) Rules() []Rule {
+	out := make([]Rule, 0, len(e.rules))
+	for _, r := range e.rules {
+		out = append(out, r.toPublic())
+	}
+	return out
+}
 
 func normPermission(p Permission) Permission {
 	switch Permission(strings.ToUpper(strings.TrimSpace(string(p)))) {

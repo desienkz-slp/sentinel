@@ -13,6 +13,7 @@ package learning
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -140,6 +141,30 @@ func (s *RecipeStore) Record(sig Signature, tools []string, verdict string) {
 	})
 	s.items[sig] = list
 	s.dirty = true
+}
+
+// Remove menghapus satu resep (signature + urutan tools) bila cocok.
+func (s *RecipeStore) Remove(sig Signature, tools []string) error {
+	key := strings.Join(tools, "\x00")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list := s.items[sig]
+	for i, r := range list {
+		if strings.Join(r.Tools, "\x00") == key {
+			list = append(list[:i], list[i+1:]...)
+			if len(list) == 0 {
+				delete(s.items, sig)
+			} else {
+				s.items[sig] = list
+			}
+			s.dirty = true
+			if err := s.Save(); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("resep tidak ditemukan")
 }
 
 // ---- baca ----

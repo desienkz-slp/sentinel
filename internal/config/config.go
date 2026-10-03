@@ -307,6 +307,23 @@ func defaultPolicyPath() string {
 	return filepath.Join(projectRoot(), "policies", "default-policy.yaml")
 }
 
+// PolicyOverlayPath mengembalikan overlay lokal (`policies/policy.local.yaml`,
+// gitignored) bila ada; kosong bila tidak ada. Overlay = perubahan rules oleh
+// operator (superadmin+PIN) yang TIDAK menyentuh baseline deny-by-default.
+func PolicyOverlayPath() string {
+	local := filepath.Join(projectRoot(), "policies", "policy.local.yaml")
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return ""
+}
+
+// DefaultPolicyOverlayPath = path overlay untuk MENULIS (dipakai UI/API saat
+// operator menyimpan perubahan rules), selalu non-kosong.
+func DefaultPolicyOverlayPath() string {
+	return filepath.Join(projectRoot(), "policies", "policy.local.yaml")
+}
+
 // defaultRegistryPath mengembalikan path registry tool. Bila ada overlay lokal
 // `tools/registry.local.yaml` (gitignored, step-2 operator untuk mengaktifkan
 // tool READ setelah endpoint+kredensial nyata tersedia), file itu diutamakan.
