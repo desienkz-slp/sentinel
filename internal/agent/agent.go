@@ -210,7 +210,12 @@ func (k KonteksAI) blokKonteks() string {
 			k.Signature, k.Ulang, k.VerdictAkhir)
 	}
 
-	if len(k.Playbook) > 0 {
+	// Playbook (urutan probe terbaik dari pembelajaran) HANYA disuntikkan untuk
+	// keluhan nyata (COMPLAINT). Untuk sapaan/info/tidak-jelas playbook tidak
+	// relevan dan justru bisa dibocorkan model ke pelanggan (mis. "urutan probe
+	// yang ditentukan: mikrotik.get_pppoe_status -> genieacs..."). Ini gerbang
+	// kode (bukan prompt) supaya kebocoran teknis tidak terjadi untuk model apa pun.
+	if len(k.Playbook) > 0 && k.Klas.Intent == standard.IntentComplaint {
 		b.WriteString("\nUrutan probe yang paling terbukti berguna untuk keluhan jenis ini " +
 			"(hasil pembelajaran dari diagnosis sebelumnya): " + strings.Join(k.Playbook, " -> ") + "\n")
 	}

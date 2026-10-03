@@ -3,6 +3,8 @@ package agent
 import (
 	"strings"
 	"testing"
+
+	"ainoc/internal/standard"
 )
 
 func TestParseVerdict(t *testing.T) {
@@ -169,5 +171,34 @@ func TestPisahBalasanKosong(t *testing.T) {
 	b, tk := PisahBalasan("")
 	if b != "" || tk != "" {
 		t.Errorf("jawaban kosong -> (%q, %q), mau kosong", b, tk)
+	}
+}
+
+// TestBlokKonteksPlaybookHanyaUntukKeluhan membuktikan playbook (urutan probe
+// teknis dari pembelajaran) TIDAK disuntikkan untuk intent non-keluhan. Ini
+// mencegah model membocorkan urutan probe (mis. "mikrotik.get_pppoe_status ->
+// genieacs...") ke pelanggan pada sapaan/info — gerbang kode, bukan prompt.
+func TestBlokKonteksPlaybookHanyaUntukKeluhan(t *testing.T) {
+	playbook := []string{"mikrotik.get_pppoe_status", "genieacs.get_device_state"}
+
+	// Intent INFO (mis. broadcast "STATUS USER") -> playbook TIDAK boleh muncul.
+	k := KonteksAI{
+		Klas:     HasilKlasifikasi{Intent: standard.IntentInfo},
+		Playbook: playbook,
+	}
+	if got := k.blokKonteks(); strings.Contains(got, "mikrotik.get_pppoe_status") {
+		t.Errorf("intent INFO: playbook bocor ke konteks: %q", got)
+	}
+
+	// Intent CHAT (sapaan) -> sama, tidak boleh.
+	k.Klas.Intent = standard.IntentChat
+	if got := k.blokKonteks(); strings.Contains(got, "mikrotik.get_pppoe_status") {
+		t.Errorf("intent CHAT: playbook bocor ke konteks: %q", got)
+	}
+
+	// Intent COMPLAINT -> playbook WAJIB disuntikkan (berguna untuk diagnosis).
+	k.Klas.Intent = standard.IntentComplaint
+	if got := k.blokKonteks(); !strings.Contains(got, "mikrotik.get_pppoe_status") {
+		t.Errorf("intent COMPLAINT: playbook hilang dari konteks: %q", got)
 	}
 }

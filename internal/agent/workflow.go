@@ -18,6 +18,7 @@ import (
 
 	"ainoc/internal/caseengine"
 	"ainoc/internal/correlation"
+	"ainoc/internal/directory"
 	"ainoc/internal/llm"
 	"ainoc/internal/policy"
 	"ainoc/internal/workflow"
@@ -46,6 +47,21 @@ func (e *Engine) runWorkflow(ctx context.Context, identity, target string, def w
 	vars := map[string]string{"identity_id": identity}
 	if target != "" {
 		vars["device_id_if_known"] = target
+	}
+
+	// resolve_identity (blueprint §13 langkah 0) — sebenarnya di sini, bukan
+	// no-op. Identitas pengirim sudah dinormalisasi jadi nomor 628xxx, tetapi
+	// adapter HILIR (RADIUS & MikroTik) mencocokkan berdasarkan USERNAME PPPoE,
+	// bukan nomor. Bila penelepon sudah teridentifikasi sebagai pelanggan
+	// (caller.Customer.Username terisi — jalur webhook memanggil identifyCaller
+	// lalu withCaller), pakai username itu sebagai kunci identitas hilir. Tanpa
+	// ini, radius.get_session/mikrotik.get_pppoe_status selalu "tidak ada sesi"
+	// walau datanya tersedia (dulu 6281210797235 dicari apa adanya, padahal
+	// yang tersimpan adalah username "jttcitra").
+	if c, ok := directory.CallerFrom(ctx); ok && c.Customer != nil {
+		if u := strings.TrimSpace(c.Customer.Username); u != "" {
+			vars["identity_id"] = u
+		}
 	}
 
 	// record mencatat langkah ke h.Steps sekaligus meneruskannya ke emit (SSE/dashboard).

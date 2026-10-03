@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"ainoc/internal/directory"
 	"ainoc/internal/policy"
 	"ainoc/internal/registry"
 	"ainoc/internal/tool"
@@ -139,6 +140,126 @@ func TestRunWorkflowNoDispatcher(t *testing.T) {
 	h := e.runWorkflow(context.Background(), "628111222333", "", def, nil)
 	if h.Aborted == "" {
 		t.Error("tanpa dispatcher, workflow harus aborted pada langkah tool pertama")
+	}
+}
+
+// recWfAdapter merekam argumen "identity" yang diterima adapter (untuk
+// membuktikan identity hilir = username, bukan nomor telepon).
+type recWfAdapter struct {
+	domain string
+	ids    []string
+}
+
+func (f *recWfAdapter) Domain() string   { return f.domain }
+func (f *recWfAdapter) Name() string     { return f.domain }
+func (f *recWfAdapter) Configured() bool { return true }
+func (f *recWfAdapter) ToolNames() []string {
+	return []string{
+		f.domain + ".get_customer",
+		f.domain + ".get_session",
+		f.domain + ".get_pppoe_status",
+		f.domain + ".get_device_state",
+	}
+}
+func (f *recWfAdapter) Health(ctx context.Context) (string, error) { return "ok", nil }
+func (f *recWfAdapter) Invoke(ctx context.Context, name string, args map[string]any) (tool.Output, error) {
+	if v, ok := args["identity"]; ok {
+		if s, isStr := v.(string); isStr {
+			f.ids = append(f.ids, s)
+		}
+	}
+	return tool.Output{Text: "status=ONLINE"}, nil
+}
+
+// TestRunWorkflowResolvesIdentityToUsername membuktikan perbaikan resolve_identity:
+// bila penelepon sudah teridentifikasi sebagai pelanggan (Caller.Customer.Username
+// terisi), langkah hilir (radius/mikrotik/genieacs) menerima USERNAME PPPoE —
+// bukan nomor telepon 628xxx. Tanpa ini, adapter RADIUS/MikroTik yang mencocokkan
+// username selalu menjawab "tidak ada sesi" walau datanya ada.
+func TestRunWorkflowResolvesIdentityToUsername(t *testing.T) {
+	reg := writeWfReg(t, true)
+	pol := policy.Load("")
+	disp := tool.New(reg, pol, time.Second)
+
+	radiusRec := &recWfAdapter{domain: "radius"}
+	mikrotikRec := &recWfAdapter{domain: "mikrotik"}
+	genieacsRec := &recWfAdapter{domain: "genieacs"}
+	disp.Register(&recWfAdapter{domain: "billing"})
+	disp.Register(radiusRec)
+	disp.Register(mikrotikRec)
+	disp.Register(genieacsRec)
+
+	wf, err := workflow.LoadDir("../../workflows")
+	if err != nil {
+		t.Fatalf("LoadDir: %v", err)
+	}
+	def, ok := wf.ForIntent("COMPLAINT")
+	if !ok {
+		t.Fatal("workflow COMPLAINT tidak ditemukan")
+	}
+
+	e := &Engine{Reg: reg, Disp: disp, Wkf: wf}
+
+	// Penelepon pelanggan: nomor WA 6281210797235, username PPPoE "jttcitra".
+	caller := directory.Caller{
+		Number:     "6281210797235",
+		Role:       directory.RoleCustomer,
+		IsCustomer: true,
+		Customer:   &directory.CustomerInfo{Username: "jttcitra", Phone: "6281210797235"},
+	}
+	ctx := directory.WithCaller(context.Background(), caller)
+
+	h := e.runWorkflow(ctx, caller.Number, "", def, nil)
+
+	if h.Aborted != "" {
+		t.Fatalf("workflow terhenti: %s", h.Aborted)
+	}
+
+	// Radius + MikroTik + GenieACS harus menerima username "jttcitra", BUKAN nomor.
+	for name, rec := range map[string]*recWfAdapter{
+		"radius":   radiusRec,
+		"mikrotik": mikrotikRec,
+		"genieacs": genieacsRec,
+	} {
+		if len(rec.ids) == 0 {
+			t.Errorf("%s: adapter tidak dipanggil", name)
+			continue
+		}
+		for _, id := range rec.ids {
+			if id == "6281210797235" {
+				t.Errorf("%s: menerima nomor telepon %q — harusnya username \"jttcitra\"", name, id)
+			}
+			if id != "jttcitra" {
+				t.Errorf("%s: identity = %q, mau \"jttcitra\"", name, id)
+			}
+		}
+	}
+}
+
+// TestRunWorkflowIdentityFallbackToPhone: tanpa caller (mis. pemanggilan dari
+// dashboard /api/ask tanpa identitas pelanggan), identity_id tetap nomor pengirim
+// (tidak berubah — backward compatible).
+func TestRunWorkflowIdentityFallbackToPhone(t *testing.T) {
+	reg := writeWfReg(t, true)
+	pol := policy.Load("")
+	disp := tool.New(reg, pol, time.Second)
+	radiusRec := &recWfAdapter{domain: "radius"}
+	disp.Register(&recWfAdapter{domain: "billing"})
+	disp.Register(radiusRec)
+	disp.Register(&recWfAdapter{domain: "mikrotik"})
+	disp.Register(&recWfAdapter{domain: "genieacs"})
+
+	wf, _ := workflow.LoadDir("../../workflows")
+	def, _ := wf.ForIntent("COMPLAINT")
+
+	e := &Engine{Reg: reg, Disp: disp, Wkf: wf}
+	// context.Background() tanpa caller -> harus fallback ke nomor.
+	_ = e.runWorkflow(context.Background(), "6281210797235", "", def, nil)
+
+	for _, id := range radiusRec.ids {
+		if id != "6281210797235" {
+			t.Errorf("tanpa caller, identity = %q, mau fallback ke nomor 6281210797235", id)
+		}
 	}
 }
 
