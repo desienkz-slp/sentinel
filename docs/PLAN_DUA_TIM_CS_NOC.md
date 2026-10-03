@@ -24,7 +24,7 @@ yang sudah ada, bukan dari nol. (Jendela waktu korelasi belum saya baca; dicek d
 | 2 Profil tim + pembatas | SELESAI di kode; `cs_scope=shadow` menyala; belum `on` | v0.2.24 | batas ditegakkan di agen DAN workflow; uji model-jahat lulus |
 | 3 Presentasi | SELESAI di kode; `presenter=shadow` menyala; belum `on` | v0.2.25 | penyaring menyunting (bukan memblokir); uji negatif: teks sah tak berubah |
 | 4 Serah-terima | SELESAI di kode; `handoff=shadow` menyala; belum `on` | v0.2.26 | alur utuh teruji (eskalasi -> tutup -> pesan tersaring); otorisasi per domain |
-| 5 Keparahan | diblokir keputusan §6.1 | | |
+| 5 Keparahan | SELESAI di kode; `severity=shadow`; ambang BELUM diisi operator -> hasil UNRATED | v0.2.27 | fungsi murni `internal/severity`; ambang via `severity_policy` di `/api/config`, divalidasi; tanpa kebijakan = UNRATED, bukan tebakan |
 
 Temuan Fase 0: `config.json` produksi menyimpan `registry_path` eksplisit ke
 `registry.yaml`, sehingga overlay `registry.local.yaml` TIDAK PERNAH dipakai: 0 tool aktif
