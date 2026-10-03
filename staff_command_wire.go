@@ -44,7 +44,7 @@ func (s *Server) handleStaffCommand(ctx context.Context, caller directory.Caller
 	switch cmd.Kind {
 	case directory.CmdBilling:
 		title = "Billing"
-		tools = []string{"billing.get_customer"}
+		tools = []string{"billing.get_customer", "billing.get_history"}
 	case directory.CmdTraffic:
 		title = "Traffic"
 		tools = []string{"mikrotik.get_customer_traffic"}
@@ -89,6 +89,8 @@ func toolLabel(tool string) string {
 	switch tool {
 	case "billing.get_customer":
 		return "Billing"
+	case "billing.get_history":
+		return "Riwayat tagihan"
 	case "radius.get_session":
 		return "RADIUS"
 	case "mikrotik.get_pppoe_status":

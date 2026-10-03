@@ -25,6 +25,25 @@ tools:
           description: Nomor telepon ternormalisasi (628xxx) atau ID pelanggan.
       required: [identity]
 
+  - name: billing.get_history
+    domain: billing
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: billing
+    timeout_seconds: 10
+    retry: safe_get
+    verification: response_contract
+    description: Riwayat tagihan bulanan + tunggakan satu pelanggan (token Bearer, read-only).
+    parameters:
+      type: object
+      properties:
+        identity:
+          type: string
+          description: Username pelanggan.
+      required: [identity]
+
   - name: radius.get_session
     domain: radius
     version: 1.0.0

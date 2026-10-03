@@ -30,17 +30,18 @@ type AuthResult struct {
 // berisiko tinggi -> butuh izin manage_staff (praktis: hanya super admin).
 var toolPerms = map[string]Permission{
 	// --- Networking READ ---
-	"mikrotik.get_pppoe_status":    PermNetworkingRead,
-	"mikrotik.get_interface_stats": PermNetworkingRead,
-	"mikrotik.get_interface_live":  PermNetworkingRead,
+	"mikrotik.get_pppoe_status":     PermNetworkingRead,
+	"mikrotik.get_interface_stats":  PermNetworkingRead,
+	"mikrotik.get_interface_live":   PermNetworkingRead,
 	"mikrotik.get_customer_traffic": PermNetworkingRead,
-	"radius.get_session":           PermNetworkingRead,
-	"radius.get_user":              PermNetworkingRead,
-	"radius.get_system_stats":      PermNetworkingRead,
-	"genieacs.get_device_state":    PermNetworkingRead,
-	"genieacs.get_devices":         PermNetworkingRead,
+	"radius.get_session":            PermNetworkingRead,
+	"radius.get_user":               PermNetworkingRead,
+	"radius.get_system_stats":       PermNetworkingRead,
+	"genieacs.get_device_state":     PermNetworkingRead,
+	"genieacs.get_devices":          PermNetworkingRead,
 	// --- Billing READ ---
 	"billing.get_customer": PermReadAll,
+	"billing.get_history":  PermReadAll,
 	// --- Networking WRITE (berisiko) ---
 	"mikrotik.disconnect_pppoe": PermNetworkingWrite,
 }

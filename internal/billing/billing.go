@@ -81,6 +81,7 @@ type customersResponse struct {
 // Adapter adalah adaptor billing read-only.
 type Adapter struct {
 	http *adapter.HTTP
+	v1   *adapter.HTTP // /api/v1 + Bearer (Sanctum); nil = riwayat tagihan nonaktif
 }
 
 // New membuat BillingAdapter. baseURL = NOC_BILLING_URL (mis. http://server),
@@ -112,7 +113,7 @@ func (a *Adapter) Name() string { return "NETORA Billing" }
 func (a *Adapter) Configured() bool { return a.http != nil && a.http.Configured() }
 
 // ToolNames memenuhi tool.Adapter.
-func (a *Adapter) ToolNames() []string { return []string{"billing.get_customer"} }
+func (a *Adapter) ToolNames() []string { return []string{"billing.get_customer", ToolHistory} }
 
 // Health memenuhi tool.Adapter: probe dengan GET /customers?per_page=1.
 func (a *Adapter) Health(ctx context.Context) (string, error) {
@@ -156,6 +157,8 @@ func (a *Adapter) Invoke(ctx context.Context, name string, args map[string]any) 
 	switch name {
 	case "billing.get_customer":
 		return a.getCustomer(ctx, args)
+	case ToolHistory:
+		return a.getHistory(ctx, args)
 	default:
 		return tool.Output{}, fmt.Errorf("tool billing tidak dikenal: %s", name)
 	}
