@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -430,5 +431,26 @@ func TestScopeOnWorkflowNOCTidakDiubah(t *testing.T) {
 	}
 	if !found {
 		t.Error("billing.get_customer tidak dipanggil di workflow NOC")
+	}
+}
+
+// CaseWire menyimpan tracker otomatis tiap transisi; proses baru memulihkannya.
+func TestCaseWireMenyimpanDanPulihSetelahRestart(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "cases.json")
+	a := NewCaseWire()
+	a.Tracker().SetPath(p)
+	snap := a.begin("628111000001", "whatsapp")
+	if snap.CaseID == "" {
+		t.Fatal("case harus dibuat")
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("berkas harus tertulis otomatis: %v", err)
+	}
+	b := NewCaseWire()
+	if err := b.Tracker().Load(p); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.Snapshot("628111000001"); got.CaseID != snap.CaseID || got.CaseState != snap.CaseState {
+		t.Fatalf("setelah restart: %+v, mau %+v", got, snap)
 	}
 }

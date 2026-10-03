@@ -26,6 +26,8 @@ type Tracker struct {
 	// satu identity boleh punya banyak case historis.
 	archive map[string]*Case
 	now     func() time.Time
+	path    string     // berkas persistensi; kosong = hanya memori
+	saveMu  sync.Mutex // serialisasi tulis berkas
 }
 
 // NewTracker membuat tracker kosong dengan jam waktu nyata.

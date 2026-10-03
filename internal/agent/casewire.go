@@ -50,7 +50,20 @@ func (w *CaseWire) SetAudit(aud *audit.Store) {
 // transition menerapkan transisi dan mencatatnya ke audit bila berhasil.
 // Merupakan satu-satunya jalur mutasi state di package ini.
 func (w *CaseWire) transition(c *caseengine.Case, next caseengine.State, actor, reason string) error {
-	return recordTransition(w.aud, c, next, actor, reason)
+	err := recordTransition(w.aud, c, next, actor, reason)
+	w.persist()
+	return err
+}
+
+// persist menyimpan tracker bila path terpasang. Kegagalan hanya dicatat; tidak
+// pernah memblokir atau mengubah balasan.
+func (w *CaseWire) persist() {
+	if w == nil || w.tracker == nil {
+		return
+	}
+	if err := w.tracker.Save(); err != nil {
+		log.Printf("[case] GAGAL simpan tracker: %v", err)
+	}
 }
 
 // CaseSnapshot adalah proyeksi read-only yang disalin ke Report, supaya Report

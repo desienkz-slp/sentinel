@@ -145,6 +145,12 @@ func main() {
 	// append-only (audit trail lengkap per §25) via store yang sama.
 	casew := agent.NewCaseWireWithAudit(aud)
 	engine.Case = casew
+	// Kasus bertahan melewati restart/update (sebelumnya hanya di memori).
+	casePath := filepath.Join(filepath.Dir(cfg.IncidentPath), "cases.json")
+	if err := casew.Tracker().Load(casePath); err != nil {
+		log.Printf("[case] pemulihan tracker gagal: %v", err)
+	}
+	casew.Tracker().SetPath(casePath)
 
 	// FASE 3: wire Policy gate untuk execute (deny-by-default).
 	// ExecutionGuard = allowlist aksi (dari registry + probe diag read-only) +
