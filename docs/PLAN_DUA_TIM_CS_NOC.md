@@ -21,7 +21,7 @@ yang sudah ada, bukan dari nol. (Jendela waktu korelasi belum saya baca; dicek d
 |---|---|---|---|
 | 0 Fondasi | SELESAI | v0.2.22 | overlay registry menggabung; flag; metrik; korpus + golden |
 | 1 Router intent | SELESAI (mode `shadow` menyala di produksi) | v0.2.23 | nol selisih di korpus; menunggu pengamatan produksi sebelum `on` |
-| 2 Profil tim + pembatas | berikutnya | | |
+| 2 Profil tim + pembatas | SELESAI di kode; `cs_scope=shadow` menyala; belum `on` | v0.2.24 | batas ditegakkan di agen DAN workflow; uji model-jahat lulus |
 | 3 Presentasi | | | |
 | 4 Serah-terima | | | |
 | 5 Keparahan | diblokir keputusan §6.1 | | |
