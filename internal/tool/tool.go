@@ -96,6 +96,33 @@ func (d *Dispatcher) Unregister(a Adapter) {
 	}
 }
 
+// DomainHealth adalah hasil pengecekan kesehatan satu domain.
+type DomainHealth struct {
+	Domain    string
+	Name      string
+	OK        bool
+	Detail    string // pesan sukses atau error
+	LatencyMS int64
+}
+
+// Health memeriksa kesehatan adapter satu domain yang terdaftar. found=false
+// bila domain itu tidak terdaftar (belum dikonfigurasi).
+func (d *Dispatcher) Health(ctx context.Context, domain string) (h DomainHealth, found bool) {
+	for _, a := range d.adapters {
+		if a.Domain() != domain {
+			continue
+		}
+		start := time.Now()
+		detail, err := a.Health(ctx)
+		h = DomainHealth{Domain: domain, Name: a.Name(), OK: err == nil, Detail: detail, LatencyMS: time.Since(start).Milliseconds()}
+		if err != nil {
+			h.Detail = err.Error()
+		}
+		return h, true
+	}
+	return DomainHealth{Domain: domain}, false
+}
+
 // Adapters mengembalikan daftar domain yang terdaftar (terurut).
 func (d *Dispatcher) Adapters() []string {
 	seen := map[string]bool{}

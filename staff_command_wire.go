@@ -26,6 +26,12 @@ func (s *Server) handleStaffCommand(ctx context.Context, caller directory.Caller
 	if !caller.IsStaff || s.disp == nil {
 		return "", false
 	}
+	// Pertanyaan status koneksi ("sudah bisa terhubung ke billing?") dijawab dari
+	// pengecekan adaptor nyata, sebelum ParseCommand agar "cek koneksi billing"
+	// tidak dibaca sebagai username "koneksi".
+	if doms, all := directory.ParseStatusQuestion(msg); len(doms) > 0 || all {
+		return s.integrationStatusReply(ctx, doms, all), true
+	}
 	cmd := directory.ParseCommand(msg)
 	if cmd.Kind == directory.CmdNone {
 		return "", false

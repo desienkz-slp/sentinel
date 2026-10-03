@@ -108,3 +108,36 @@ func TestStaffCommandBilling(t *testing.T) {
 		t.Fatalf("perintah billing hanya boleh memanggil billing: %q", text)
 	}
 }
+
+func TestStaffStatusQuestion(t *testing.T) {
+	s := staffCmdServer(t)
+	s.syncDirectory()
+	noc := s.identifyCaller(context.Background(), "628111222333")
+
+	// Pertanyaan persis dari log produksi: harus dijawab dari health adaptor,
+	// bukan dari LLM.
+	for _, q := range []string{"sudah bisa terhubung ke billing?", "sudab bisa baca billing?"} {
+		text, ok := s.handleStaffCommand(context.Background(), noc, "628111222333", q)
+		if !ok {
+			t.Fatalf("%q harus ditangani kode, bukan diteruskan ke LLM", q)
+		}
+		if !strings.Contains(text, "Billing: terhubung") {
+			t.Fatalf("%q -> %q, mau memuat 'Billing: terhubung'", q, text)
+		}
+		if strings.Contains(text, "RADIUS") {
+			t.Fatalf("hanya billing yang ditanya: %q", text)
+		}
+	}
+
+	// Domain yang tak terdaftar dijawab jujur.
+	text, ok := s.handleStaffCommand(context.Background(), noc, "628111222333", "genieacs konek?")
+	if !ok || !strings.Contains(text, "GenieACS: belum dikonfigurasi") {
+		t.Fatalf("genieacs tak terdaftar harus dilaporkan belum dikonfigurasi: ok=%v %q", ok, text)
+	}
+
+	// Perintah cek biasa tidak boleh terbajak jalur status.
+	text, ok = s.handleStaffCommand(context.Background(), noc, "628111222333", "cek billing pelanggan-uji")
+	if !ok || strings.Contains(text, "Status integrasi") {
+		t.Fatalf("cek billing <user> harus tetap jalur data pelanggan: %q", text)
+	}
+}
