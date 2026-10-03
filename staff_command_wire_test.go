@@ -101,7 +101,7 @@ func TestStaffCommandBilling(t *testing.T) {
 	s.syncDirectory()
 	noc := s.identifyCaller(context.Background(), "628111222333")
 	text, ok := s.handleStaffCommand(context.Background(), noc, "628111222333", "cek billing pelanggan-uji")
-	if !ok || !strings.Contains(text, "*Billing*") || !strings.Contains(text, "status=AKTIF") {
+	if !ok || !strings.Contains(text, "*Billing — pelanggan-uji*") || !strings.Contains(text, "status=AKTIF") {
 		t.Fatalf("balasan billing tidak sesuai: ok=%v %q", ok, text)
 	}
 	if strings.Contains(text, "RADIUS") || strings.Contains(text, "MikroTik") {
