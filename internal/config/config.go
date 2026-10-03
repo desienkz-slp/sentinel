@@ -118,6 +118,13 @@ type Config struct {
 	// root). Dijalankan detached saat operator menekan tombol Update.
 	UpdateScript string `json:"update_script"`
 
+	// ---- Mode tim CS/NOC (off|shadow|on; default off) ----
+	TeamRouting   string `json:"team_routing"`
+	TeamCSScope   string `json:"team_cs_scope"`
+	TeamHandoff   string `json:"team_handoff"`
+	TeamSeverity  string `json:"team_severity"`
+	TeamPresenter string `json:"team_presenter"`
+
 	// path adalah lokasi file config yang sedang dipakai. Disimpan supaya
 	// perubahan dari dashboard bisa ditulis kembali ke file yang SAMA.
 	// Tanpa ini, pengaturan hanya hidup di memori dan hilang saat restart.
@@ -291,11 +298,20 @@ func defaultPolicyPath() string {
 // tool READ setelah endpoint+kredensial nyata tersedia), file itu diutamakan.
 // File yang di-commit (registry.yaml) TETAP deny-by-default demi kontrak keamanan.
 func defaultRegistryPath() string {
+	// Selalu menunjuk registry dasar yang ikut rilis. Overlay lokal digabung
+	// terpisah lewat RegistryOverlayPath() + registry.LoadMerged, supaya tool
+	// baru di rilis tidak tersembunyi oleh overlay lama.
+	return filepath.Join(projectRoot(), "tools", "registry.yaml")
+}
+
+// RegistryOverlayPath mengembalikan overlay lokal (`tools/registry.local.yaml`,
+// gitignored) bila ada; kosong bila tidak ada.
+func RegistryOverlayPath() string {
 	local := filepath.Join(projectRoot(), "tools", "registry.local.yaml")
 	if _, err := os.Stat(local); err == nil {
 		return local
 	}
-	return filepath.Join(projectRoot(), "tools", "registry.yaml")
+	return ""
 }
 func defaultWorkflowDir() string  { return filepath.Join(projectRoot(), "workflows") }
 func defaultIncidentPath() string { return filepath.Join(dataDir(), "incidents.json") }
@@ -502,6 +518,9 @@ func Load(path string) *Config {
 	if v := getenv("NOC_BILLING_TOKEN"); v != "" {
 		c.BillingToken = v
 	}
+	if v := getenv("NOC_TEAM_ROUTING"); v != "" {
+		c.TeamRouting = v
+	}
 	if v := getenv("NOC_RADIUS_URL"); v != "" {
 		c.RadiusURL = v
 	}
@@ -629,6 +648,11 @@ func (c *Config) Redacted() map[string]any {
 		"mikrotik_set":         len(c.Routers()) > 0,
 		"genieacs_set":         c.GenieACSURL != "",
 		"billing_token_masked": maskSecret(c.BillingToken),
+		"team_routing":         string(NormalizeTeamMode(c.TeamRouting)),
+		"team_cs_scope":        string(NormalizeTeamMode(c.TeamCSScope)),
+		"team_handoff":         string(NormalizeTeamMode(c.TeamHandoff)),
+		"team_severity":        string(NormalizeTeamMode(c.TeamSeverity)),
+		"team_presenter":       string(NormalizeTeamMode(c.TeamPresenter)),
 		"radius_token_masked":  maskSecret(c.RadiusToken),
 		"mikrotik_pass_masked": maskSecret(c.MikrotikPass),
 	}

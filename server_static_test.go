@@ -37,3 +37,23 @@ func TestSettingsHTMLDisablesBrowserCache(t *testing.T) {
 		}
 	}
 }
+
+// Kartu "Mode Tim" harus ada, memuat kelima pengendali, dan memanggil endpoint
+// yang benar; kartu setup Endpoint A/B tidak boleh hilang karenanya.
+func TestSettingsHTMLMemuatKartuModeTim(t *testing.T) {
+	s := &Server{cfg: &config.Config{Addr: "127.0.0.1:8090"}}
+	h := s.routes()
+	r := httptest.NewRequest(http.MethodGet, "http://noc.local/settings.html", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	body := w.Body.String()
+	for _, want := range []string{
+		"teamCard", "tmRouting", "tmCSScope", "tmPresenter", "tmHandoff", "tmSeverity",
+		"saveTeamModes", "loadTeamModes", "/api/team/metrics", "team_routing",
+		"sBase", "sModel", "sCodexBase", "sCodex", // setup Endpoint A/B tetap ada
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("settings.html tidak memuat %q", want)
+		}
+	}
+}

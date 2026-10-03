@@ -98,6 +98,51 @@ func Load(path string) *Registry {
 	return r
 }
 
+// LoadMerged memuat registry dasar (yang ikut rilis) lalu menerapkan overlay
+// lokal di atasnya. Aturan penggabungan:
+//
+//   - Definisi tool (parameter, deskripsi, izin, risiko, dll.) SELALU dari dasar,
+//     jadi tool baru di rilis otomatis tersedia tanpa edit manual di server.
+//   - Overlay hanya boleh mengubah `enabled` pada tool yang SUDAH ada di dasar.
+//   - Tool yang hanya ada di overlay (overlay lama yang lengkap, atau tool khusus
+//     operator) tetap dimuat apa adanya — kompatibel mundur.
+//   - Tool BARU di dasar yang tidak disebut overlay tetap NONAKTIF (deny-by-default):
+//     rilis tidak pernah mengaktifkan tool sendiri.
+//   - Tool tulis (permission != READ) TIDAK pernah diaktifkan lewat penggabungan
+//     bila dasar menandainya nonaktif, kecuali overlay secara eksplisit
+//     menyebutnya — dan itu tetap melalui gerbang kebijakan.
+//
+// overlay kosong/hilang/rusak -> hasilnya identik dengan Load(base).
+func LoadMerged(base, overlay string) *Registry {
+	r := Load(base)
+	if overlay == "" || overlay == base {
+		return r
+	}
+	b, err := os.ReadFile(overlay)
+	if err != nil {
+		return r
+	}
+	var d registryDoc
+	if yaml.Unmarshal(b, &d) != nil {
+		return r
+	}
+	for _, o := range d.Tools {
+		name := strings.TrimSpace(o.Name)
+		if name == "" {
+			continue
+		}
+		if cur, ok := r.tools[name]; ok {
+			cur.Enabled = o.Enabled // hanya enabled yang diambil dari overlay
+			r.tools[name] = cur
+			continue
+		}
+		r.tools[name] = o // hanya ada di overlay: pertahankan
+		r.order = append(r.order, name)
+	}
+	sort.Strings(r.order)
+	return r
+}
+
 // Get mengembalikan tool berdasarkan nama (found=false bila tidak ada).
 func (r *Registry) Get(name string) (Tool, bool) {
 	t, ok := r.tools[name]

@@ -107,7 +107,7 @@ func main() {
 	// Semua deny-by-default. Policy & registry memuat file YAML; workflow dimuat
 	// dari direktori; incident & audit dipersist ke JSON (PostgreSQL menyusul).
 	pol := policy.Load(cfg.PolicyPath)
-	reg := registry.Load(cfg.RegistryPath)
+	reg := registry.LoadMerged(cfg.RegistryPath, config.RegistryOverlayPath())
 	wkf, wfErr := workflow.LoadDir(cfg.WorkflowDir)
 	if wfErr != nil {
 		log.Printf("[workflow] gagal memuat: %v (lanjut tanpa workflow)", wfErr)
@@ -215,7 +215,7 @@ func main() {
 		}
 	}()
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, disp: disp, esc: escalation.NewDedup()}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, teams: observability.NewTeamCollector(), disp: disp, esc: escalation.NewDedup()}
 
 	// Auto-update: inisialisasi checker bila owner/repo terisi. Cek awal + berkala
 	// (tiap 6 jam) di latar; hasilnya di-cache untuk dashboard. Tidak pernah

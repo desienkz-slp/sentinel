@@ -1,7 +1,9 @@
 package main
 
 import (
+	"ainoc/internal/agent"
 	"ainoc/internal/directory"
+	"ainoc/internal/observability"
 	"context"
 	"fmt"
 	"strings"
@@ -77,4 +79,23 @@ func (s *Server) customerListReply(ctx context.Context, caller directory.Caller,
 		s.sesi.Append(sessKey, "assistant", "(perintah staf daftar pelanggan dijalankan)", "STAFF_CMD", "", "")
 	}
 	return out
+}
+
+// recordLLMDecision mencatat pesan yang akhirnya ditangani LLM. Hanya label
+// dan angka — tanpa nomor, nama, atau isi pesan.
+func (s *Server) recordLLMDecision(caller directory.Caller, rep agent.Report, d time.Duration) {
+	team := "cs"
+	if caller.IsStaff {
+		team = "noc"
+	}
+	tools := make([]string, 0, len(rep.Steps))
+	for _, st := range rep.Steps {
+		if st.Tool != "" {
+			tools = append(tools, st.Tool)
+		}
+	}
+	s.teams.Record(observability.TeamDecision{
+		Team: team, Handler: "llm", HandledBy: "llm", Tools: tools, Latency: d,
+		OK: rep.Error == "", Mode: string(s.cfg.Teams().Routing),
+	})
 }

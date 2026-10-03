@@ -71,6 +71,7 @@ type Server struct {
 	hreg *health.Registry
 	ded  *dedupe.Store
 	obs  *observability.Collector
+	teams *observability.TeamCollector // metrik keputusan tim CS/NOC (tanpa data pribadi)
 
 	// Blueprint upgrade: tool dispatcher (registry -> policy -> adapter).
 	disp *tool.Dispatcher
@@ -173,6 +174,17 @@ func (s *Server) routes() http.Handler {
 
 	// Metrik HTTP dan KPI diagnosis bersifat agregat: tidak memuat query,
 	// identitas pelanggan, atau isi respons sehingga aman untuk dashboard operator.
+	mux.HandleFunc("/api/team/metrics", func(w http.ResponseWriter, r *http.Request) {
+		f := s.cfg.Teams()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"flags": map[string]string{
+				"routing": string(f.Routing), "cs_scope": string(f.CSScope), "handoff": string(f.Handoff),
+				"severity": string(f.Severity), "presenter": string(f.Presenter),
+			},
+			"metrics": s.teams.Snapshot(),
+		})
+	})
+
 	mux.HandleFunc("/api/metrics", func(w http.ResponseWriter, r *http.Request) {
 		if s.obs == nil {
 			writeJSON(w, http.StatusOK, observability.Snapshot{Routes: []observability.RouteMetric{}})
@@ -216,15 +228,21 @@ func (s *Server) routes() http.Handler {
 			WAAsync       *bool     `json:"wa_async"`
 			WAGroup       *bool     `json:"wa_group"`
 			// Endpoint adaptor eksternal (URL + token; token opsional = "tidak diubah").
-			BillingURL       *string `json:"billing_url"`
-			BillingToken     *string `json:"billing_token"`
-			RadiusURL        *string `json:"radius_url"`
-			RadiusToken      *string `json:"radius_token"`
-			MikrotikHost     *string `json:"mikrotik_host"`
-			MikrotikPort     *int    `json:"mikrotik_port"`
-			MikrotikUser     *string `json:"mikrotik_user"`
-			MikrotikPass     *string `json:"mikrotik_pass"`
-			MikrotikTLS      *bool   `json:"mikrotik_tls"`
+			BillingURL   *string `json:"billing_url"`
+			BillingToken *string `json:"billing_token"`
+			// Mode tim CS/NOC: off | shadow | on. Nilai lain ditolak (400).
+			TeamRouting   *string `json:"team_routing"`
+			TeamCSScope   *string `json:"team_cs_scope"`
+			TeamHandoff   *string `json:"team_handoff"`
+			TeamSeverity  *string `json:"team_severity"`
+			TeamPresenter *string `json:"team_presenter"`
+			RadiusURL     *string `json:"radius_url"`
+			RadiusToken   *string `json:"radius_token"`
+			MikrotikHost  *string `json:"mikrotik_host"`
+			MikrotikPort  *int    `json:"mikrotik_port"`
+			MikrotikUser  *string `json:"mikrotik_user"`
+			MikrotikPass  *string `json:"mikrotik_pass"`
+			MikrotikTLS   *bool   `json:"mikrotik_tls"`
 			// Multi-router: daftar lengkap router (menggantikan field tunggal).
 			MikrotikRouters *[]config.MikrotikRouter `json:"mikrotik_routers"`
 			GenieACSURL     *string                  `json:"genieacs_url"`
@@ -232,6 +250,38 @@ func (s *Server) routes() http.Handler {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
+		}
+		// Validasi mode tim SEBELUM mengubah apa pun: nilai tak sah = 400, bukan
+		// diam-diam jadi off/on (salah ketik tak boleh mengubah perilaku produksi).
+		for name, p := range map[string]*string{
+			"team_routing": body.TeamRouting, "team_cs_scope": body.TeamCSScope,
+			"team_handoff": body.TeamHandoff, "team_severity": body.TeamSeverity,
+			"team_presenter": body.TeamPresenter,
+		} {
+			if p == nil {
+				continue
+			}
+			switch strings.ToLower(strings.TrimSpace(*p)) {
+			case "off", "shadow", "on":
+			default:
+				writeJSON(w, 400, map[string]string{"error": name + " harus off, shadow, atau on"})
+				return
+			}
+		}
+		if body.TeamRouting != nil {
+			s.cfg.TeamRouting = string(config.NormalizeTeamMode(*body.TeamRouting))
+		}
+		if body.TeamCSScope != nil {
+			s.cfg.TeamCSScope = string(config.NormalizeTeamMode(*body.TeamCSScope))
+		}
+		if body.TeamHandoff != nil {
+			s.cfg.TeamHandoff = string(config.NormalizeTeamMode(*body.TeamHandoff))
+		}
+		if body.TeamSeverity != nil {
+			s.cfg.TeamSeverity = string(config.NormalizeTeamMode(*body.TeamSeverity))
+		}
+		if body.TeamPresenter != nil {
+			s.cfg.TeamPresenter = string(config.NormalizeTeamMode(*body.TeamPresenter))
 		}
 		if body.LLMBaseURL != nil && *body.LLMBaseURL != "" {
 			s.cfg.LLMBaseURL = strings.TrimRight(*body.LLMBaseURL, "/")
@@ -1075,8 +1125,13 @@ func (s *Server) routes() http.Handler {
 		// otorisasi + dispatcher, tanpa LLM, lalu dibalas dengan data nyata.
 		if caller.IsStaff {
 			cmdCtx, cmdCancel := context.WithTimeout(r.Context(), 40*time.Second)
+			cmdStart := time.Now()
 			text, handled := s.handleStaffCommand(cmdCtx, caller, session.Key(id), msg.Message)
 			cmdCancel()
+			if handled {
+				s.teams.Record(observability.TeamDecision{Team: "noc", Handler: "perintah_staf", HandledBy: "code",
+					Latency: time.Since(cmdStart), OK: true, Mode: string(s.cfg.Teams().Routing)})
+			}
 			if handled {
 				log.Printf("[WA] perintah staf %s (%s) ditangani kode", caller.Name, caller.Role)
 				out := wa.Reply{Accepted: true, MessageID: msg.MessageID, Engine: "staff-command", Report: text}
@@ -1119,7 +1174,9 @@ func (s *Server) routes() http.Handler {
 			return
 		}
 
+		llmStart := time.Now()
 		rep := runWith(r.Context())
+		s.recordLLMDecision(caller, rep, time.Since(llmStart))
 		out := wa.Reply{
 			Accepted:   true,
 			MessageID:  msg.MessageID,

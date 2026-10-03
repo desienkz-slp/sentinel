@@ -191,6 +191,23 @@
     <div class="status" id="intStatus"></div>
   </section>
 
+  <section class="card" id="teamCard">
+    <h2>Mode Tim CS / NOC</h2>
+    <div class="sub">Tiap fitur: <b>off</b> = mati (jalur lama), <b>shadow</b> = dihitung &amp; dicatat tanpa mengubah balasan, <b>on</b> = aktif. Default semua off. Perubahan berlaku langsung tanpa restart.</div>
+    <div class="row">
+      <div><label for="tmRouting">Router tim (pemilah pesan)</label><select id="tmRouting"><option>off</option><option>shadow</option><option>on</option></select></div>
+      <div><label for="tmCSScope">Batas data pelanggan (CS)</label><select id="tmCSScope"><option>off</option><option>shadow</option><option>on</option></select></div>
+      <div><label for="tmPresenter">Presentasi &amp; penyaring balasan</label><select id="tmPresenter"><option>off</option><option>shadow</option><option>on</option></select></div>
+    </div>
+    <div class="row">
+      <div><label for="tmHandoff">Serah-terima CS ↔ NOC</label><select id="tmHandoff"><option>off</option><option>shadow</option><option>on</option></select></div>
+      <div><label for="tmSeverity">Keparahan P1–P4</label><select id="tmSeverity"><option>off</option><option>shadow</option><option>on</option></select></div>
+      <div style="display:flex;align-items:flex-end"><button onclick="saveTeamModes()">Simpan Mode Tim</button></div>
+    </div>
+    <div class="hint" id="tmMsg"></div>
+    <div class="status" id="tmStatus"></div>
+  </section>
+
   <section class="card">
     <h2>Direktori Staf &amp; Hak Akses</h2>
     <p class="hint">Nomor internal per jabatan untuk identifikasi penelepon WhatsApp &amp; eskalasi. Saat ada WA masuk, sistem mengenali siapa pengirimnya (staf di sini, atau pelanggan dari billing) dan menyesuaikan hak aksesnya. Aksi berisiko (edit/hapus/putus layanan) butuh PIN.</p>
@@ -405,6 +422,7 @@ async function boot() {
     }));
     mkRender();
     statusIntegrasi(c);
+    loadTeamModes();
     // Auto-load daftar model kedua endpoint supaya dropdown langsung penuh.
     // Tahan error: bila gagal, dropdown tetap menampilkan nilai tersimpan.
     loadModels('a').catch(() => {});
@@ -515,6 +533,34 @@ async function saveIntegrations(silent) {
     mkRender();
     return d;
   } catch(e){ if (!silent) msg('intMsg', false, 'Gagal: ' + e.message); throw e; }
+}
+
+// ---------- Mode Tim CS/NOC ----------
+const TM_FIELDS = {routing:'tmRouting', cs_scope:'tmCSScope', presenter:'tmPresenter', handoff:'tmHandoff', severity:'tmSeverity'};
+
+async function loadTeamModes() {
+  try {
+    const d = await api('/api/team/metrics');
+    for (const [k, id] of Object.entries(TM_FIELDS)) $(id).value = (d.flags && d.flags[k]) || 'off';
+    const m = d.metrics || {};
+    const pct = m.total ? Math.round((m.code_share || 0) * 100) : 0;
+    $('tmStatus').innerHTML = `Pesan tercatat: <b>${m.total || 0}</b> · ditangani kode: <b>${pct}%</b>` +
+      ` · selisih shadow: <b>${m.shadow_mismatches || 0}</b>`;
+  } catch (e) { msg('tmMsg', false, 'Gagal memuat mode tim: ' + e.message); }
+}
+
+async function saveTeamModes() {
+  msg('tmMsg', null, 'Menyimpan…');
+  const body = {
+    team_routing: $('tmRouting').value, team_cs_scope: $('tmCSScope').value,
+    team_presenter: $('tmPresenter').value, team_handoff: $('tmHandoff').value,
+    team_severity: $('tmSeverity').value,
+  };
+  try {
+    await api('/api/config', {method:'POST', body: JSON.stringify(body)});
+    msg('tmMsg', true, 'Mode tim tersimpan.');
+    await loadTeamModes();
+  } catch (e) { msg('tmMsg', false, 'Gagal: ' + e.message); }
 }
 
 async function checkBilling() {
