@@ -40,6 +40,13 @@
   .pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .pill{font:12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line);border-radius:99px;color:var(--dim);
     display:inline-flex;align-items:center;gap:6px;background:var(--panel2);white-space:nowrap}
+  /* Di layar portrait/sempit, biarkan header menyesuaikan tanpa melebar berlebihan. */
+  @media(max-width:720px){
+    header{padding:10px 14px;gap:10px}
+    .header-inner{gap:10px}
+    .brand .tagline{display:none}
+    .pill{padding:5px 8px}
+  }
   .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:0 0 auto}
   .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
   .dot.off{background:var(--bad)}
@@ -50,8 +57,15 @@
   /* ---------- Layout shell ---------- */
   .shell{max-width:1800px;margin:0 auto;padding:16px 22px 48px}
   .grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;align-items:start}
+  .grid > section, .grid > aside{min-width:0}
   .bottom{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start}
-  @media(max-width:1240px){ .grid{grid-template-columns:1fr} .bottom{grid-template-columns:1fr} }
+  .bottom > section{min-width:0}
+  /* Layar sempit / laptop kecil / monitor VERTIKAL (portrait) → tumpuk satu kolom
+     supaya kartu & tabel tidak terhimpit. */
+  @media(max-width:1440px){ .grid{grid-template-columns:1fr} .bottom{grid-template-columns:1fr} }
+  @media(min-width:1441px){
+    .grid{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+  }
 
   /* ---------- Cards ---------- */
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
