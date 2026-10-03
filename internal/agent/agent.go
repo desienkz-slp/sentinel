@@ -16,6 +16,7 @@ import (
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/diag"
+	"ainoc/internal/directory"
 	"ainoc/internal/incident"
 	"ainoc/internal/learning"
 	"ainoc/internal/llm"
@@ -424,6 +425,9 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 				"konteks dikirim ke AI: %d fakta, %d insiden, %d pengulangan, playbook %v",
 				len(konteks.Facts), len(konteks.Insiden), konteks.Ulang, konteks.Playbook)})
 		}
+	}
+	if c, ok := directory.CallerFrom(ctx); ok {
+		user += c.PromptBlock()
 	}
 	if !bolehProbe {
 		user += "\n\n(Pesan ini terdeteksi sebagai " + string(klas.Intent) +

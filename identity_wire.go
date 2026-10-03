@@ -409,18 +409,15 @@ func decodeJSON(r *http.Request, v any) error {
 
 // ---- Context: selipkan identitas penelepon untuk dibaca downstream ----
 
-type callerCtxKey struct{}
-
 // withCaller menanam Caller ke context agar agent/handler hilir tahu siapa &
 // perannya (tanpa mengubah tanda tangan engine.Run yang sudah ada).
 func withCaller(ctx context.Context, c directory.Caller) context.Context {
-	return context.WithValue(ctx, callerCtxKey{}, c)
+	return directory.WithCaller(ctx, c)
 }
 
 // callerFrom mengambil Caller dari context; ok=false bila tidak ada.
 func callerFrom(ctx context.Context) (directory.Caller, bool) {
-	c, ok := ctx.Value(callerCtxKey{}).(directory.Caller)
-	return c, ok
+	return directory.CallerFrom(ctx)
 }
 
 // auditAction mencatat keputusan otorisasi aksi (master spec §25). Argumen
