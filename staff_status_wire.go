@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ainoc/internal/directory"
 	"context"
 	"fmt"
 	"strings"
@@ -49,4 +50,31 @@ func (s *Server) integrationStatusReply(ctx context.Context, domains []string, a
 	}
 	wg.Wait()
 	return "*Status integrasi*\n" + strings.Join(lines, "\n")
+}
+
+// customerListReply menjalankan billing.list_customers lewat gerbang
+// otorisasi + audit yang sama dengan perintah staf lain.
+func (s *Server) customerListReply(ctx context.Context, caller directory.Caller, sessKey, msg string, lq directory.ListQuery) string {
+	const tn = "billing.list_customers"
+	args := map[string]any{"filter": lq.Filter, "search": lq.Search}
+	pinOK := s.pinSesi != nil && s.pinSesi.verified(caller.Number)
+	authz := directory.Authorize(caller, tn, pinOK)
+	s.auditAction(caller, tn, args, authz, pinOK)
+	if authz.Decision != directory.Allow {
+		return fmt.Sprintf("Daftar pelanggan tidak diizinkan untuk peran %s.", directory.Role(caller.Role).Label())
+	}
+	res := s.disp.Invoke(ctx, tn, args)
+	s.auditActionResult(caller, tn, res.OK, string(res.Decision), res.Error)
+	if !res.OK {
+		return "Daftar pelanggan tidak tersedia (" + clip(oneLineWA(res.Error), 160) + ")"
+	}
+	out := strings.TrimSpace(res.Output.Text)
+	if directory.HasHistoryWords(msg) {
+		out += "\n\nRiwayat pembayaran per pelanggan: ketik *riwayat <username>* (tunggakan + bulan lunas)."
+	}
+	if s.sesi != nil {
+		s.sesi.Append(sessKey, "user", msg, "STAFF_CMD", "", "")
+		s.sesi.Append(sessKey, "assistant", "(perintah staf daftar pelanggan dijalankan)", "STAFF_CMD", "", "")
+	}
+	return out
 }

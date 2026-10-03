@@ -5,10 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"ainoc/internal/audit"
+	"ainoc/internal/billing"
 	"ainoc/internal/config"
 	"ainoc/internal/directory"
 	"ainoc/internal/policy"
@@ -35,7 +38,7 @@ func (f fakeAd) Invoke(_ context.Context, n string, a map[string]any) (tool.Outp
 func staffCmdServer(t *testing.T) *Server {
 	t.Helper()
 	y := "version: 1.0.0\ntools:\n"
-	for _, n := range []string{"billing.get_customer", "radius.get_session", "mikrotik.get_pppoe_status", "mikrotik.get_customer_traffic"} {
+	for _, n := range []string{"billing.get_customer", "billing.get_history", "billing.list_customers", "radius.get_session", "mikrotik.get_pppoe_status", "mikrotik.get_customer_traffic"} {
 		y += "  - name: " + n + "\n    domain: " + strings.Split(n, ".")[0] + "\n    enabled: true\n    permission: READ\n    risk: LOW\n    scope: single_customer\n"
 	}
 	p := filepath.Join(t.TempDir(), "registry.yaml")
@@ -139,5 +142,70 @@ func TestStaffStatusQuestion(t *testing.T) {
 	text, ok = s.handleStaffCommand(context.Background(), noc, "628111222333", "cek billing pelanggan-uji")
 	if !ok || strings.Contains(text, "Status integrasi") {
 		t.Fatalf("cek billing <user> harus tetap jalur data pelanggan: %q", text)
+	}
+}
+
+// billingHTTP memasang adaptor billing sungguhan ke server NOC palsu.
+func billingHTTP(t *testing.T, s *Server) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		q := r.URL.Query()
+		switch {
+		case r.URL.Path == "/api/noc/v1/customers/7/history":
+			w.Write([]byte(`{"status":"success","data":{"billing_info":{"jenis_bayar":"pascabayar"},"history":{"2020":[{"period":"2020-02","charge_amount":100000,"status":"unpaid"},{"period":"2020-01","charge_amount":100000,"status":"paid"}]}}}`))
+		case r.URL.Path == "/api/noc/v1/customers" && q.Get("is_isolated") == "1":
+			w.Write([]byte(`{"status":"success","data":[{"id":7,"name":"Uji Isolir","username":"uji-isolir","status":"active","is_isolated":true}],"meta":{"total":2}}`))
+		case r.URL.Path == "/api/noc/v1/customers" && q.Get("search") == "uji-isolir":
+			w.Write([]byte(`{"status":"success","data":[{"id":7,"name":"Uji Isolir","username":"uji-isolir","status":"active"}],"meta":{"total":1}}`))
+		case r.URL.Path == "/api/noc/v1/customers":
+			tot := "908"
+			if q.Get("status") == "active" {
+				tot = "861"
+			} else if q.Get("status") == "inactive" {
+				tot = "47"
+			}
+			w.Write([]byte(`{"status":"success","data":[],"meta":{"total":` + tot + `}}`))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	ad := billing.New(srv.URL, "k")
+	s.disp.Register(ad)
+}
+
+func TestStaffCustomerList(t *testing.T) {
+	s := staffCmdServer(t)
+	s.syncDirectory()
+	billingHTTP(t, s)
+	noc := s.identifyCaller(context.Background(), "628111222333")
+	ask := func(q string) string {
+		text, ok := s.handleStaffCommand(context.Background(), noc, "628111222333", q)
+		if !ok {
+			t.Fatalf("%q harus ditangani kode, bukan diteruskan ke LLM", q)
+		}
+		return text
+	}
+
+	// Pesan produksi persis (dengan typo "dafta").
+	got := ask("terkait dafta pelanggan dan history bayar?")
+	for _, want := range []string{"Total pelanggan: 908", "Aktif: 861", "Nonaktif: 47", "riwayat <username>"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("ringkasan tak memuat %q: %s", want, got)
+		}
+	}
+	if iso := ask("daftar pelanggan isolir"); !strings.Contains(iso, "2 pelanggan") || !strings.Contains(iso, "uji-isolir") {
+		t.Errorf("daftar isolir salah: %s", iso)
+	}
+	if cari := ask("cari uji-isolir"); !strings.Contains(cari, "uji-isolir") {
+		t.Errorf("cari salah: %s", cari)
+	}
+	// Riwayat pembayaran per pelanggan: tunggakan tahun 2020 (< bulan berjalan).
+	his := ask("riwayat uji-isolir")
+	for _, want := range []string{"TUNGGAKAN 1 bulan", "Rp100.000", "Terakhir lunas: 2020-01"} {
+		if !strings.Contains(his, want) {
+			t.Errorf("riwayat tak memuat %q: %s", want, his)
+		}
 	}
 }

@@ -136,8 +136,8 @@ func TestUnconfiguredNotConfigured(t *testing.T) {
 func TestToolNames(t *testing.T) {
 	a := New("http://x", "k")
 	names := a.ToolNames()
-	if len(names) != 2 || names[0] != "billing.get_customer" || names[1] != "billing.get_history" {
-		t.Errorf("ToolNames = %v, mau [billing.get_customer billing.get_history]", names)
+	if len(names) != 3 || names[0] != "billing.get_customer" || names[1] != "billing.get_history" || names[2] != "billing.list_customers" {
+		t.Errorf("ToolNames = %v, mau [billing.get_customer billing.get_history billing.list_customers]", names)
 	}
 }
 

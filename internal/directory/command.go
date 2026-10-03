@@ -37,6 +37,7 @@ var (
 	}
 	billingWords = map[string]bool{
 		"billing": true, "tagihan": true, "tunggakan": true, "isolir": true, "paket": true,
+		"history": true, "histori": true, "riwayat": true, "pembayaran": true, "payment": true,
 	}
 	// Kata pengisi yang tidak mungkin menjadi username.
 	cmdStop = map[string]bool{
@@ -45,6 +46,7 @@ var (
 		"yang": true, "dari": true, "di": true, "ini": true, "tadi": true, "lagi": true,
 		"mohon": true, "bantu": true, "pak": true, "bu": true, "kak": true, "mas": true,
 		"saya": true, "aku": true, "kamu": true, "anda": true, "kok": true, "bisa": true,
+		"bayar": true, "chat": true, "kemarin": true, "hari": true, "bulan": true, "terakhir": true,
 	}
 	reUsername = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{2,63}$`)
 )
@@ -109,6 +111,11 @@ func ParseCommand(msg string) Command {
 		// Kata seperti "tagihan"/"paket" sering muncul di keluhan biasa; perintah
 		// staf itu pendek (<= 5 kata) dan WAJIB punya target atau kata kerja cek.
 		if len(toks) > 5 || (target == "" && !cmdVerbs[first]) {
+			return Command{}
+		}
+		// Kata riwayat/history tanpa kata kerja cek sering muncul di obrolan biasa
+		// ("history chat kemarin"): wajib ada target bukan kata umum.
+		if !cmdVerbs[first] && target == "" {
 			return Command{}
 		}
 		return Command{Kind: CmdBilling, Target: target}

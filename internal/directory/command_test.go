@@ -50,3 +50,21 @@ func TestParseCommandBilling(t *testing.T) {
 		}
 	}
 }
+
+func TestParseCommandRiwayat(t *testing.T) {
+	for in, want := range map[string]Command{
+		"riwayat pelanggan-uji":        {Kind: CmdBilling, Target: "pelanggan-uji"},
+		"history bayar pelanggan-uji":  {Kind: CmdBilling, Target: "pelanggan-uji"},
+		"cek pembayaran pelanggan-uji": {Kind: CmdBilling, Target: "pelanggan-uji"},
+	} {
+		if got := ParseCommand(in); got != want {
+			t.Errorf("ParseCommand(%q) = %+v, mau %+v", in, got, want)
+		}
+	}
+	// keluhan biasa tidak boleh terbaca perintah
+	for _, in := range []string{"pembayaran saya sudah masuk tapi internet masih mati dari kemarin", "history chat kemarin"} {
+		if got := ParseCommand(in); got.Kind != CmdNone {
+			t.Errorf("ParseCommand(%q) = %+v, mau CmdNone", in, got)
+		}
+	}
+}

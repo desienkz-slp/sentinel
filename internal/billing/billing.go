@@ -112,7 +112,7 @@ func (a *Adapter) Name() string { return "NETORA Billing" }
 func (a *Adapter) Configured() bool { return a.http != nil && a.http.Configured() }
 
 // ToolNames memenuhi tool.Adapter.
-func (a *Adapter) ToolNames() []string { return []string{"billing.get_customer", ToolHistory} }
+func (a *Adapter) ToolNames() []string { return []string{"billing.get_customer", ToolHistory, ToolList} }
 
 // Health memenuhi tool.Adapter: probe dengan GET /customers?per_page=1.
 func (a *Adapter) Health(ctx context.Context) (string, error) {
@@ -158,6 +158,8 @@ func (a *Adapter) Invoke(ctx context.Context, name string, args map[string]any) 
 		return a.getCustomer(ctx, args)
 	case ToolHistory:
 		return a.getHistory(ctx, args)
+	case ToolList:
+		return a.listCustomers(ctx, args)
 	default:
 		return tool.Output{}, fmt.Errorf("tool billing tidak dikenal: %s", name)
 	}

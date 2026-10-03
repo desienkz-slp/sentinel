@@ -32,6 +32,10 @@ func (s *Server) handleStaffCommand(ctx context.Context, caller directory.Caller
 	if doms, all := directory.ParseStatusQuestion(msg); len(doms) > 0 || all {
 		return s.integrationStatusReply(ctx, doms, all), true
 	}
+	// Daftar/ringkasan pelanggan ("daftar pelanggan", "pelanggan isolir", "cari budi").
+	if lq, ok := directory.ParseListQuery(msg); ok {
+		return s.customerListReply(ctx, caller, sessKey, msg, lq), true
+	}
 	cmd := directory.ParseCommand(msg)
 	if cmd.Kind == directory.CmdNone {
 		return "", false

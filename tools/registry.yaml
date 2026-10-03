@@ -44,6 +44,28 @@ tools:
           description: Username pelanggan.
       required: [identity]
 
+  - name: billing.list_customers
+    domain: billing
+    version: 1.0.0
+    enabled: false
+    permission: READ
+    risk: LOW
+    source_of_truth: billing
+    timeout_seconds: 15
+    retry: safe_get
+    verification: response_contract
+    description: Ringkasan/daftar pelanggan billing (aktif, nonaktif, isolir, cari) - read-only.
+    parameters:
+      type: object
+      properties:
+        filter:
+          type: string
+          description: aktif | nonaktif | isolir | cari (kosong = ringkasan jumlah).
+        search:
+          type: string
+          description: Kata kunci nama/username/nomor (untuk filter cari).
+      required: []
+
   - name: radius.get_session
     domain: radius
     version: 1.0.0

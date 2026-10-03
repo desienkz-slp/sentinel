@@ -40,8 +40,9 @@ var toolPerms = map[string]Permission{
 	"genieacs.get_device_state":     PermNetworkingRead,
 	"genieacs.get_devices":          PermNetworkingRead,
 	// --- Billing READ ---
-	"billing.get_customer": PermReadAll,
-	"billing.get_history":  PermReadAll,
+	"billing.get_customer":   PermReadAll,
+	"billing.get_history":    PermReadAll,
+	"billing.list_customers": PermReadAll,
 	// --- Networking WRITE (berisiko) ---
 	"mikrotik.disconnect_pppoe": PermNetworkingWrite,
 }
