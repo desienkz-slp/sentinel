@@ -23,7 +23,7 @@ yang sudah ada, bukan dari nol. (Jendela waktu korelasi belum saya baca; dicek d
 | 1 Router intent | SELESAI (mode `shadow` menyala di produksi) | v0.2.23 | nol selisih di korpus; menunggu pengamatan produksi sebelum `on` |
 | 2 Profil tim + pembatas | SELESAI di kode; `cs_scope=shadow` menyala; belum `on` | v0.2.24 | batas ditegakkan di agen DAN workflow; uji model-jahat lulus |
 | 3 Presentasi | SELESAI di kode; `presenter=shadow` menyala; belum `on` | v0.2.25 | penyaring menyunting (bukan memblokir); uji negatif: teks sah tak berubah |
-| 4 Serah-terima | | | |
+| 4 Serah-terima | SELESAI di kode; `handoff=shadow` menyala; belum `on` | v0.2.26 | alur utuh teruji (eskalasi -> tutup -> pesan tersaring); otorisasi per domain |
 | 5 Keparahan | diblokir keputusan §6.1 | | |
 
 Temuan Fase 0: `config.json` produksi menyimpan `registry_path` eksplisit ke
