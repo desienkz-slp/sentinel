@@ -366,7 +366,9 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 			add(Step{Kind: "intent", Text: fmt.Sprintf(
 				"standar v%s: intent=%s -> workflow %s (deterministik)", standard.Version, klas.Intent, def.Name)})
 			h := e.runWorkflow(ctx, klas.Key, target, def, add)
-			rep.Steps = append(rep.Steps, h.Steps...)
+			// runWorkflow sudah meneruskan tiap langkah lewat `add` ke rep.Steps —
+			// JANGAN append h.Steps lagi di sini, itu menggandakan tiap langkah tool
+			// (billing/radius/mikrotik/genieacs muncul 2x di laporan/audit).
 			used := map[string]int{}
 			if h.RanAnyTool {
 				for _, s := range h.Steps {
