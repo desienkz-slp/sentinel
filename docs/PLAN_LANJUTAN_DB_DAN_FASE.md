@@ -42,9 +42,9 @@ dari apt. Tidak ada yang dibuka ke jaringan (hanya `127.0.0.1`/socket).
 |---|---|---|
 | A | SELESAI di kode; `noc_toolfirst=shadow`; belum `on` | v0.2.30 |
 | B | SELESAI (dievaluasi; tanpa perubahan kode) | - |
-| C | belum | |
-| D | belum | |
-| E | belum | |
+| C | SELESAI: PostgreSQL 14 + Redis 6 aktif di 133, hanya lokal; `--check` bersih 2x | c2c22cf |
+| D | SELESAI: runner migrasi + checksum + 003_handoffs; teruji di PostgreSQL asli | v0.2.31 |
+| E | handoff -> PostgreSQL (shadow) selesai di kode; kasus menyusul | v0.2.31 |
 | F | belum | |
 | G | belum | |
 | H | belum | |

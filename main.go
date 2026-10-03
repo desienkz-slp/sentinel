@@ -189,7 +189,7 @@ func main() {
 	// Konfigurasi DB (PostgreSQL + Redis). Belum terkoneksi sampai infra
 	// dinyalakan; kehadirannya dicatat di health registry.
 	dbcfg := db.Default()
-	_ = dbcfg
+	pgs := connectPG(context.Background(), cfg, dbcfg, filepath.Join(filepath.Dir(filepath.Dir(cfg.IncidentPath)), "migrations"))
 	_ = cc
 
 	// WhatsApp Gateway di-vendor di wa-gateway/. Bila ada, Go yang mengelolanya
@@ -226,6 +226,8 @@ func main() {
 	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, teams: observability.NewTeamCollector(), disp: disp, esc: escalation.NewDedup(), ho: handoff.New(filepath.Join(filepath.Dir(cfg.IncidentPath), "handoffs.json"))}
 	// Pembatas tim CS (Fase 2): penolakan/penimpaan identitas tercatat ke audit
 	// dan metrik. Tanpa isi pesan, nomor pelanggan, atau data akun.
+	srv.pg = pgs
+	srv.attachHandoffSink()
 	engine.ScopeHook = srv.recordScopeEvent
 	engine.NOCHook = srv.recordNOCToolEvent
 

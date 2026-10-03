@@ -126,6 +126,8 @@ type Config struct {
 	TeamSeverity  string `json:"team_severity"`
 	TeamPresenter string `json:"team_presenter"`
 	TeamNOCTools  string `json:"team_noc_toolfirst"`
+	// Penyimpanan PostgreSQL (off|shadow|on). Default off = hanya JSON.
+	StorePG string `json:"store_pg"`
 	// Kebijakan keparahan P1..P4 (Fase 5). Diisi operator; kosong = UNRATED.
 	SeverityPolicy severity.Policy `json:"severity_policy"`
 
@@ -659,6 +661,7 @@ func (c *Config) Redacted() map[string]any {
 		"team_presenter":       string(NormalizeTeamMode(c.TeamPresenter)),
 		"severity_policy":      c.SeverityPolicy,
 		"team_noc_toolfirst":   string(NormalizeTeamMode(c.TeamNOCTools)),
+		"store_pg":             string(NormalizeTeamMode(c.StorePG)),
 		"radius_token_masked":  maskSecret(c.RadiusToken),
 		"mikrotik_pass_masked": maskSecret(c.MikrotikPass),
 	}

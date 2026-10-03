@@ -98,6 +98,7 @@ type Ledger struct {
 	path string
 	m    map[string]*Handoff
 	now  func() time.Time
+	sink func(Handoff) // opsional: salinan penyimpanan lain (PostgreSQL)
 }
 
 // New membuka ledger. path kosong = hanya memori. File rusak/tak ada = kosong.
@@ -163,7 +164,9 @@ func (l *Ledger) Open(h Handoff) (bool, error) {
 	h.UpdatedAt = h.CreatedAt
 	c := h.clone()
 	l.m[h.CaseID] = &c
-	return true, l.persist()
+	err := l.persist()
+	l.emit(&c)
+	return true, err
 }
 
 // Get mengembalikan salinan.
@@ -242,7 +245,9 @@ func (l *Ledger) Apply(id, by string, st Status, untuk string) (Handoff, int, er
 	h.Updates = append(h.Updates, Update{At: now, By: by, Status: st, Untuk: untuk})
 	h.Status = st
 	h.UpdatedAt = now
-	return h.clone(), len(h.Updates) - 1, l.persist()
+	err := l.persist()
+	l.emit(h)
+	return h.clone(), len(h.Updates) - 1, err
 }
 
 // MarkNotified mencatat hasil kirim ke pelanggan untuk Update ke-idx.
@@ -258,5 +263,42 @@ func (l *Ledger) MarkNotified(id string, idx int, errMsg string) error {
 	}
 	h.Updates[idx].Notified = errMsg == ""
 	h.Updates[idx].NotifyErr = errMsg
-	return l.persist()
+	err := l.persist()
+	l.emit(h)
+	return err
+}
+
+// SetSink memasang penerima salinan setiap perubahan (mis. PostgreSQL). Sink
+// dipanggil SETELAH JSON ditulis dan tidak boleh memblokir; kegagalannya tidak
+// pernah menggagalkan operasi (JSON adalah sumber kebenaran sampai store_pg=on).
+func (l *Ledger) SetSink(f func(Handoff)) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	l.sink = f
+	l.mu.Unlock()
+}
+
+// emit dipanggil dengan l.mu terpegang; mengirim salinan, bukan pointer internal.
+func (l *Ledger) emit(h *Handoff) {
+	if l.sink == nil || h == nil {
+		return
+	}
+	l.sink(h.clone())
+}
+
+// All mengembalikan salinan semua handoff (untuk impor/verifikasi).
+func (l *Ledger) All() []Handoff {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make([]Handoff, 0, len(l.m))
+	for _, h := range l.m {
+		out = append(out, h.clone())
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out
 }

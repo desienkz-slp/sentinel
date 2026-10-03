@@ -1,6 +1,6 @@
 -- NOC Sentinel — Autonomous NOC Database Schema
 -- Version: 1.0.0
--- Compatible: PostgreSQL 16+ with pgvector extension
+-- Compatible: PostgreSQL 14+ (pgvector opsional untuk kolom embedding)
 
 -- ============================================================================
 -- ENUMS & BASE TABLES
@@ -218,11 +218,18 @@ CREATE TABLE knowledge_documents (
     title               VARCHAR(255),
     category            VARCHAR(128),
     content             TEXT NOT NULL,
-    embedding           vector(1536),
     source_ref          VARCHAR(255),
     verified            BOOLEAN DEFAULT FALSE,
     created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Enable vector extension if not present
-ALTER EXTENSION pgvector UPDATE;
+-- Kolom embedding HANYA dibuat bila pgvector tersedia (PostgreSQL biasa tetap
+-- bisa menjalankan migrasi ini; pencarian vektor adalah fitur opsional).
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector') THEN
+        CREATE EXTENSION IF NOT EXISTS vector;
+        ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS embedding vector(1536);
+    END IF;
+END
+$$;
