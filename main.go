@@ -256,6 +256,13 @@ func main() {
 	// Harus SETELAH syncBillingAdapter (identifier memakai billing untuk lookup
 	// pelanggan). PIN berlaku 10 menit per nomor.
 	srv.pinSesi = newPINStore(10 * time.Minute)
+	if migrateLegacyStaff(cfg) {
+		if err := cfg.Save(); err != nil {
+			log.Printf("[staf] migrasi nomor NOC/Admin lama ke Direktori Staf belum tersimpan: %v", err)
+		} else {
+			log.Printf("[staf] nomor NOC/Admin lama dipindahkan ke Direktori Staf")
+		}
+	}
 	srv.syncDirectory()
 
 	httpSrv := &http.Server{

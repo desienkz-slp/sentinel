@@ -9,11 +9,12 @@ import (
 	"ainoc/internal/agent"
 	"ainoc/internal/audit"
 	"ainoc/internal/config"
+	"ainoc/internal/directory"
 	"ainoc/internal/escalation"
 )
 
 func TestEscalationTargetMapsDomainToNumber(t *testing.T) {
-	s := &Server{cfg: &config.Config{NOCNumber: "628111222333", AdminNumber: "628111222444"}}
+	s := &Server{cfg: &config.Config{}, dir: testStaffDir()}
 	if got := s.escalationTarget("network"); got != "628111222333" {
 		t.Fatalf("network target = %q", got)
 	}
@@ -84,7 +85,8 @@ func TestBuildEscalationContextDedupsDuplicateToolSteps(t *testing.T) {
 
 func TestDeliverEscalationSkipsNonEscalationState(t *testing.T) {
 	s := &Server{
-		cfg: &config.Config{NOCNumber: "628111222333"},
+		cfg: &config.Config{},
+		dir: testStaffDir(),
 		esc: escalation.NewDedup(),
 		aud: audit.New("", 10),
 		wa:  nil, // nonaktif
@@ -98,7 +100,8 @@ func TestDeliverEscalationSkipsNonEscalationState(t *testing.T) {
 
 func TestDeliverEscalationDedupsPerCase(t *testing.T) {
 	s := &Server{
-		cfg: &config.Config{NOCNumber: "628111222333"},
+		cfg: &config.Config{},
+		dir: testStaffDir(),
 		esc: escalation.NewDedup(),
 		aud: audit.New("", 10),
 	}
@@ -130,5 +133,25 @@ func TestDeliverEscalationRecordsAuditWhenNoTargetNumber(t *testing.T) {
 	}
 	if !strings.Contains(e.Note, "belum diisi") {
 		t.Fatalf("note audit tidak jelas: %q", e.Note)
+	}
+}
+
+// testStaffDir: direktori uji (nomor sintetis, bukan nomor nyata).
+func testStaffDir() *directory.Directory {
+	return directory.New([]directory.Member{
+		{Number: "628111222333", Name: "NOC Uji", Role: directory.RoleNOCSenior, Active: true},
+		{Number: "628111222444", Name: "Admin Uji", Role: directory.RoleAdmin, Active: true},
+	})
+}
+
+func TestEscalationTargetIgnoresInactiveAndEmptyDirectory(t *testing.T) {
+	s := &Server{cfg: &config.Config{}, dir: directory.New([]directory.Member{
+		{Number: "628111222333", Name: "NOC Off", Role: directory.RoleNOCSenior, Active: false},
+	})}
+	if got := s.escalationTarget("network"); got != "" {
+		t.Fatalf("staf nonaktif tidak boleh jadi tujuan, dapat %q", got)
+	}
+	if got := (&Server{cfg: &config.Config{}}).escalationTarget("billing"); got != "" {
+		t.Fatalf("direktori nil -> kosong, dapat %q", got)
 	}
 }

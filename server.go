@@ -1070,6 +1070,24 @@ func (s *Server) routes() http.Handler {
 			log.Printf("[WA] penelepon belum dikenal: %s (dilayani sebagai pelanggan)", id)
 		}
 
+		// Staf internal (NOC Senior/Admin/Super Admin) bukan pelanggan: perintah
+		// cek ("cek user pppoe X", "cek traffic") dijalankan KODE lewat gerbang
+		// otorisasi + dispatcher, tanpa LLM, lalu dibalas dengan data nyata.
+		if caller.IsStaff {
+			cmdCtx, cmdCancel := context.WithTimeout(r.Context(), 40*time.Second)
+			text, handled := s.handleStaffCommand(cmdCtx, caller, session.Key(id), msg.Message)
+			cmdCancel()
+			if handled {
+				log.Printf("[WA] perintah staf %s (%s) ditangani kode", caller.Name, caller.Role)
+				out := wa.Reply{Accepted: true, MessageID: msg.MessageID, Engine: "staff-command", Report: text}
+				if s.cfg.WAAutoReply {
+					out.Reply = text
+				}
+				writeJSON(w, 200, out)
+				return
+			}
+		}
+
 		// PENTING: context request DIBATALKAN begitu handler selesai. Untuk mode
 		// async, diagnosis harus berjalan di atas context.Background() sendiri,
 		// kalau tidak LLM langsung gagal dengan "context canceled".

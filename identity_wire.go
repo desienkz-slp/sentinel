@@ -60,24 +60,33 @@ func dirFromConfig(cfg *config.Config) *directory.Directory {
 			PINHash: sm.PINHash,
 		})
 	}
-	// Kompatibilitas mundur: nomor NOC/Admin lama di config tetap dikenali
-	// sebagai staf bila belum ada di StaffMembers (tanpa PIN; operator bisa
-	// melengkapi lewat dashboard).
-	addLegacy := func(num string, role directory.Role, name string) {
-		if strings.TrimSpace(num) == "" {
+	return directory.New(members)
+}
+
+// migrateLegacyStaff memindahkan nomor NOC/Admin lama (noc_number /
+// admin_number / env NOC_NUMBER, NOC_ADMIN_NUMBER) ke StaffMembers sekali jalan,
+// supaya Direktori Staf menjadi satu-satunya sumber data. Nomor yang sudah ada
+// di direktori tidak ditimpa. Mengembalikan true bila ada yang dipindahkan.
+func migrateLegacyStaff(cfg *config.Config) bool {
+	moved := false
+	add := func(num string, role directory.Role, name string) {
+		n := identity.Normalize(num)
+		if n == "" {
 			return
 		}
-		n := identity.Normalize(num)
-		for _, m := range members {
-			if identity.Normalize(m.Number) == n {
-				return // sudah ada
+		for _, sm := range cfg.StaffMembers {
+			if identity.Normalize(sm.Number) == n {
+				return
 			}
 		}
-		members = append(members, directory.Member{Number: num, Name: name, Role: role, Active: true})
+		cfg.StaffMembers = append(cfg.StaffMembers, config.StaffMember{
+			Number: n, Name: name, Role: string(role), Active: true,
+		})
+		moved = true
 	}
-	addLegacy(cfg.NOCNumber, directory.RoleNOCSenior, "NOC Senior")
-	addLegacy(cfg.AdminNumber, directory.RoleAdmin, "Admin")
-	return directory.New(members)
+	add(cfg.NOCNumber, directory.RoleNOCSenior, "NOC Senior")
+	add(cfg.AdminNumber, directory.RoleAdmin, "Admin")
+	return moved
 }
 
 // syncDirectory membangun ulang direktori + identifier dari config saat ini.
@@ -163,7 +172,7 @@ func (s *Server) registerIdentityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/staff", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			writeJSON(w, 200, map[string]any{"ok": true, "staff": s.dir.Members(), "roles": staffRoles()})
+			writeJSON(w, 200, map[string]any{"ok": true, "staff": s.dir.Members(), "roles": staffRoles(), "role_perms": rolePerms()})
 		case http.MethodPost:
 			s.handleStaffUpsert(w, r)
 		case http.MethodDelete:
@@ -349,7 +358,7 @@ func (s *Server) handleStaffDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": "parameter nomor wajib"})
 		return
 	}
-	out := s.cfg.StaffMembers[:0]
+	out := make([]config.StaffMember, 0, len(s.cfg.StaffMembers))
 	removed := false
 	for _, sm := range s.cfg.StaffMembers {
 		if identity.Normalize(sm.Number) == num {
@@ -358,13 +367,19 @@ func (s *Server) handleStaffDelete(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, sm)
 	}
+	if !removed {
+		writeJSON(w, 404, map[string]any{"ok": false, "error": "staf tidak ditemukan"})
+		return
+	}
+	prev := s.cfg.StaffMembers
 	s.cfg.StaffMembers = out
 	if err := s.cfg.Save(); err != nil {
+		s.cfg.StaffMembers = prev // jangan biarkan memori menyimpang dari disk
 		writeJSON(w, 500, map[string]any{"ok": false, "error": "gagal simpan config: " + err.Error()})
 		return
 	}
 	s.syncDirectory()
-	writeJSON(w, 200, map[string]any{"ok": true, "removed": removed, "staff": s.dir.Members()})
+	writeJSON(w, 200, map[string]any{"ok": true, "removed": true, "staff": s.dir.Members()})
 }
 
 // staffRoles mengembalikan daftar role internal yang bisa dipilih di dashboard.
@@ -374,6 +389,15 @@ func staffRoles() []map[string]string {
 		{"value": string(directory.RoleNOCSenior), "label": directory.RoleNOCSenior.Label()},
 		{"value": string(directory.RoleSuperAdmin), "label": directory.RoleSuperAdmin.Label()},
 	}
+}
+
+// rolePerms memetakan role -> izin bawaan (untuk ditampilkan di dashboard).
+func rolePerms() map[string][]directory.Permission {
+	out := map[string][]directory.Permission{}
+	for _, r := range []directory.Role{directory.RoleAdmin, directory.RoleNOCSenior, directory.RoleSuperAdmin} {
+		out[string(r)] = directory.PermsFor(r)
+	}
+	return out
 }
 
 // decodeJSON mem-parse body JSON request ke v dengan batas ukuran wajar.

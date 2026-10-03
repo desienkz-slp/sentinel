@@ -2,8 +2,8 @@
 // WhatsApp supaya case ber-state ESCALATION benar-benar mengirim handoff lengkap
 // ke nomor manusia yang tepat:
 //
-//   - domain network  -> NOC Senior (cfg.NOCNumber)
-//   - domain billing  -> Admin      (cfg.AdminNumber)
+//   - domain network  -> NOC Senior (Direktori Staf)
+//   - domain billing  -> Admin      (Direktori Staf)
 //
 // Keamanan fase ini:
 //   - Hanya terpicu saat rep.CaseState == "ESCALATION".
@@ -20,6 +20,7 @@ import (
 
 	"ainoc/internal/agent"
 	"ainoc/internal/audit"
+	"ainoc/internal/directory"
 	"ainoc/internal/escalation"
 )
 
@@ -139,13 +140,19 @@ func confidenceLabel(conf float64) string {
 
 // escalationTarget memetakan domain eskalasi ke nomor WhatsApp tujuan. Nomor
 // kosong berarti authority itu belum dikonfigurasi — handoff tidak dikirim.
+//
+// Sumber kebenaran TUNGGAL = Direktori Staf: staf AKTIF dengan role yang
+// berwenang (network -> NOC Senior, selain itu -> Admin), urut nama, yang
+// pertama dipakai. Tidak ada lagi nomor terpisah di Pengaturan.
 func (s *Server) escalationTarget(domain string) string {
-	switch escalation.Target(domain) {
-	case escalation.RoleNOCSenior:
-		return strings.TrimSpace(s.cfg.NOCNumber)
-	default:
-		return strings.TrimSpace(s.cfg.AdminNumber)
+	role := directory.RoleAdmin
+	if escalation.Target(domain) == escalation.RoleNOCSenior {
+		role = directory.RoleNOCSenior
 	}
+	if members := s.dir.ForRole(role); len(members) > 0 {
+		return strings.TrimSpace(members[0].Number)
+	}
+	return ""
 }
 
 // deliverEscalation mengirim handoff ke nomor authority yang tepat, dengan dedup
@@ -174,7 +181,7 @@ func (s *Server) deliverEscalation(ctx context.Context, rep agent.Report, identi
 	if to == "" {
 		log.Printf("[escalation] case %s domain=%s role=%s: nomor tujuan belum dikonfigurasi — handoff tidak dikirim",
 			rep.CaseID, domain, role)
-		s.recordEscalationAudit(rep, identity, domain, role, to, false, "nomor tujuan kosong (noc_number/admin_number belum diisi)")
+		s.recordEscalationAudit(rep, identity, domain, role, to, false, "nomor tujuan kosong (belum ada staf aktif untuk role ini di Direktori Staf; belum diisi)")
 		return
 	}
 

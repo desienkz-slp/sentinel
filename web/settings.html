@@ -150,10 +150,7 @@
       <div><label for="sSteps">Maks langkah per sesi</label><input id="sSteps" type="number" min="1" max="20"></div>
       <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan Semua Pengaturan</button></div>
     </div>
-    <div class="row">
-      <div><label for="sNoc">Nomor NOC (eskalasi teknis)</label><input id="sNoc" placeholder="628xxxxxxxxxx"></div>
-      <div><label for="sAdmin">Nomor ADMIN (eskalasi billing/akun)</label><input id="sAdmin" placeholder="628xxxxxxxxxx"></div>
-    </div>
+    <div class="hint">Nomor NOC Senior &amp; Admin untuk eskalasi diambil dari <b>Direktori Staf &amp; Hak Akses</b> di bawah (satu sumber data).</div>
     <div class="hint" id="setMsg"></div>
     <div class="status">Maks langkah tersimpan: <b id="stSteps">—</b></div>
   </section>
@@ -385,8 +382,6 @@ async function boot() {
     const c = st.config;
     $('sBase').value = c.llm_base_url; 
     $('sSteps').value = c.max_steps;
-    $('sNoc').value = c.noc_number || '';
-    $('sAdmin').value = c.admin_number || '';
     $('sCodexBase').value = c.codex_base_url || '';
     // Isi dropdown model dengan nilai tersimpan dulu (opsi lengkap dimuat
     // via tombol "Cek daftar model" atau otomatis di bawah).
@@ -472,8 +467,6 @@ async function saveSettings() {
       llm_base_url: $('sBase').value, llm_api_key: $('sKey').value || undefined,
       llm_model: $('sModel').value, llm_wire_api: $('sWire').value,
       max_steps: parseInt($('sSteps').value,10)||undefined,
-      noc_number: $('sNoc').value,
-      admin_number: $('sAdmin').value,
       codex_model: $('sCodex').value,
       codex_base_url: $('sCodexBase').value || undefined,
       codex_api_key: $('sCodexKey').value || undefined,
@@ -615,6 +608,15 @@ async function pingEndpointB() {
 
 // ---------- Direktori Staf ----------
 let _staffRoles = [];
+let _staffList = [];
+let _rolePerms = {};
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-act]');
+  if (!b) return;
+  const num = b.dataset.number;
+  if (b.dataset.act === 'edit') editStaff(_staffList.find(x => x.number === num));
+  else if (b.dataset.act === 'del') delStaff(num);
+});
 async function loadStaff() {
   try {
     const d = await api('/api/staff');
@@ -625,6 +627,8 @@ async function loadStaff() {
       sel.dataset.filled = '1';
     }
     const list = d.staff || [];
+    _staffList = list;
+    _rolePerms = d.role_perms || {};
     if (!list.length) {
       $('staffList').innerHTML = '<div class="hint">Belum ada staf. Tambahkan nomor internal di bawah.</div>';
       return;
@@ -638,15 +642,18 @@ async function loadStaff() {
         <td>${s.pin_set===false?'<span style="color:var(--dim)">—</span>':'🔒'}</td>
         <td>${s.active?'<span style="color:var(--ok,#3fb950)">Aktif</span>':'<span style="color:var(--dim)">Nonaktif</span>'}</td>
         <td style="text-align:right">
-          <button onclick='editStaff(${JSON.stringify(JSON.stringify(s))})' style="padding:2px 8px">Edit</button>
-          <button onclick="delStaff('${esc(s.number)}')" style="padding:2px 8px;background:#da3633">Hapus</button>
+          <button type="button" data-act="edit" data-number="${esc(s.number)}" style="padding:2px 8px;width:auto">Edit</button>
+          <button type="button" data-act="del" data-number="${esc(s.number)}" style="padding:2px 8px;width:auto;background:#da3633">Hapus</button>
         </td></tr>`).join('')}
-    </table>`;
+    </table>
+    <div class="hint" style="margin-top:10px"><b>Hak akses per jabatan:</b><br>${
+      Object.keys(_rolePerms).map(r => esc(roleLabel(r))+': '+_rolePerms[r].map(esc).join(', ')).join('<br>')
+    }</div>`;
   } catch(e) { $('staffList').innerHTML = '<div class="hint bad">Gagal memuat staf: '+esc(e.message)+'</div>'; }
 }
 function roleLabel(v){ const r=_staffRoles.find(x=>x.value===v); return r?r.label:v; }
-function editStaff(sjson){
-  const s = JSON.parse(JSON.parse(sjson));
+function editStaff(s){
+  if (!s) return;
   $('stfNumber').value = s.number||'';
   $('stfName').value = s.name||'';
   $('stfRole').value = s.role||'';
