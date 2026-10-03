@@ -86,3 +86,36 @@ func TestGetCustomerEscapesQuery(t *testing.T) {
 		t.Fatalf("query tidak di-escape benar: %q", raw)
 	}
 }
+
+// Payload meniru bentuk NYATA API NETORA yang pernah merusak decode:
+// diskon berupa STRING ("10000.00"), tgl_isolir/registration_date bisa null,
+// custom_price selalu null, field tak dikenal harus diabaikan.
+func TestDecodeRealisticPayload(t *testing.T) {
+	const body = `{"status":"success","data":[
+	 {"id":1,"name":"A","username":"ua","phone":"6281200001111","status":"active",
+	  "billing_date":5,"tgl_isolir":null,"max_tunggakan":1,"registration_date":null,
+	  "is_on_leave":false,"custom_price":null,"diskon":"10000.00","auto_isolir":true,
+	  "package":{"id":2,"name":"10M","price":150000},"fitur_baru":{"x":1}},
+	 {"id":2,"name":"B","username":"ub","phone":"081200002222","status":"inactive",
+	  "billing_date":1,"tgl_isolir":10,"max_tunggakan":2,"registration_date":"2024-01-15",
+	  "is_isolated":true,"isolated_since":"2026-09-01 10:00:00","diskon":null,
+	  "package":{"id":2,"name":"10M","price":150000}}
+	],"meta":{"total":2}}`
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	})
+	a := New(srv.URL, "k")
+	out, err := a.Invoke(context.Background(), "billing.get_customer", map[string]any{"identity": "u"})
+	if err != nil {
+		t.Fatalf("decode payload nyata gagal: %v", err)
+	}
+	for _, w := range []string{"ua", "ub", "ISOLIR", "isolir_sejak=2026-09-01", "tgl_isolir=10", "Rp150000"} {
+		if !strings.Contains(out.Text, w) {
+			t.Errorf("ringkasan tanpa %q: %s", w, out.Text)
+		}
+	}
+	if _, err := a.Ping(context.Background()); err != nil {
+		t.Fatalf("ping gagal: %v", err)
+	}
+}

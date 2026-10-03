@@ -39,10 +39,8 @@ type Customer struct {
 	BillingDate   int     `json:"billing_date"`
 	TglIsolir     int     `json:"tgl_isolir"`
 	MaxTunggakan  int     `json:"max_tunggakan"`
-	RegisteredAt  string  `json:"registration_date"`
+	RegisteredAt  *string `json:"registration_date"`
 	IsOnLeave     bool    `json:"is_on_leave"`
-	CustomPrice   *int    `json:"custom_price"`
-	Diskon        *int    `json:"diskon"`
 	Area          struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
