@@ -8,25 +8,21 @@ import (
 	"testing"
 )
 
-// fakeV1 meniru dua endpoint: NOC search (X-NOC-API-Key) dan /api/v1 history (Bearer).
-func fakeV1(t *testing.T, bearer string, historyJSON string, historyStatus int) *httptest.Server {
+// fakeNOC meniru /api/noc/v1: search pelanggan + history, keduanya X-NOC-API-Key.
+func fakeNOC(t *testing.T, historyJSON string, historyStatus int) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.Header.Get("X-NOC-API-Key") != "noc-key" {
+			w.WriteHeader(401)
+			return
+		}
 		switch {
-		case strings.HasPrefix(r.URL.Path, "/api/noc/v1/customers"):
-			if r.Header.Get("X-NOC-API-Key") != "noc-key" {
-				w.WriteHeader(401)
-				return
-			}
+		case r.URL.Path == "/api/noc/v1/customers":
 			w.Write([]byte(`{"status":"success","data":[{"id":42,"name":"Pelanggan Uji","username":"uji01","status":"active"}],"meta":{"total":1}}`))
-		case r.URL.Path == "/api/v1/customers/42/history":
+		case r.URL.Path == "/api/noc/v1/customers/42/history":
 			if r.Method != http.MethodGet {
 				t.Errorf("history harus GET, dapat %s", r.Method)
-			}
-			if r.Header.Get("Authorization") != "Bearer "+bearer {
-				w.WriteHeader(401)
-				return
 			}
 			w.WriteHeader(historyStatus)
 			w.Write([]byte(historyJSON))
@@ -37,17 +33,15 @@ func fakeV1(t *testing.T, bearer string, historyJSON string, historyStatus int) 
 	}))
 }
 
-const histOK = `{"success":true,"data":{"history":{"2026":[
+const histOK = `{"status":"success","data":{"customer":{"id":42,"name":"Pelanggan Uji"},"history":{"2026":[
  {"period":"2026-09","month":"09","charge_amount":150000,"status":"unpaid"},
  {"period":"2026-08","month":"08","charge_amount":"150000.00","status":"unpaid"},
- {"period":"2026-07","month":"07","charge_amount":150000,"status":"paid"}]},
- "wa_template":{"x":["bukan","angka"]}}}`
+ {"period":"2026-07","month":"07","charge_amount":150000,"status":"paid"}]}}}`
 
 func TestHistoryTunggakan(t *testing.T) {
-	srv := fakeV1(t, "tok-bearer", histOK, 200)
+	srv := fakeNOC(t, histOK, 200)
 	defer srv.Close()
-	a := New(srv.URL, "noc-key").WithUserToken(srv.URL, "tok-bearer")
-	out, err := a.Invoke(context.Background(), ToolHistory, map[string]any{"identity": "uji01"})
+	out, err := New(srv.URL, "noc-key").Invoke(context.Background(), ToolHistory, map[string]any{"identity": "uji01"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,31 +52,20 @@ func TestHistoryTunggakan(t *testing.T) {
 	}
 }
 
-func TestHistoryTanpaToken(t *testing.T) {
-	srv := fakeV1(t, "x", histOK, 200)
-	defer srv.Close()
-	a := New(srv.URL, "noc-key")
-	if _, err := a.Invoke(context.Background(), ToolHistory, map[string]any{"identity": "uji01"}); err == nil || !strings.Contains(err.Error(), "belum dikonfigurasi") {
-		t.Fatalf("harus error 'belum dikonfigurasi', dapat %v", err)
-	}
-}
-
-func TestHistoryTokenDitolak(t *testing.T) {
-	srv := fakeV1(t, "benar", histOK, 200)
-	defer srv.Close()
-	a := New(srv.URL, "noc-key").WithUserToken(srv.URL, "salah")
-	_, err := a.Invoke(context.Background(), ToolHistory, map[string]any{"identity": "uji01"})
-	if err == nil || !strings.Contains(err.Error(), "ditolak") {
-		t.Fatalf("harus error 'ditolak', dapat %v", err)
-	}
-}
-
 func TestHistoryLunas(t *testing.T) {
-	srv := fakeV1(t, "t", `{"success":true,"data":{"history":{"2026":[{"period":"2026-09","charge_amount":1,"status":"paid"}]},"wa_template":{}}}`, 200)
+	srv := fakeNOC(t, `{"status":"success","data":{"history":{"2026":[{"period":"2026-09","charge_amount":1,"status":"paid"}]}}}`, 200)
 	defer srv.Close()
-	a := New(srv.URL, "noc-key").WithUserToken(srv.URL, "t")
-	out, err := a.Invoke(context.Background(), ToolHistory, map[string]any{"identity": "uji01"})
+	out, err := New(srv.URL, "noc-key").Invoke(context.Background(), ToolHistory, map[string]any{"identity": "uji01"})
 	if err != nil || !strings.Contains(out.Text, "Tidak ada tunggakan") {
 		t.Fatalf("err=%v teks=%s", err, out.Text)
+	}
+}
+
+func TestHistoryEndpointBelumAda(t *testing.T) {
+	srv := fakeNOC(t, `{"message":"Not Found"}`, 404)
+	defer srv.Close()
+	_, err := New(srv.URL, "noc-key").Invoke(context.Background(), ToolHistory, map[string]any{"identity": "uji01"})
+	if err == nil || !strings.Contains(err.Error(), "belum tersedia") {
+		t.Fatalf("harus error 'belum tersedia', dapat %v", err)
 	}
 }

@@ -86,8 +86,6 @@ type Config struct {
 	// Token TIDAK pernah muncul di Redacted()/API — hanya masked.
 	BillingURL   string `json:"billing_url"`
 	BillingToken string `json:"billing_token"`
-	// BillingUserToken = token Bearer (Sanctum) untuk riwayat tagihan (/api/v1).
-	BillingUserToken string `json:"billing_user_token"`
 	RadiusURL        string `json:"radius_url"`
 	RadiusToken      string `json:"radius_token"`
 	// MikroTik memakai API native (protokol biner) + Basic Auth (user+password),
@@ -504,9 +502,6 @@ func Load(path string) *Config {
 	if v := getenv("NOC_BILLING_TOKEN"); v != "" {
 		c.BillingToken = v
 	}
-	if v := getenv("NOC_BILLING_USER_TOKEN"); v != "" {
-		c.BillingUserToken = v
-	}
 	if v := getenv("NOC_RADIUS_URL"); v != "" {
 		c.RadiusURL = v
 	}
@@ -634,8 +629,6 @@ func (c *Config) Redacted() map[string]any {
 		"mikrotik_set":         len(c.Routers()) > 0,
 		"genieacs_set":         c.GenieACSURL != "",
 		"billing_token_masked": maskSecret(c.BillingToken),
-		"billing_user_set":     c.BillingUserToken != "",
-		"billing_user_masked":  maskSecret(c.BillingUserToken),
 		"radius_token_masked":  maskSecret(c.RadiusToken),
 		"mikrotik_pass_masked": maskSecret(c.MikrotikPass),
 	}

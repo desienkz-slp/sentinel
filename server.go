@@ -218,7 +218,6 @@ func (s *Server) routes() http.Handler {
 			// Endpoint adaptor eksternal (URL + token; token opsional = "tidak diubah").
 			BillingURL       *string `json:"billing_url"`
 			BillingToken     *string `json:"billing_token"`
-			BillingUserToken *string `json:"billing_user_token"`
 			RadiusURL        *string `json:"radius_url"`
 			RadiusToken      *string `json:"radius_token"`
 			MikrotikHost     *string `json:"mikrotik_host"`
@@ -310,9 +309,6 @@ func (s *Server) routes() http.Handler {
 		}
 		if body.BillingToken != nil {
 			s.cfg.BillingToken = strings.TrimSpace(*body.BillingToken)
-		}
-		if body.BillingUserToken != nil {
-			s.cfg.BillingUserToken = strings.TrimSpace(*body.BillingUserToken)
 		}
 		if body.RadiusURL != nil {
 			s.cfg.RadiusURL = strings.TrimRight(strings.TrimSpace(*body.RadiusURL), "/")
@@ -1391,7 +1387,7 @@ func (s *Server) syncBillingAdapter() {
 		if s.billing != nil {
 			s.disp.Unregister(s.billing) // ganti endpoint lama
 		}
-		s.billing = billing.New(s.cfg.BillingURL, s.cfg.BillingToken).WithUserToken(s.cfg.BillingURL, s.cfg.BillingUserToken)
+		s.billing = billing.New(s.cfg.BillingURL, s.cfg.BillingToken)
 		s.disp.Register(s.billing)
 		log.Printf("[billing] adapter NETORA terdaftar: %s/api/noc/v1 (read-only)", s.cfg.BillingURL)
 	} else {

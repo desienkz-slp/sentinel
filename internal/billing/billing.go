@@ -81,7 +81,6 @@ type customersResponse struct {
 // Adapter adalah adaptor billing read-only.
 type Adapter struct {
 	http *adapter.HTTP
-	v1   *adapter.HTTP // /api/v1 + Bearer (Sanctum); nil = riwayat tagihan nonaktif
 }
 
 // New membuat BillingAdapter. baseURL = NOC_BILLING_URL (mis. http://server),

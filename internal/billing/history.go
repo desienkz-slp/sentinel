@@ -9,35 +9,13 @@ import (
 	"strconv"
 	"strings"
 
-	"ainoc/internal/adapter"
 	"ainoc/internal/tool"
 )
 
-// ToolHistory adalah tool riwayat tagihan bulanan (GET /api/v1/customers/{id}/history).
-// Endpoint ini hanya ada di API Sanctum (/api/v1), bukan di /api/noc/v1, sehingga
-// butuh token Bearer terpisah. Hanya satu path GET yang dipanggil — tidak ada
-// jalur tulis (isolir/payments) dari adaptor ini.
+// ToolHistory adalah tool riwayat tagihan bulanan
+// (GET /api/noc/v1/customers/{id}/history, X-NOC-API-Key yang sama dengan
+// billing.get_customer). Hanya GET — tidak ada jalur tulis dari adaptor ini.
 const ToolHistory = "billing.get_history"
-
-// WithUserToken mengaktifkan tool riwayat tagihan memakai token Bearer (Sanctum).
-// Token kosong = tool tetap terdaftar tetapi menjawab "belum dikonfigurasi".
-func (a *Adapter) WithUserToken(baseURL, token string) *Adapter {
-	token = strings.TrimSpace(token)
-	if baseURL == "" || token == "" {
-		a.v1 = nil
-		return a
-	}
-	a.v1 = adapter.New(adapter.Config{
-		Domain:     "billing",
-		BaseURL:    strings.TrimRight(baseURL, "/") + "/api/v1",
-		Token:      token, // HeaderName default = Authorization: Bearer
-		MaxRetries: 2,
-	})
-	return a
-}
-
-// HistoryEnabled melaporkan apakah token Bearer terpasang.
-func (a *Adapter) HistoryEnabled() bool { return a.v1 != nil }
 
 // flexNum menerima angka JSON berupa number maupun string ("150000.00").
 type flexNum float64
@@ -63,8 +41,8 @@ type historyItem struct {
 }
 
 type historyResponse struct {
-	Success bool `json:"success"`
-	Data    struct {
+	Status string `json:"status"`
+	Data   struct {
 		// Dikelompokkan per tahun; wa_template sengaja tidak didekode.
 		History map[string][]historyItem `json:"history"`
 	} `json:"data"`
@@ -105,18 +83,18 @@ func (a *Adapter) getHistory(ctx context.Context, args map[string]any) (tool.Out
 	if identity == "" {
 		return tool.Output{}, fmt.Errorf("billing.get_history butuh identity (username pelanggan)")
 	}
-	if a.v1 == nil {
-		return tool.Output{}, fmt.Errorf("riwayat tagihan belum dikonfigurasi: isi Token Billing (Bearer) di Pengaturan")
-	}
 	cust, err := a.resolveCustomer(ctx, identity)
 	if err != nil {
 		return tool.Output{}, err
 	}
 
 	var resp historyResponse
-	if err := a.v1.GetJSON(ctx, fmt.Sprintf("/customers/%d/history", cust.ID), &resp); err != nil {
+	if err := a.http.GetJSON(ctx, fmt.Sprintf("/customers/%d/history", cust.ID), &resp); err != nil {
+		if strings.Contains(err.Error(), "http 404") {
+			return tool.Output{}, fmt.Errorf("endpoint riwayat tagihan belum tersedia di server billing (Laravel Bill belum di-deploy versi yang memuat /customers/{id}/history)")
+		}
 		if strings.Contains(err.Error(), "http 401") || strings.Contains(err.Error(), "http 403") {
-			return tool.Output{}, fmt.Errorf("token Bearer billing ditolak/kedaluwarsa (%s)", oneLine(err.Error()))
+			return tool.Output{}, fmt.Errorf("API key billing ditolak (%s)", oneLine(err.Error()))
 		}
 		return tool.Output{}, err
 	}

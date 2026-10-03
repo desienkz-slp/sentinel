@@ -162,7 +162,6 @@
     <div class="row">
       <div><label for="billingUrl">Host Billing (NETORA)</label><input id="billingUrl" placeholder="http://192.168.1.10"></div>
       <div><label for="billingKey">API Key Billing (X-NOC-API-Key)</label><input id="billingKey" type="password" placeholder="•••• (kosongkan = tidak diubah)"></div>
-      <div><label for="billingUserKey">Token Billing (Bearer) — riwayat tagihan</label><input id="billingUserKey" type="password" placeholder="•••• (kosongkan = tidak diubah)"></div>
     </div>
     <div class="row">
       <div><label for="radiusUrl">Host RADIUS (Radius UI)</label><input id="radiusUrl" placeholder="http://192.168.1.100:3001"></div>
@@ -335,7 +334,6 @@ function statusIntegrasi(c) {
   const mkLine = `MikroTik: <b>${mkCount ? 'aktif (' + mkCount + ' router)' : 'nonaktif'}</b>`;
   $('intStatus').innerHTML = [
     row('Billing',  c.billing_url,  c.billing_set,  c.billing_token_masked),
-    `Riwayat tagihan (Bearer): <b>${c.billing_user_set ? 'aktif' : 'nonaktif'}</b>` + (c.billing_user_set && c.billing_user_masked ? ` · ${esc(c.billing_user_masked)}` : ''),
     row('RADIUS',   c.radius_url,   c.radius_set,   c.radius_token_masked),
     mkLine,
     row('GenieACS', c.genieacs_url, c.genieacs_set, null),
@@ -504,7 +502,6 @@ async function saveIntegrations(silent) {
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
       billing_url: $('billingUrl').value || undefined,
       billing_token: $('billingKey').value || undefined,
-      billing_user_token: $('billingUserKey').value || undefined,
       radius_url: $('radiusUrl').value || undefined,
       radius_token: $('radiusKey').value || undefined,
       mikrotik_routers: routers,
@@ -512,7 +509,7 @@ async function saveIntegrations(silent) {
     })});
     statusIntegrasi(d.config);
     if (!silent) msg('intMsg', true, 'Tersimpan.');
-    $('billingKey').value = ''; $('billingUserKey').value = ''; $('radiusKey').value = '';
+    $('billingKey').value = ''; $('radiusKey').value = '';
     // Kosongkan field password di UI (nilai sudah tersimpan server-side).
     mkRouters.forEach(r => { r.pass = ''; });
     mkRender();
