@@ -39,3 +39,4 @@ dist/
 
 # Rig uji lokal (config + data uji, bisa memuat salinan kunci LLM)
 .localtest/
+docs/QA_FOLLOWUP_*.md
