@@ -112,14 +112,21 @@ func (s *Server) resolveUnknownCaller(ctx context.Context, caller directory.Call
 	if caller.IsStaff || caller.IsCustomer {
 		return "", false, nil
 	}
-	// Hanya keluhan nyata yang masuk alur tanya-lokasi. Sapaan/info tetap
-	// ditangani alur LLM biasa (CS ramah).
-	if standard.Classify(msg) != standard.IntentComplaint {
-		return "", false, nil
+
+	waiting := s.csUnknown.isWaiting(key)
+
+	// Bila sender SEDANG menunggu pertanyaan lokasi, pesan apa pun dibaca sebagai
+	// JAWABAN lokasi (bukan keluhan/sapaan baru) — jadi jangan diklasifikasi ulang.
+	// Ini menutup bug: balasan "dusun krajan" terklasifikasi CHAT lalu jatuh ke LLM.
+	if !waiting {
+		// Hanya keluhan nyata yang memicu alur tanya-lokasi. Sapaan/info dari
+		// nomor tak dikenal tetap ditangani alur LLM biasa (CS ramah).
+		if standard.Classify(msg) != standard.IntentComplaint {
+			return "", false, nil
+		}
 	}
 
 	lokasi := lokasiDariPesan(msg)
-	waiting := s.csUnknown.isWaiting(key)
 
 	// Belum ada lokasi dan belum pernah ditanya -> minta lokasi.
 	if lokasi == "" && !waiting {
