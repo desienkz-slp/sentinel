@@ -15,3 +15,10 @@ Jalankan:
 
 Manual: `curl -X POST localhost:3011/sim/inbound -H 'Content-Type: application/json' -d '{"from":"628111000002","text":"..."}'`
 lalu `curl localhost:3011/sim/outbox`.
+
+## Ngobrol dengan agent lewat gateway lokal
+    python3 wa-gateway/sim/chat.py noc "cek billing <username>"
+    python3 wa-gateway/sim/chat.py admin "daftar pelanggan isolir"
+    python3 wa-gateway/sim/chat.py 628xxxxxxxxxx "tagihan saya berapa?"   # nomor pelanggan asli = dikenali dari billing
+Peran uji: super=628111000001, noc=628111000002, admin=628111000003. Billing memakai data ASLI
+(read-only); balasan hanya masuk ke kotak keluar simulasi, tidak dikirim ke WhatsApp pelanggan.
