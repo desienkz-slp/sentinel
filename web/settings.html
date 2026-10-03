@@ -74,6 +74,7 @@
   <div class="pill"><span class="dot" id="dotRadius"></span><span id="txtRadius">R</span></div>
   <div class="pill"><span class="dot" id="dotGenieacs"></span><span id="txtGenieacs">A</span></div>
   <a class="gear on" href="/settings.html" title="Pengaturan" aria-label="Pengaturan">⚙</a>
+  <a class="gear" id="btnLogout" href="#" title="Keluar" aria-label="Keluar">⏻</a>
 </header>
 
 <main>
@@ -745,6 +746,13 @@ async function delStaff(number){
 
 boot();
 loadStaff();
+
+// Tombol logout.
+document.getElementById('btnLogout').addEventListener('click', async (e) => {
+  e.preventDefault();
+  try { await fetch('/api/auth/logout', {method:'POST'}); } catch {}
+  location.href = '/login.html';
+});
 </script>
 </body>
 </html>

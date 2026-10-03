@@ -148,6 +148,7 @@
       <div class="pill" id="pillVersion" title="Versi aplikasi">v—</div>
       <button class="pill" id="btnUpdate" style="display:none;cursor:pointer;border:none;background:#1f6feb;color:#fff;font-weight:600" title="Pasang versi terbaru">⬆ Update</button>
       <a class="gear" href="/settings.html" title="Pengaturan" aria-label="Pengaturan">⚙</a>
+      <a class="gear" id="btnLogout" href="#" title="Keluar" aria-label="Keluar">⏻</a>
     </div>
   </div>
 </header>
@@ -837,6 +838,15 @@ setInterval(refreshCases, 15000);
 refreshBlueprint();
 refreshObservability();
 refreshCases();
+
+// Tombol logout: POST /api/auth/logout lalu arahkan ke halaman login.
+$('btnLogout').addEventListener('click', async (e) => {
+  e.preventDefault();
+  try {
+    await fetch('/api/auth/logout', {method:'POST'});
+  } catch {}
+  location.href = '/login.html';
+});
 </script>
 </body>
 </html>
