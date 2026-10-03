@@ -15,6 +15,23 @@ topologi area/router/OLT/PON. Yang belum ada adalah pemetaan ke level P1..P4 dan
 penggunaannya untuk menentukan siapa dihubungi. Fase 5 membangun di atas korelasi
 yang sudah ada, bukan dari nol. (Jendela waktu korelasi belum saya baca; dicek di Fase 5.)
 
+## Status pelaksanaan
+
+| Fase | Status | Rilis | Catatan |
+|---|---|---|---|
+| 0 Fondasi | SELESAI | v0.2.22 | overlay registry menggabung; flag; metrik; korpus + golden |
+| 1 Router intent | SELESAI (mode `shadow` menyala di produksi) | v0.2.23 | nol selisih di korpus; menunggu pengamatan produksi sebelum `on` |
+| 2 Profil tim + pembatas | berikutnya | | |
+| 3 Presentasi | | | |
+| 4 Serah-terima | | | |
+| 5 Keparahan | diblokir keputusan §6.1 | | |
+
+Temuan Fase 0: `config.json` produksi menyimpan `registry_path` eksplisit ke
+`registry.yaml`, sehingga overlay `registry.local.yaml` TIDAK PERNAH dipakai: 0 tool aktif
+di produksi sebelum v0.2.22. Setelah merge: 12 tool READ aktif, 0 WRITE. Artinya sebelum
+v0.2.22 agen LLM tidak melihat tool eksternal sama sekali (perintah staf berbasis kode
+tetap jalan karena tidak lewat registry LLM). Keputusan operator: 12 tool tetap aktif.
+
 ## 1. Peta kondisi sekarang (titik yang akan disentuh)
 
 Jalur pesan WhatsApp saat ini, di `server.go` (handler `/api/wa/webhook`):
