@@ -40,6 +40,7 @@ import (
 	"ainoc/internal/memory"
 	"ainoc/internal/observability"
 	"ainoc/internal/policy"
+	"ainoc/internal/redisx"
 	"ainoc/internal/registry"
 	"ainoc/internal/session"
 	"ainoc/internal/supervisor"
@@ -190,7 +191,16 @@ func main() {
 	hreg.Set("redis", health.StatusUnknown, "belum dicek", 0)
 
 	// Cache dedup untuk webhook WhatsApp (cegah pesan duplikat ganda).
-	ded := dedupe.New(2*time.Minute, 10000)
+	dedLocal := dedupe.New(2*time.Minute, 10000)
+	var rc *redisx.Client
+	if dbcfg0 := db.Default(); dbcfg0.RedisPassword != "" {
+		rc = redisx.New(dbcfg0.RedisAddr, dbcfg0.RedisPassword)
+	}
+	ded := &dedupe.Hybrid{Local: dedLocal, TTL: 2 * time.Minute}
+	if rc != nil {
+		ded.Remote = rc
+	}
+	ded.Mode = func() string { return string(config.NormalizeTeamMode(cfg.StoreRedis)) }
 	// Counter observability hanya menyimpan agregat rute/status/latensi.
 	obs := observability.NewCollector()
 	// Cache umum (bisa dipakai nanti oleh adaptor eksternal).
@@ -237,6 +247,7 @@ func main() {
 	// Pembatas tim CS (Fase 2): penolakan/penimpaan identitas tercatat ke audit
 	// dan metrik. Tanpa isi pesan, nomor pelanggan, atau data akun.
 	srv.pg = pgs
+	srv.rds = rc
 	srv.attachHandoffSink()
 	srv.attachCaseSink(casew)
 	engine.ScopeHook = srv.recordScopeEvent

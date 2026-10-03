@@ -128,6 +128,8 @@ type Config struct {
 	TeamNOCTools  string `json:"team_noc_toolfirst"`
 	// Penyimpanan PostgreSQL (off|shadow|on). Default off = hanya JSON.
 	StorePG string `json:"store_pg"`
+	// Cache bersama Redis untuk dedupe (off|shadow|on). Default off.
+	StoreRedis string `json:"store_redis"`
 	// Kebijakan keparahan P1..P4 (Fase 5). Diisi operator; kosong = UNRATED.
 	SeverityPolicy severity.Policy `json:"severity_policy"`
 
@@ -662,6 +664,7 @@ func (c *Config) Redacted() map[string]any {
 		"severity_policy":      c.SeverityPolicy,
 		"team_noc_toolfirst":   string(NormalizeTeamMode(c.TeamNOCTools)),
 		"store_pg":             string(NormalizeTeamMode(c.StorePG)),
+		"store_redis":          string(NormalizeTeamMode(c.StoreRedis)),
 		"radius_token_masked":  maskSecret(c.RadiusToken),
 		"mikrotik_pass_masked": maskSecret(c.MikrotikPass),
 	}

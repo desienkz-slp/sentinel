@@ -1,9 +1,12 @@
 package main
 
 import (
+	"ainoc/internal/dedupe"
+	"ainoc/internal/redisx"
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"ainoc/internal/config"
 	"ainoc/internal/db"
@@ -75,3 +78,39 @@ func TestStorePGModeIlegalDitolak(t *testing.T) {
 }
 
 var _ = handoff.Unknown
+
+func TestStoreRedisModeIlegalDitolakDanStatusTampil(t *testing.T) {
+	s, h := teamTestServer(t)
+	if code, _ := call(t, h, "POST", "/api/config", `{"store_redis":"hidup"}`); code != 400 {
+		t.Fatalf("harus 400, dapat %d", code)
+	}
+	if s.cfg.StoreRedis != "" {
+		t.Fatal("nilai ilegal tidak boleh tersimpan")
+	}
+	if code, _ := call(t, h, "POST", "/api/config", `{"store_redis":"shadow"}`); code != 200 {
+		t.Fatalf("shadow harus diterima: %d", code)
+	}
+	_, out := call(t, h, "GET", "/api/team/metrics", "")
+	r, _ := out["store_redis"].(map[string]any)
+	if r == nil || r["mode"] != "shadow" || r["connected"] != false {
+		t.Fatalf("status Redis salah: %v", out["store_redis"])
+	}
+}
+
+// Redis mati + mode on: webhook WA tetap men-dedupe dari lokal (tidak ada pesan ganda).
+func TestDedupeWebhookRedisMati(t *testing.T) {
+	s, _ := teamTestServer(t)
+	s.cfg.StoreRedis = "on"
+	s.ded = &dedupe.Hybrid{Local: dedupe.New(time.Minute, 10), TTL: time.Minute,
+		Remote: redisx.New("127.0.0.1:1", "x"), Mode: func() string { return "on" }}
+	fp := dedupe.Fingerprint("wa", "628111000001", "halo")
+	if s.ded.Seen(fp) {
+		t.Fatal("pertama bukan duplikat")
+	}
+	if !s.ded.Seen(fp) {
+		t.Fatal("kedua harus duplikat walau Redis mati")
+	}
+	if s.ded.Stats()["remote_errors"] < 1 {
+		t.Fatal("error Redis harus tercatat")
+	}
+}

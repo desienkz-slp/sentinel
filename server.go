@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ainoc/internal/redisx"
 	"ainoc/internal/severity"
 	"context"
 	"embed"
@@ -71,7 +72,7 @@ type Server struct {
 
 	// Blueprint upgrade: health, dedupe.
 	hreg  *health.Registry
-	ded   *dedupe.Store
+	ded   *dedupe.Hybrid
 	obs   *observability.Collector
 	teams *observability.TeamCollector // metrik keputusan tim CS/NOC (tanpa data pribadi)
 
@@ -101,6 +102,8 @@ type Server struct {
 	ho *handoff.Ledger
 	// pg = koneksi PostgreSQL opsional (Fase E). nil/tidak tersambung = hanya JSON.
 	pg *pgState
+	// rds = klien Redis opsional (dedupe bersama). nil = hanya lokal.
+	rds *redisx.Client
 
 	// upd memeriksa rilis GitHub (cek otomatis + apply 1-klik). nil = fitur mati.
 	upd *updater.Checker
@@ -188,8 +191,9 @@ func (s *Server) routes() http.Handler {
 				"routing": string(f.Routing), "cs_scope": string(f.CSScope), "handoff": string(f.Handoff),
 				"severity": string(f.Severity), "presenter": string(f.Presenter), "noc_toolfirst": string(f.NOCTools),
 			},
-			"metrics":  s.teams.Snapshot(),
-			"store_pg": map[string]any{"mode": string(s.storePGMode()), "state": s.pg.Snapshot()},
+			"metrics":     s.teams.Snapshot(),
+			"store_pg":    map[string]any{"mode": string(s.storePGMode()), "state": s.pg.Snapshot()},
+			"store_redis": s.redisStatus(),
 		})
 	})
 
@@ -246,6 +250,7 @@ func (s *Server) routes() http.Handler {
 			SeverityPolicy *severity.Policy `json:"severity_policy"`
 			TeamNOCTools   *string          `json:"team_noc_toolfirst"`
 			StorePG        *string          `json:"store_pg"`
+			StoreRedis     *string          `json:"store_redis"`
 			TeamPresenter  *string          `json:"team_presenter"`
 			RadiusURL      *string          `json:"radius_url"`
 			RadiusToken    *string          `json:"radius_token"`
@@ -267,7 +272,7 @@ func (s *Server) routes() http.Handler {
 		for name, p := range map[string]*string{
 			"team_routing": body.TeamRouting, "team_cs_scope": body.TeamCSScope,
 			"team_handoff": body.TeamHandoff, "team_severity": body.TeamSeverity,
-			"team_presenter": body.TeamPresenter, "team_noc_toolfirst": body.TeamNOCTools, "store_pg": body.StorePG,
+			"team_presenter": body.TeamPresenter, "team_noc_toolfirst": body.TeamNOCTools, "store_pg": body.StorePG, "store_redis": body.StoreRedis,
 		} {
 			if p == nil {
 				continue
@@ -287,6 +292,9 @@ func (s *Server) routes() http.Handler {
 		}
 		if body.TeamHandoff != nil {
 			s.cfg.TeamHandoff = string(config.NormalizeTeamMode(*body.TeamHandoff))
+		}
+		if body.StoreRedis != nil {
+			s.cfg.StoreRedis = string(config.NormalizeTeamMode(*body.StoreRedis))
 		}
 		if body.StorePG != nil {
 			s.cfg.StorePG = string(config.NormalizeTeamMode(*body.StorePG))

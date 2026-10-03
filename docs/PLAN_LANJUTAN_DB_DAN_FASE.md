@@ -46,7 +46,7 @@ dari apt. Tidak ada yang dibuka ke jaringan (hanya `127.0.0.1`/socket).
 | D | SELESAI: runner migrasi + checksum + 003_handoffs; teruji di PostgreSQL asli | v0.2.31 |
 | E | SELESAI: handoff + kasus -> PostgreSQL (`store_pg=shadow`), JSON sumber kebenaran; PG mati tidak mengganggu | v0.2.31-32 |
 | F | SELESAI di kode: `ai-noc-go -import-pg [-dry-run]`, idempoten, terverifikasi | v0.2.32 |
-| G | belum | |
+| G | SELESAI di kode: dedupe bersama Redis (`store_redis`), Redis mati jatuh ke lokal; teruji di Redis asli | v0.2.33 |
 | H | belum | |
 
 ## Catatan Fase B (hasil evaluasi)

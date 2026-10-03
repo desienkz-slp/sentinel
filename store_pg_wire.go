@@ -173,3 +173,20 @@ func (s *Server) attachCaseSink(cw interface{ SetSink(func(caseengine.Record)) }
 		}()
 	})
 }
+
+// redisStatus untuk panel/metrik: mode + keterjangkauan + statistik. Tanpa kunci.
+func (s *Server) redisStatus() map[string]any {
+	out := map[string]any{"mode": "off", "connected": false}
+	if s.cfg != nil {
+		out["mode"] = string(config.NormalizeTeamMode(s.cfg.StoreRedis))
+	}
+	if s.rds != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+		defer cancel()
+		out["connected"] = s.rds.Ping(ctx) == nil
+	}
+	if s.ded != nil {
+		out["stats"] = s.ded.Stats()
+	}
+	return out
+}
