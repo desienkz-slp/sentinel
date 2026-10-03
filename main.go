@@ -27,6 +27,7 @@ import (
 	"ainoc/internal/cache"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
+	"ainoc/internal/customtool"
 	"ainoc/internal/db"
 	"ainoc/internal/dedupe"
 	"ainoc/internal/diag"
@@ -267,7 +268,7 @@ func main() {
 		}
 	}()
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, teams: observability.NewTeamCollector(), disp: disp, esc: escalation.NewDedup(), ho: handoff.New(filepath.Join(filepath.Dir(cfg.IncidentPath), "handoffs.json")), csUnknown: newCSUnknownState()}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, teams: observability.NewTeamCollector(), disp: disp, esc: escalation.NewDedup(), ho: handoff.New(filepath.Join(filepath.Dir(cfg.IncidentPath), "handoffs.json")), csUnknown: newCSUnknownState(), customTools: customtool.NewStore(filepath.Join(filepath.Dir(cfg.IncidentPath), "customtools.json"))}
 	// Pembatas tim CS (Fase 2): penolakan/penimpaan identitas tercatat ke audit
 	// dan metrik. Tanpa isi pesan, nomor pelanggan, atau data akun.
 	srv.pg = pgs
@@ -311,6 +312,9 @@ func main() {
 	srv.syncRadiusAdapter()
 	// Selaraskan GenieACSAdapter (host NBI dari env/config).
 	srv.syncGenieACSAdapter()
+	// Selaraskan executor tool custom (setelah adapter domain aktif, supaya
+	// domainConf lengkap). Mendaftarkan tool custom yang sudah active ke dispatcher.
+	srv.syncCustomToolExecutor()
 
 	// Identifikasi penelepon + RBAC: bangun direktori staf & identifier.
 	// Harus SETELAH syncBillingAdapter (identifier memakai billing untuk lookup

@@ -22,6 +22,7 @@ import (
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/correlation"
+	"ainoc/internal/customtool"
 	"ainoc/internal/dedupe"
 	"ainoc/internal/diag"
 	"ainoc/internal/directory"
@@ -116,6 +117,11 @@ type Server struct {
 	// csUnknown = alur CS untuk penelepon tak dikenal (tanya lokasi -> eskalasi
 	// Admin). Lihat cs_unknown_wire.go.
 	csUnknown *csUnknownState
+	// customTools = tool read-only yang diusulkan Endpoint B (draft) lalu
+	// disetujui superadmin. Lihat internal/customtool + customtool_wire.go.
+	customTools *customtool.Store
+	// customExec = executor generic untuk tool custom yang sudah active.
+	customExec *customtool.Executor
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -142,6 +148,12 @@ func (s *Server) routes() http.Handler {
 
 	// Identifikasi penelepon + manajemen staf (RBAC).
 	s.registerIdentityRoutes(mux)
+
+	// Tool custom read-only (usulan Endpoint B -> approval superadmin).
+	s.registerCustomToolRoutes(mux)
+
+	// Pemasangan tool jaringan (inspeksi NOC) — superadmin + PIN.
+	s.registerNetInstallRoutes(mux)
 
 	// Liveness tidak bergantung pada layanan lain: proses HTTP masih hidup.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
