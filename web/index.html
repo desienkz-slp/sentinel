@@ -38,6 +38,8 @@
   .brand-link img{display:block}
   .spacer{flex:1}
   .pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;
+    border-left:1px solid var(--line);padding-left:14px;margin-left:6px}
   .pill{font:12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line);border-radius:99px;color:var(--dim);
     display:inline-flex;align-items:center;gap:6px;background:var(--panel2);white-space:nowrap}
   /* Di layar portrait/sempit, biarkan header menyesuaikan tanpa melebar berlebihan. */
@@ -46,6 +48,7 @@
     .header-inner{gap:10px}
     .brand .tagline{display:none}
     .pill{padding:5px 8px}
+    .actions{border-left:none;padding-left:0;margin-left:0}
   }
   .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:0 0 auto}
   .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
@@ -161,6 +164,8 @@
       <div class="pill" id="pillModel">—</div>
       <div class="pill" id="pillVersion" title="Versi aplikasi">v—</div>
       <button class="pill" id="btnUpdate" style="display:none;cursor:pointer;border:none;background:#1f6feb;color:#fff;font-weight:600" title="Pasang versi terbaru">⬆ Update</button>
+    </div>
+    <div class="actions">
       <a class="gear" href="/settings.html" title="Pengaturan" aria-label="Pengaturan">⚙</a>
       <a class="gear" id="btnLogout" href="#" title="Keluar" aria-label="Keluar">⏻</a>
     </div>

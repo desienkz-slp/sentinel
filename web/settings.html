@@ -23,11 +23,14 @@
   .logo span{color:var(--acc)}
   .tagline{font:11px/1 var(--mono);color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-top:3px}
   .pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;
+    border-left:1px solid var(--line);padding-left:14px;margin-left:6px}
   @media(max-width:720px){
     header{padding:10px 14px;gap:10px}
     .header-inner{gap:10px}
     .brand .tagline{display:none}
     .pill{padding:5px 8px}
+    .actions{border-left:none;padding-left:0;margin-left:0}
   }
   .gear{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 auto;
     color:var(--dim);text-decoration:none;font-size:17px;border:1px solid var(--line);border-radius:8px;
@@ -86,10 +89,12 @@
     </div>
     <div class="spacer"></div>
     <div class="pills">
-      <div class="pill"><span class="dot" id="dotBilling"></span><span id="txtBilling">B</span></div>
-      <div class="pill"><span class="dot" id="dotMikrotik"></span><span id="txtMikrotik">M</span></div>
-      <div class="pill"><span class="dot" id="dotRadius"></span><span id="txtRadius">R</span></div>
-      <div class="pill"><span class="dot" id="dotGenieacs"></span><span id="txtGenieacs">A</span></div>
+      <div class="pill" title="Billing"><span class="dot" id="dotBilling"></span><span id="txtBilling">Billing</span></div>
+      <div class="pill" title="MikroTik"><span class="dot" id="dotMikrotik"></span><span id="txtMikrotik">MikroTik</span></div>
+      <div class="pill" title="RADIUS"><span class="dot" id="dotRadius"></span><span id="txtRadius">RADIUS</span></div>
+      <div class="pill" title="GenieACS"><span class="dot" id="dotGenieacs"></span><span id="txtGenieacs">GenieACS</span></div>
+    </div>
+    <div class="actions">
       <a class="gear" href="/" title="Ke Dashboard" aria-label="Dashboard">⌂</a>
       <a class="gear on" href="/settings.html" title="Pengaturan" aria-label="Pengaturan">⚙</a>
       <a class="gear" id="btnLogout" href="#" title="Keluar" aria-label="Keluar">⏻</a>
@@ -288,7 +293,7 @@ async function api(path, opts={}) {
   return body;
 }
 
-function setDot(which, ok, text) {
+function setDot(which, ok, text, title) {
   const dot = $('dot'+which);
   if (ok === null) {
     dot.className = 'dot'; // netral/abu-abu = sedang menguji
@@ -296,6 +301,10 @@ function setDot(which, ok, text) {
     dot.className = 'dot ' + (ok ? 'on' : 'off');
   }
   $('txt'+which).textContent = text;
+  if (title !== undefined) {
+    const pill = dot.closest('.pill');
+    if (pill) pill.title = title;
+  }
 }
 
 function msg(el, ok, text) {
@@ -398,42 +407,44 @@ function statusIntegrasi(c) {
     mkLine,
     row('GenieACS', c.genieacs_url, c.genieacs_set, null),
   ].join('<br>');
-  setDot('Billing', !!c.billing_set, c.billing_set ? 'Billing dikonfigurasi' : 'Billing belum diset');
-  setDot('Mikrotik', mkCount > 0, mkCount > 0 ? `MikroTik: ${mkCount} router` : 'MikroTik belum diset');
-  setDot('Radius', !!c.radius_set, c.radius_set ? 'RADIUS dikonfigurasi' : 'RADIUS belum diset');
-  setDot('Genieacs', !!c.genieacs_set, c.genieacs_set ? 'GenieACS dikonfigurasi' : 'GenieACS belum diset');
+  setDot('Billing', !!c.billing_set, 'Billing', c.billing_set ? 'Billing dikonfigurasi' : 'Billing belum diset');
+  setDot('Mikrotik', mkCount > 0, 'MikroTik', mkCount > 0 ? `MikroTik: ${mkCount} router` : 'MikroTik belum diset');
+  setDot('Radius', !!c.radius_set, 'RADIUS', c.radius_set ? 'RADIUS dikonfigurasi' : 'RADIUS belum diset');
+  setDot('Genieacs', !!c.genieacs_set, 'GenieACS', c.genieacs_set ? 'GenieACS dikonfigurasi' : 'GenieACS belum diset');
 }
 
 // refreshHeaderStatus menjalankan probe koneksi NYATA ke semua sistem dan
 // memperbarui dot di header sesuai hasil sebenarnya (bukan sekadar "terkonfigurasi").
+// Label header DIPENDEK (hanya nama) supaya tidak membengkak di layar sempit;
+// detail lengkap ditaruh di atribut title (hover) + kartu Integrasi di bawah.
 async function refreshHeaderStatus() {
   // Billing
-  setDot('Billing', null, 'menguji…');
+  setDot('Billing', null, 'Billing');
   api('/api/billing/check').then(d => {
-    if (d.ok) setDot('Billing', true, `Billing OK (${d.total_customers} plg)`);
-    else setDot('Billing', false, 'Billing gagal');
-  }).catch(() => setDot('Billing', false, 'Billing gagal'));
+    if (d.ok) setDot('Billing', true, 'Billing', `Billing OK — ${d.total_customers} pelanggan`);
+    else setDot('Billing', false, 'Billing', 'Billing gagal');
+  }).catch(() => setDot('Billing', false, 'Billing', 'Billing gagal'));
 
   // MikroTik
-  setDot('Mikrotik', null, 'menguji…');
+  setDot('Mikrotik', null, 'MikroTik');
   api('/api/mikrotik/check').then(d => {
-    if (d.ok) setDot('Mikrotik', true, `MikroTik OK (v${d.version})`);
-    else setDot('Mikrotik', false, 'MikroTik gagal');
-  }).catch(() => setDot('Mikrotik', false, 'MikroTik gagal'));
+    if (d.ok) setDot('Mikrotik', true, 'MikroTik', `MikroTik OK — v${d.version}`);
+    else setDot('Mikrotik', false, 'MikroTik', 'MikroTik gagal');
+  }).catch(() => setDot('Mikrotik', false, 'MikroTik', 'MikroTik gagal'));
 
   // RADIUS
-  setDot('Radius', null, 'menguji…');
+  setDot('Radius', null, 'RADIUS');
   api('/api/radius/check').then(d => {
-    if (d.ok) setDot('Radius', true, `RADIUS OK (${d.user_count} user)`);
-    else setDot('Radius', false, 'RADIUS gagal');
-  }).catch(() => setDot('Radius', false, 'RADIUS gagal'));
+    if (d.ok) setDot('Radius', true, 'RADIUS', `RADIUS OK — ${d.user_count} user`);
+    else setDot('Radius', false, 'RADIUS', 'RADIUS gagal');
+  }).catch(() => setDot('Radius', false, 'RADIUS', 'RADIUS gagal'));
 
   // GenieACS
-  setDot('Genieacs', null, 'menguji…');
+  setDot('Genieacs', null, 'GenieACS');
   api('/api/genieacs/check').then(d => {
-    if (d.ok) setDot('Genieacs', true, `GenieACS OK (${d.total_devices} dev)`);
-    else setDot('Genieacs', false, 'GenieACS gagal');
-  }).catch(() => setDot('Genieacs', false, 'GenieACS gagal'));
+    if (d.ok) setDot('Genieacs', true, 'GenieACS', `GenieACS OK — ${d.total_devices} device`);
+    else setDot('Genieacs', false, 'GenieACS', 'GenieACS gagal');
+  }).catch(() => setDot('Genieacs', false, 'GenieACS', 'GenieACS gagal'));
 }
 
 async function boot() {
