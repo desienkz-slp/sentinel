@@ -2,12 +2,12 @@
 // billing (nomor WA tidak cocok dengan pelanggan mana pun).
 //
 // Aturan operasional (keputusan operator):
-//   1. Pelanggan tak dikenal yang MELAPORKAN KELUHAN -> CS wajib mencari tahu
-//      nama lokasi (area/dusun/desa/nama WiFi) DULU, bukan langsung diagnosis.
-//   2. Bila dari lokasi itu ditemukan pelanggan di billing -> lanjut diagnosis
-//      normal dengan identitas pelanggan tersebut.
-//   3. Bila TIDAK ditemukan -> eskalasi ke Admin (billing), bukan dibiarkan
-//      "tidak ditemukan" tanpa tindak lanjut.
+//  1. Pelanggan tak dikenal yang MELAPORKAN KELUHAN -> CS wajib mencari tahu
+//     nama lokasi (area/dusun/desa/nama WiFi) DULU, bukan langsung diagnosis.
+//  2. Bila dari lokasi itu ditemukan pelanggan di billing -> lanjut diagnosis
+//     normal dengan identitas pelanggan tersebut.
+//  3. Bila TIDAK ditemukan -> eskalasi ke Admin (billing), bukan dibiarkan
+//     "tidak ditemukan" tanpa tindak lanjut.
 //
 // Semua dijalankan KODE (bukan LLM) supaya perilaku sama untuk model apa pun,
 // seperti halnya perintah staf (staff_command_wire.go).
@@ -73,13 +73,59 @@ func (u *csUnknownState) clear(key string) {
 // lokasi. Bila tidak ada, kembalikan "" — pemanggil memutuskan: minta lokasi
 // (pesan pertama) ATAU pakai teks apa adanya (balasan setelah ditanya, yang
 // bisa berupa nama WiFi/area tanpa penanda).
+//
+// Kata penanda lokasi (dusun/desa/jl/gang/dll.) DIBUANG dari hasil supaya bisa
+// langsung dipakai sebagai kueri billing — "dusun Jatitengah" -> "Jatitengah"
+// (search billing mencocokkan nama area "Jatitengah", bukan "dusun Jatitengah").
 func lokasiDariPesan(msg string) string {
 	for _, f := range memory.ExtractFacts(msg) {
 		if f.Kind == "lokasi" && strings.TrimSpace(f.Text) != "" {
-			return strings.TrimSpace(f.Text)
+			return bersihkanLokasi(f.Text)
 		}
 	}
 	return ""
+}
+
+// bersihkanLokasi membuang kata penanda lokasi di awal (dusun/desa/gang/jalan/
+// jl/gg/dsn/kec/kelurahan/rt/rw/blok/perumahan/komplek) supaya tersisa nama
+// lokasi murni yang bisa dicocokkan ke nama area/alamat billing.
+func bersihkanLokasi(s string) string {
+	fields := strings.Fields(strings.TrimSpace(strings.ToLower(s)))
+	if len(fields) == 0 {
+		return ""
+	}
+	penanda := map[string]bool{
+		"dusun": true, "desa": true, "gang": true, "jalan": true, "jl": true, "jl.": true,
+		"gg": true, "gg.": true, "dsn": true, "dsn.": true, "kecamatan": true, "kec": true, "kec.": true,
+		"kelurahan": true, "kel": true, "rt": true, "rw": true, "blok": true,
+		"perumahan": true, "perum": true, "komplek": true, "kompleks": true,
+	}
+	// Buang penanda di posisi pertama (dan "rt/rw/blok" yang menyertai nomor).
+	for len(fields) > 0 && (penanda[fields[0]] || len(fields[0]) <= 3 && penanda[fields[0]]) {
+		fields = fields[1:]
+	}
+	// Buang token murni angka (nomor rumah "5", "rt 02" -> "02") dari depan.
+	for len(fields) > 0 && isAllDigits(fields[0]) {
+		fields = fields[1:]
+	}
+	if len(fields) == 0 {
+		// Semua kata adalah penanda/nomor -> kembalikan apa adanya (jangan kosong,
+		// supaya pemanggil tetap punya bahan kueri).
+		return strings.TrimSpace(s)
+	}
+	return strings.Join(fields, " ")
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // kueriDariBalasanLokasi mengambil teks singkat (maks 3 kata) dari balasan

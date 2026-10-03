@@ -11,15 +11,15 @@ import (
 // TestLokasiDariPesan: ekstraksi lokasi memakai aturan memory (Jl/Gang/Dusun/
 // Desa/RT/RW), dan fallback ke kata pertama untuk input tanpa penanda lokasi.
 func TestLokasiDariPesan(t *testing.T) {
-	if got := lokasiDariPesan("di Jl. Melati No 5"); got == "" || (!containsStr(got, "Jl") && !containsStr(got, "Melati")) {
-		t.Errorf("lokasiDariPesan(Jl) = %q, mau memuat alamat", got)
+	if got := lokasiDariPesan("di Jl. Melati No 5"); !containsStr(got, "melati") {
+		t.Errorf("lokasiDariPesan(Jl) = %q, mau memuat 'melati' (penanda dibuang)", got)
 	}
 	// Tanpa penanda lokasi -> "" (pemanggil yang memutuskan tanya/kueri).
 	if got := lokasiDariPesan("internet saya mati total"); got != "" {
 		t.Errorf("lokasiDariPesan tanpa penanda = %q, mau kosong", got)
 	}
-	if got := lokasiDariPesan("RIFKI ZAIN dusun krajan"); got == "" {
-		t.Error("ada penanda dusun -> harus terdeteksi")
+	if got := lokasiDariPesan("RIFKI ZAIN dusun krajan"); got != "krajan" {
+		t.Errorf("lokasiDariPesan(dusun krajan) = %q, mau 'krajan'", got)
 	}
 }
 
@@ -33,6 +33,23 @@ func TestKueriDariBalasanLokasi(t *testing.T) {
 	}
 	if got := kueriDariBalasanLokasi(""); got != "" {
 		t.Errorf("kueri kosong = %q", got)
+	}
+}
+
+// TestBersihkanLokasi: penanda lokasi dibuang supaya jadi kueri billing murni.
+func TestBersihkanLokasi(t *testing.T) {
+	cases := map[string]string{
+		"dusun Jatitengah":     "jatitengah",
+		"Jl. Melati No 5":      "melati no 5",
+		"dusun krajan":         "krajan",
+		"Gang Mawar":           "mawar",
+		"Desa Sukamaju":        "sukamaju",
+		"Perumahan Griya Asri": "griya asri",
+	}
+	for in, want := range cases {
+		if got := bersihkanLokasi(in); got != want {
+			t.Errorf("bersihkanLokasi(%q) = %q, mau %q", in, got, want)
+		}
 	}
 }
 
