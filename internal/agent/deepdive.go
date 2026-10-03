@@ -126,6 +126,7 @@ func (e *Engine) runRecipe(ctx context.Context, identity string, tools []string,
 func (e *Engine) runDeepLLM(ctx context.Context, identity, query string, sig learning.Signature, add func(Step)) (diagnosis string, used []string, ok bool) {
 	tools := e.deepToolsFor()
 	if len(tools) == 0 {
+		add(Step{Kind: "thought", Text: "Endpoint B: tidak ada tool READ tambahan tersedia — dilewati"})
 		return "", nil, false
 	}
 
@@ -151,6 +152,7 @@ func (e *Engine) runDeepLLM(ctx context.Context, identity, query string, sig lea
 	}
 
 	usedMap := map[string]bool{}
+	add(Step{Kind: "thought", Text: fmt.Sprintf("Endpoint B: memakai %s, mencoba urutan pengecekan sendiri", e.ReasonLLM.Model)})
 	for step := 0; step < maxSteps; step++ {
 		if ctx.Err() != nil {
 			return "", usedKeys(usedMap), false
