@@ -1,10 +1,12 @@
 package main
 
 import (
+	"ainoc/internal/severity"
 	"context"
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"ainoc/internal/agent"
@@ -51,6 +53,7 @@ func (s *Server) openHandoff(rep agent.Report, identity, domain string) {
 		Domain:    domain,
 		Complaint: rep.Query,
 		Evidence:  ev,
+		Severity:  s.rateSeverity(rep),
 	}
 	opened, err := s.ho.Open(h)
 	if err != nil {
@@ -155,4 +158,23 @@ func (s *Server) notifyCustomer(ctx context.Context, h handoff.Handoff, idx int,
 	s.auditHandoff("handoff_notify", "system", h.CaseID, "terkirim")
 	log.Printf("[handoff] pelanggan dikabari case=%s", h.CaseID)
 	return nil
+}
+
+// rateSeverity: level dari fungsi murni, bukan teks bebas. Mode off -> kosong.
+// Cakupan topologi belum tersedia dari sistem, jadi tidak diisi (tidak ditebak).
+func (s *Server) rateSeverity(rep agent.Report) string {
+	if s.cfg == nil || s.cfg.Teams().Severity == config.TeamOff {
+		return ""
+	}
+	affected := 0
+	if s.inc != nil {
+		affected = s.inc.AffectedCustomers(rep.Intent, 15*time.Minute, time.Now())
+	}
+	res := severity.Rate(s.cfg.SeverityPolicy, severity.Input{Affected: affected})
+	if s.teams != nil {
+		s.teams.RecordHandoff("severity_" + string(res.Level))
+	}
+	s.auditHandoff("handoff_severity", "system", rep.CaseID,
+		fmt.Sprintf("level=%s affected=%d alasan=%s mode=%s", res.Level, affected, strings.Join(res.Reasons, ";"), s.cfg.Teams().Severity))
+	return string(res.Level)
 }

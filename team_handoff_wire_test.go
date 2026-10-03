@@ -1,14 +1,18 @@
 package main
 
 import (
+	"ainoc/internal/incident"
+	"ainoc/internal/severity"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"ainoc/internal/agent"
 	"ainoc/internal/audit"
@@ -396,3 +400,79 @@ func TestPesanEskalasiPetunjukBalas(t *testing.T) {
 }
 
 func escalationDedupForTest() *escalation.Dedup { return escalation.NewDedup() }
+
+func eskalasiBaru(s *Server, id string, n int) agent.Report {
+	if s.inc == nil {
+		s.inc = incident.New("", 100)
+	}
+	for i := 0; i < n; i++ {
+		s.inc.Add(incident.Incident{ID: fmt.Sprintf("I%s%d", id, i), Identity: fmt.Sprintf("62811100%04d", i),
+			Intent: "no_internet", Status: incident.StatusInvestigating, StartedAt: time.Now()})
+	}
+	return agent.Report{CaseID: id, CaseState: escalationState, Query: "mati", Intent: "no_internet"}
+}
+
+// Fixture uji, bukan rekomendasi: ambang sengaja kecil agar mudah dibuktikan.
+var kebijakanUji = severity.Policy{P1Customers: 5, P2Customers: 3, P3Customers: 2, Floor: "P4"}
+
+func TestSeverityOffTidakMengisi(t *testing.T) {
+	s, _ := handoffServer(t, "shadow")
+	s.cfg.TeamSeverity = "off"
+	s.cfg.SeverityPolicy = kebijakanUji
+	s.openHandoff(eskalasiBaru(s, "CASE-20261003-SV0234", 5), nomorPel, "network")
+	if h, _ := s.ho.Get("CASE-20261003-SV0234"); h.Severity != "" {
+		t.Fatalf("off: severity harus kosong, dapat %q", h.Severity)
+	}
+}
+
+func TestSeverityTanpaKebijakanUnrated(t *testing.T) {
+	s, _ := handoffServer(t, "shadow")
+	s.cfg.TeamSeverity = "shadow"
+	s.openHandoff(eskalasiBaru(s, "CASE-20261003-SV1234", 9), nomorPel, "network")
+	if h, _ := s.ho.Get("CASE-20261003-SV1234"); h.Severity != "UNRATED" {
+		t.Fatalf("tanpa kebijakan harus UNRATED, dapat %q", h.Severity)
+	}
+}
+
+func TestSeverityDariFungsiBukanTeksBebas(t *testing.T) {
+	for _, tc := range []struct {
+		n    int
+		want string
+	}{{1, "P4"}, {2, "P3"}, {3, "P2"}, {5, "P1"}} {
+		s, _ := handoffServer(t, "shadow")
+		s.cfg.TeamSeverity = "on"
+		s.cfg.SeverityPolicy = kebijakanUji
+		id := fmt.Sprintf("CASE-20261003-SV%d234", tc.n+2)
+		s.openHandoff(eskalasiBaru(s, id, tc.n), nomorPel, "network")
+		if h, _ := s.ho.Get(id); h.Severity != tc.want {
+			t.Errorf("affected=%d: %q, mau %s", tc.n, h.Severity, tc.want)
+		}
+		found := false
+		for _, e := range s.aud.Recent(50) {
+			if e.EventType == "handoff_severity" && strings.Contains(e.Note, "level="+tc.want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("affected=%d: audit alasan tidak ada", tc.n)
+		}
+	}
+}
+
+func TestSeverityPolicyDitolakBilaSalah(t *testing.T) {
+	s, h := teamTestServer(t)
+	code, out := call(t, h, "POST", "/api/config", `{"severity_policy":{"p1_customers":2,"p2_customers":9,"floor":"P4"}}`)
+	if code != 400 || !strings.Contains(out["error"].(string), "severity_policy") {
+		t.Fatalf("harus 400: %d %v", code, out)
+	}
+	if s.cfg.SeverityPolicy.Configured() {
+		t.Fatal("kebijakan salah tidak boleh tersimpan")
+	}
+	code, out = call(t, h, "POST", "/api/config", `{"severity_policy":{"p1_customers":9,"p2_customers":3,"floor":"P4"}}`)
+	if code != 200 || !s.cfg.SeverityPolicy.Configured() || s.cfg.SeverityPolicy.P1Customers != 9 {
+		t.Fatalf("kebijakan sah harus tersimpan: %d %+v", code, s.cfg.SeverityPolicy)
+	}
+	if cfg, _ := out["config"].(map[string]any); cfg == nil || cfg["severity_policy"] == nil {
+		t.Fatal("kebijakan harus terlihat di config tersunting")
+	}
+}

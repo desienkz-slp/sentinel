@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ainoc/internal/severity"
 	"context"
 	"embed"
 	"encoding/json"
@@ -240,6 +241,7 @@ func (s *Server) routes() http.Handler {
 			TeamCSScope   *string `json:"team_cs_scope"`
 			TeamHandoff   *string `json:"team_handoff"`
 			TeamSeverity  *string `json:"team_severity"`
+			SeverityPolicy *severity.Policy `json:"severity_policy"`
 			TeamPresenter *string `json:"team_presenter"`
 			RadiusURL     *string `json:"radius_url"`
 			RadiusToken   *string `json:"radius_token"`
@@ -281,6 +283,13 @@ func (s *Server) routes() http.Handler {
 		}
 		if body.TeamHandoff != nil {
 			s.cfg.TeamHandoff = string(config.NormalizeTeamMode(*body.TeamHandoff))
+		}
+		if body.SeverityPolicy != nil {
+			if why := body.SeverityPolicy.Validate(); why != "" {
+				writeJSON(w, 400, map[string]string{"error": "severity_policy: " + why})
+				return
+			}
+			s.cfg.SeverityPolicy = *body.SeverityPolicy
 		}
 		if body.TeamSeverity != nil {
 			s.cfg.TeamSeverity = string(config.NormalizeTeamMode(*body.TeamSeverity))

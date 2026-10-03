@@ -2,6 +2,7 @@
 package config
 
 import (
+	"ainoc/internal/severity"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -86,8 +87,8 @@ type Config struct {
 	// Token TIDAK pernah muncul di Redacted()/API — hanya masked.
 	BillingURL   string `json:"billing_url"`
 	BillingToken string `json:"billing_token"`
-	RadiusURL        string `json:"radius_url"`
-	RadiusToken      string `json:"radius_token"`
+	RadiusURL    string `json:"radius_url"`
+	RadiusToken  string `json:"radius_token"`
 	// MikroTik memakai API native (protokol biner) + Basic Auth (user+password),
 	// BUKAN API key. Mendukung MULTI router: tiap entri punya nama+host+port+
 	// user+pass+tls. Entri tunggal lama (mikrotik_host dll.) tetap didukung via
@@ -124,6 +125,8 @@ type Config struct {
 	TeamHandoff   string `json:"team_handoff"`
 	TeamSeverity  string `json:"team_severity"`
 	TeamPresenter string `json:"team_presenter"`
+	// Kebijakan keparahan P1..P4 (Fase 5). Diisi operator; kosong = UNRATED.
+	SeverityPolicy severity.Policy `json:"severity_policy"`
 
 	// path adalah lokasi file config yang sedang dipakai. Disimpan supaya
 	// perubahan dari dashboard bisa ditulis kembali ke file yang SAMA.
@@ -653,6 +656,7 @@ func (c *Config) Redacted() map[string]any {
 		"team_handoff":         string(NormalizeTeamMode(c.TeamHandoff)),
 		"team_severity":        string(NormalizeTeamMode(c.TeamSeverity)),
 		"team_presenter":       string(NormalizeTeamMode(c.TeamPresenter)),
+		"severity_policy":      c.SeverityPolicy,
 		"radius_token_masked":  maskSecret(c.RadiusToken),
 		"mikrotik_pass_masked": maskSecret(c.MikrotikPass),
 	}
