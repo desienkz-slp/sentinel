@@ -92,3 +92,14 @@ func (s *Server) route(c directory.Caller, msg string) router.Decision {
 	}
 	return router.Route(c, msg)
 }
+
+// recordNOCToolEvent mencatat penjaga klaim NOC (Fase A). Tanpa isi jawaban.
+func (s *Server) recordNOCToolEvent(ev agent.NOCToolEvent) {
+	label := "noc_claim_flagged"
+	if ev.Replaced {
+		label = "noc_claim_replaced"
+	}
+	log.Printf("[noc-toolfirst] mode=%s tim=%s %s alasan=%v", ev.Mode, ev.Team, label, ev.Reasons)
+	s.teams.RecordHandoff(label)
+	s.auditHandoff(label, "agent", "", "mode="+ev.Mode+" tim="+ev.Team)
+}

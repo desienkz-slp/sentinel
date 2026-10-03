@@ -227,6 +227,7 @@ func main() {
 	// Pembatas tim CS (Fase 2): penolakan/penimpaan identitas tercatat ke audit
 	// dan metrik. Tanpa isi pesan, nomor pelanggan, atau data akun.
 	engine.ScopeHook = srv.recordScopeEvent
+	engine.NOCHook = srv.recordNOCToolEvent
 
 	// Auto-update: inisialisasi checker bila owner/repo terisi. Cek awal + berkala
 	// (tiap 6 jam) di latar; hasilnya di-cache untuk dashboard. Tidak pernah

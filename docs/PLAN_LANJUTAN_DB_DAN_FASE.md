@@ -40,7 +40,7 @@ dari apt. Tidak ada yang dibuka ke jaringan (hanya `127.0.0.1`/socket).
 
 | Fase | Status | Rilis |
 |---|---|---|
-| A | belum | |
+| A | SELESAI di kode; `noc_toolfirst=shadow`; belum `on` | v0.2.30 |
 | B | belum | |
 | C | belum | |
 | D | belum | |

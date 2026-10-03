@@ -120,6 +120,8 @@ type Engine struct {
 	// ScopeHook dipanggil saat pembatas tim menolak/menimpa pemanggilan tool
 	// (metrik + audit). Opsional.
 	ScopeHook func(ScopeEvent)
+	// NOCHook dipanggil saat penjaga klaim NOC menandai jawaban tanpa bukti (Fase A).
+	NOCHook func(NOCToolEvent)
 
 	mu      sync.Mutex
 	reports []Report
@@ -409,6 +411,14 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 	tools = e.filterToolsForCaller(ctx, tools)
 	if !bolehProbe {
 		tools = nil
+		if extra := e.nocToolsFor(ctx); len(extra) > 0 {
+			// Fase A: staf NOC boleh bertanya data nyata walau bukan keluhan.
+			tools = extra
+			bolehProbe = true
+		}
+	}
+	if !bolehProbe {
+		tools = nil
 		add(Step{Kind: "intent", Text: fmt.Sprintf(
 			"standar v%s: intent=%s -> %s", standard.Version, klas.Intent,
 			map[bool]string{true: "boleh cek jaringan", false: "TIDAK boleh cek jaringan (tanpa tool)"}[bolehProbe])})
@@ -470,7 +480,7 @@ func (e *Engine) RunWith(ctx context.Context, identity, query, target string, em
 			add(Step{Kind: "thought", Text: t})
 		}
 		if len(msg.ToolCalls) == 0 {
-			rep.Answer = strings.TrimSpace(msg.Content)
+			rep.Answer = e.guardNOCAnswer(ctx, strings.TrimSpace(msg.Content), len(usedTools) > 0)
 			break
 		}
 		msgs = append(msgs, *msg)

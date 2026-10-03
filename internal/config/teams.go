@@ -41,6 +41,7 @@ type TeamFlags struct {
 	Handoff   TeamMode // serah-terima CS<->NOC terstruktur (Fase 4)
 	Severity  TeamMode // pemetaan P1..P4 (Fase 5)
 	Presenter TeamMode // lapisan presentasi/penyaring keluaran (Fase 3)
+	NOCTools  TeamMode // agen NOC tool-first (Fase A)
 }
 
 // Teams mengembalikan flag yang sudah dinormalisasi.
@@ -51,5 +52,6 @@ func (c *Config) Teams() TeamFlags {
 		Handoff:   NormalizeTeamMode(c.TeamHandoff),
 		Severity:  NormalizeTeamMode(c.TeamSeverity),
 		Presenter: NormalizeTeamMode(c.TeamPresenter),
+		NOCTools:  NormalizeTeamMode(c.TeamNOCTools),
 	}
 }

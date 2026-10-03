@@ -184,7 +184,7 @@ func (s *Server) routes() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"flags": map[string]string{
 				"routing": string(f.Routing), "cs_scope": string(f.CSScope), "handoff": string(f.Handoff),
-				"severity": string(f.Severity), "presenter": string(f.Presenter),
+				"severity": string(f.Severity), "presenter": string(f.Presenter), "noc_toolfirst": string(f.NOCTools),
 			},
 			"metrics": s.teams.Snapshot(),
 		})
@@ -241,6 +241,7 @@ func (s *Server) routes() http.Handler {
 			TeamHandoff    *string          `json:"team_handoff"`
 			TeamSeverity   *string          `json:"team_severity"`
 			SeverityPolicy *severity.Policy `json:"severity_policy"`
+			TeamNOCTools   *string          `json:"team_noc_toolfirst"`
 			TeamPresenter  *string          `json:"team_presenter"`
 			RadiusURL      *string          `json:"radius_url"`
 			RadiusToken    *string          `json:"radius_token"`
@@ -262,7 +263,7 @@ func (s *Server) routes() http.Handler {
 		for name, p := range map[string]*string{
 			"team_routing": body.TeamRouting, "team_cs_scope": body.TeamCSScope,
 			"team_handoff": body.TeamHandoff, "team_severity": body.TeamSeverity,
-			"team_presenter": body.TeamPresenter,
+			"team_presenter": body.TeamPresenter, "team_noc_toolfirst": body.TeamNOCTools,
 		} {
 			if p == nil {
 				continue
@@ -282,6 +283,9 @@ func (s *Server) routes() http.Handler {
 		}
 		if body.TeamHandoff != nil {
 			s.cfg.TeamHandoff = string(config.NormalizeTeamMode(*body.TeamHandoff))
+		}
+		if body.TeamNOCTools != nil {
+			s.cfg.TeamNOCTools = string(config.NormalizeTeamMode(*body.TeamNOCTools))
 		}
 		if body.SeverityPolicy != nil {
 			if why := body.SeverityPolicy.Validate(); why != "" {

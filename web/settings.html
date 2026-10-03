@@ -198,6 +198,7 @@
       <div><label for="tmRouting">Router tim (pemilah pesan)</label><select id="tmRouting"><option>off</option><option>shadow</option><option>on</option></select></div>
       <div><label for="tmCSScope">Batas data pelanggan (CS)</label><select id="tmCSScope"><option>off</option><option>shadow</option><option>on</option></select></div>
       <div><label for="tmPresenter">Presentasi &amp; penyaring balasan</label><select id="tmPresenter"><option>off</option><option>shadow</option><option>on</option></select></div>
+      <div><label for="tmNOCTools">Agen NOC tool-first (data nyata + penjaga klaim)</label><select id="tmNOCTools"><option>off</option><option>shadow</option><option>on</option></select></div>
     </div>
     <div class="row">
       <div><label for="tmHandoff">Serah-terima CS ↔ NOC</label><select id="tmHandoff"><option>off</option><option>shadow</option><option>on</option></select></div>
@@ -536,7 +537,7 @@ async function saveIntegrations(silent) {
 }
 
 // ---------- Mode Tim CS/NOC ----------
-const TM_FIELDS = {routing:'tmRouting', cs_scope:'tmCSScope', presenter:'tmPresenter', handoff:'tmHandoff', severity:'tmSeverity'};
+const TM_FIELDS = {routing:'tmRouting', cs_scope:'tmCSScope', presenter:'tmPresenter', handoff:'tmHandoff', severity:'tmSeverity', noc_toolfirst:'tmNOCTools'};
 
 async function loadTeamModes() {
   try {
@@ -555,6 +556,7 @@ async function saveTeamModes() {
     team_routing: $('tmRouting').value, team_cs_scope: $('tmCSScope').value,
     team_presenter: $('tmPresenter').value, team_handoff: $('tmHandoff').value,
     team_severity: $('tmSeverity').value,
+    team_noc_toolfirst: $('tmNOCTools').value,
   };
   try {
     await api('/api/config', {method:'POST', body: JSON.stringify(body)});

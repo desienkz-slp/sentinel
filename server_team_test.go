@@ -134,3 +134,20 @@ func TestTeamMetricsButuhOtorisasi(t *testing.T) {
 		t.Fatalf("tanpa token dari luar harus 401/403, dapat %d", w.Code)
 	}
 }
+
+func TestTeamConfigNOCToolFirstValidasi(t *testing.T) {
+	s, h := teamTestServer(t)
+	if code, _ := call(t, h, http.MethodPost, "/api/config", `{"team_noc_toolfirst":"onn"}`); code != 400 {
+		t.Fatalf("nilai ilegal harus 400, dapat %d", code)
+	}
+	if s.cfg.TeamNOCTools != "" {
+		t.Fatal("nilai ilegal tidak boleh tersimpan")
+	}
+	if code, _ := call(t, h, http.MethodPost, "/api/config", `{"team_noc_toolfirst":"shadow"}`); code != 200 || s.cfg.Teams().NOCTools != config.TeamShadow {
+		t.Fatalf("shadow harus diterima: %d %v", code, s.cfg.Teams().NOCTools)
+	}
+	_, out := call(t, h, http.MethodGet, "/api/team/metrics", "")
+	if out["flags"].(map[string]any)["noc_toolfirst"] != "shadow" {
+		t.Fatalf("flag harus tampil di metrik: %v", out["flags"])
+	}
+}
