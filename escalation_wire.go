@@ -20,6 +20,7 @@ import (
 
 	"ainoc/internal/agent"
 	"ainoc/internal/audit"
+	"ainoc/internal/config"
 	"ainoc/internal/directory"
 	"ainoc/internal/escalation"
 )
@@ -172,6 +173,9 @@ func (s *Server) deliverEscalation(ctx context.Context, rep agent.Report, identi
 	to := s.escalationTarget(domain)
 	handoffCtx := buildEscalationContext(rep, identity, domain)
 
+	// Fase 4: catat serah-terima terstruktur (no-op bila handoff=off).
+	s.openHandoff(rep, identity, domain)
+
 	// Anti spam: satu case hanya satu handoff.
 	if !s.esc.Once(rep.CaseID) {
 		log.Printf("[escalation] handoff untuk case %s sudah pernah dikirim — dilewati (anti spam)", rep.CaseID)
@@ -186,6 +190,11 @@ func (s *Server) deliverEscalation(ctx context.Context, rep agent.Report, identi
 	}
 
 	msg := escalation.FormatHandoff(handoffCtx, role)
+	if s.handoffMode() != config.TeamOff && s.ho != nil {
+		// Fase 4: petunjuk membalas, agar staf tahu cara mengabari pelanggan.
+		msg += "\n\nBalas ke pelanggan lewat sini:\n" +
+			"update " + rep.CaseID + " <pesan>   atau   tutup " + rep.CaseID + " <pesan>"
+	}
 
 	// Cegah pengiriman WA nyata berulang selama uji: kirim maksimal satu pesan
 	// per proses per case (dedup sudah menangani). Bila gateway WA tidak aktif,

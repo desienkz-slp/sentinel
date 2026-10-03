@@ -35,6 +35,8 @@ func (s *Server) handleStaffCommand(ctx context.Context, caller directory.Caller
 		return s.integrationStatusReply(ctx, dec.Domains, dec.AllDomains), true
 	case router.HDaftarPelanggan:
 		return s.customerListReply(ctx, caller, sessKey, msg, dec.List), true
+	case router.HHandoff:
+		return s.handoffCommandReply(ctx, caller, dec.Handoff), true
 	case router.HLLM:
 		return "", false
 	}

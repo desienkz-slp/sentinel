@@ -40,6 +40,7 @@ type TeamSnapshot struct {
 	ScopeDenied    int64            `json:"scope_denied"`
 	ScopeRewritten int64            `json:"scope_rewritten"`
 	Redactions     int64            `json:"reply_redactions"`
+	Handoffs       map[string]int64 `json:"handoffs"`
 }
 
 type teamKey struct{ team, handler, by string }
@@ -53,6 +54,7 @@ type TeamCollector struct {
 	mismatches                  int64
 	scopeDenied, scopeRewritten int64
 	redactions                  int64
+	handoffs                    map[string]int64
 }
 
 // NewTeamCollector membuat collector kosong.
@@ -118,6 +120,19 @@ func (c *TeamCollector) RecordRedaction(kategori int) {
 	c.mu.Unlock()
 }
 
+// RecordHandoff menghitung peristiwa serah-terima (opened/updated/notified/...).
+func (c *TeamCollector) RecordHandoff(event string) {
+	if c == nil || event == "" {
+		return
+	}
+	c.mu.Lock()
+	if c.handoffs == nil {
+		c.handoffs = map[string]int64{}
+	}
+	c.handoffs[event]++
+	c.mu.Unlock()
+}
+
 // Snapshot mengembalikan salinan stabil.
 func (c *TeamCollector) Snapshot() TeamSnapshot {
 	out := TeamSnapshot{
@@ -145,6 +160,10 @@ func (c *TeamCollector) Snapshot() TeamSnapshot {
 	out.Mismatches = c.mismatches
 	out.ScopeDenied, out.ScopeRewritten = c.scopeDenied, c.scopeRewritten
 	out.Redactions = c.redactions
+	out.Handoffs = map[string]int64{}
+	for k, v := range c.handoffs {
+		out.Handoffs[k] = v
+	}
 	if out.Total > 0 {
 		out.CodeShare = float64(out.HandledBy["code"]) / float64(out.Total)
 	}

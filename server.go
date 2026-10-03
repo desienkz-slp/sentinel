@@ -24,6 +24,7 @@ import (
 	"ainoc/internal/diag"
 	"ainoc/internal/directory"
 	"ainoc/internal/escalation"
+	"ainoc/internal/handoff"
 	"ainoc/internal/genieacs"
 	"ainoc/internal/health"
 	"ainoc/internal/incident"
@@ -95,6 +96,9 @@ type Server struct {
 	// Dedup eskalasi fase 2: satu case hanya mengirim handoff ke NOC/Admin
 	// satu kali (anti spam).
 	esc *escalation.Dedup
+
+	// ho = buku serah-terima CS<->NOC (Fase 4). nil = fitur mati.
+	ho *handoff.Ledger
 
 	// upd memeriksa rilis GitHub (cek otomatis + apply 1-klik). nil = fitur mati.
 	upd *updater.Checker

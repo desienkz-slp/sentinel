@@ -25,6 +25,16 @@ func (s *Server) presentReply(caller directory.Caller, teks string) string {
 	if s.cfg != nil {
 		mode = s.cfg.Teams().Presenter
 	}
+	return s.presentReplyMode(mode, caller, teks)
+}
+
+// presentReplyForce menyaring SELALU (mode on), tak bergantung pengaturan.
+// Dipakai untuk pesan hasil ketikan staf ke pelanggan.
+func (s *Server) presentReplyForce(caller directory.Caller, teks string) string {
+	return s.presentReplyMode(config.TeamOn, caller, teks)
+}
+
+func (s *Server) presentReplyMode(mode config.TeamMode, caller directory.Caller, teks string) string {
 	if mode == config.TeamOff || caller.IsStaff || teks == "" {
 		return teks
 	}

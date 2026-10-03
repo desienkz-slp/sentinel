@@ -34,6 +34,7 @@ const (
 	HCekBilling      Handler = "cek_billing"
 	HCekPPPoE        Handler = "cek_pppoe"
 	HCekTraffic      Handler = "cek_traffic"
+	HHandoff         Handler = "handoff" // tutup/update kasus serah-terima
 	// HLLM = tidak cocok pola deterministik; diteruskan ke agen LLM tim terkait.
 	HLLM Handler = "llm"
 )
@@ -48,6 +49,7 @@ type Decision struct {
 	AllDomains bool     // HStatusIntegrasi
 	List       directory.ListQuery
 	Cmd        directory.Command
+	Handoff    directory.HandoffCmd
 	// Reason = alasan singkat untuk log/audit (tanpa isi pesan).
 	Reason string
 }
@@ -77,7 +79,11 @@ func Route(c directory.Caller, msg string) Decision {
 	}
 
 	// Staf. Urutan di bawah ini SENGAJA tetap dan identik dengan perilaku
-	// sebelum router (dikunci oleh golden test).
+	// sebelum router (dikunci oleh golden test). Perintah serah-terima paling
+	// depan: formatnya (kata kerja + CASE-ID) tidak bentrok dengan pola lain.
+	if hc, ok := directory.ParseHandoffCommand(msg); ok {
+		return Decision{Team: team, Handler: HHandoff, Handoff: hc, Reason: "perintah serah-terima kasus"}
+	}
 	if doms, all := directory.ParseStatusQuestion(msg); len(doms) > 0 || all {
 		return Decision{Team: team, Handler: HStatusIntegrasi, Domains: doms, AllDomains: all,
 			Reason: "pertanyaan status koneksi integrasi"}
