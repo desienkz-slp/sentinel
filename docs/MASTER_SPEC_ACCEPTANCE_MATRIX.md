@@ -5,7 +5,7 @@ This matrix translates `AI_AGENT_HERMES_MASTER_SPEC.md` into verifiable release 
 | Area | Gate | Status | Evidence / required next proof |
 |---|---|---:|---|
 | Safety baseline | Default listener is loopback-only | pass | `config.Default()` uses `127.0.0.1:8090` |
-| Safety baseline | Operational APIs and WhatsApp webhook require configured secrets even on loopback | foundation | `internal/security` + `server_security_test.go`; token guard has route coverage. RBAC, CSRF, request-rate limiting, actor/trace audit wiring, and production exposure gate remain required. |
+| Safety baseline | Non-loopback operational APIs and WhatsApp webhook require configured secrets; loopback and configured `TrustedCIDRs` are trusted by design | foundation | `internal/security` + `server_security_test.go`; `TestLoopbackControlAllowedWithoutConfiguredToken` and `TestWebhookAllowsUnsignedLoopbackTraffic` lock the local-operation rule. RBAC, CSRF, request-rate limiting, actor/trace audit wiring, and production exposure gate remain required. |
 | Safety baseline | Codex defaults to read-only sandbox | pass | config and bridge defaults |
 | Case lifecycle | Case ID/state graph enforced | foundation | `internal/caseengine`, unit tests |
 | Case lifecycle | Resolution requires recorded verification | foundation | `caseengine.Transition` rejects premature resolution |

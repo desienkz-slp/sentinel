@@ -9,7 +9,7 @@ beserta rekomendasi konkret untuk teknisi.
 - **WhatsApp Gateway sudah termasuk** — Go yang menyalakan & mengawasinya
 - **Dashboard web** di-embed ke binary (`go:embed`), tanpa build frontend
 - Terhubung ke **LLM apa pun** yang OpenAI-compatible (9Router, OpenAI, Ollama, vLLM, LM Studio)
-- **Eskalasi otomatis ke Codex CLI** saat keyakinan agen rendah
+- **Eskalasi terstruktur ke manusia**: domain jaringan → NOC Senior, non-jaringan → Admin; ReasonLLM hanya investigasi read-only terbatasi
 
 ---
 
@@ -53,12 +53,14 @@ WhatsApp Gateway (Node/Baileys, child process :3001)
         ▼
 ai-noc-go  /api/wa/webhook
         │
-        ├─► AGEN (loop OODA): LLM memilih tool → Go menjalankan probe
-        │     ping → dns → tcp → http → traceroute → radius → service
+        ├─► Keluhan koneksi → workflow deterministik Go
+        │     resolve_identity → billing → RADIUS → MikroTik → GenieACS → korelasi
+        │     (semua tool melalui registry → policy → adapter; deny-by-default)
         │
-        ├─► LLM menyimpulkan: VERDICT / KEYAKINAN / AKAR_MASALAH / BUKTI / REKOMENDASI
+        ├─► LLM hanya menyusun BALASAN pelanggan dari bukti yang terkumpul
         │
-        └─► keyakinan < 60% atau LLM gagal? → eskalasi ke Codex CLI
+        └─► Risiko aksi / bukti belum cukup → handoff manusia
+              jaringan → NOC Senior; non-jaringan → Admin
         ▼
 Gateway mengirim field "reply" kembali ke chat  ◄── perilaku bawaan webhook.js
 ```
@@ -330,24 +332,17 @@ modifikasi logika gateway, hanya penyesuaian timeout (lihat bagian timeout di ba
 
 ### Contoh balasan yang diterima pelanggan
 
-Balasan dipisah dua bagian: **pesan manusiawi untuk pelanggan**, lalu **ringkasan
-teknis ringkas** untuk teknisi.
+Pelanggan menerima **hanya BALASAN manusiawi yang aman**. Verdict, confidence,
+penyebab teknis, nama host, dan bukti mentah tetap berada di dashboard/audit,
+bukan di WhatsApp pelanggan.
 
 ```
 pak wifi saya mati total dari tadi malam
 
-→ Halo Pak, mohon maaf atas ketidaknyamanannya ya. Dari pengecekan sistem kami,
-  jalur jaringan dan koneksi internet utama saat ini normal serta lancar, jadi
-  kemungkinan kendalanya ada pada perangkat router di rumah. Boleh coba cabut
-  kabel adaptor router sekitar 30 detik lalu colokkan kembali ya Pak, sambil
-  diperhatikan apakah lampu indikatornya menyala normal atau ada yang merah/mati.
-  Kalau setelah di-restart wifinya masih mati total, kabari saya ya biar langsung
-  kami jadwalkan teknisi untuk cek ke lokasi.
-
-  ———
-  ✅ SEHAT · 90%
-  Penyebab: Jaringan gateway ISP dan internet normal, kendala diduga pada
-  router/ONT lokal pelanggan atau suplai daya perangkat.
+→ Halo Pak, maaf atas kendalanya. Dari pengecekan kami, jaringan utama saat ini
+  normal sehingga kemungkinan ada kendala pada router atau perangkat di lokasi.
+  Boleh cabut adaptor router sekitar 30 detik lalu nyalakan kembali. Bila masih
+  mati, kabari kami agar diteruskan ke tim NOC untuk pemeriksaan lanjutan.
 ```
 
 Obrolan biasa dibalas tanpa ringkasan teknis sama sekali:
