@@ -46,7 +46,7 @@ func (s *Server) compareRouter(caller directory.Caller, msg string, actual actua
 	if mode == config.TeamOff {
 		return true
 	}
-	dec := router.Route(caller, msg)
+	dec := s.route(caller, msg)
 	want := pathLLM
 	if dec.HandledByCode() {
 		want = pathCode
@@ -82,4 +82,13 @@ func (s *Server) recordScopeEvent(ev agent.ScopeEvent) {
 		PolicyDecision: decision,
 		Note:           "tim=" + ev.Team + " mode=" + ev.Mode + " " + ev.Reason,
 	})
+}
+
+// route: satu pintu keputusan. routing=on memakai aturan jabatan; off/shadow
+// memakai Route lama sehingga perilaku produksi tidak berubah diam-diam.
+func (s *Server) route(c directory.Caller, msg string) router.Decision {
+	if s.routerMode() == config.TeamOn {
+		return router.RouteByRole(c, msg)
+	}
+	return router.Route(c, msg)
 }

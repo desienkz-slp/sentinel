@@ -29,12 +29,14 @@ func (s *Server) handleStaffCommand(ctx context.Context, caller directory.Caller
 	}
 	// Satu pintu keputusan: router.Route (deterministik, tanpa LLM). Urutan
 	// pemilahan: status integrasi -> daftar pelanggan -> perintah cek -> LLM.
-	dec := router.Route(caller, msg)
+	dec := s.route(caller, msg)
 	switch dec.Handler {
 	case router.HStatusIntegrasi:
 		return s.integrationStatusReply(ctx, dec.Domains, dec.AllDomains), true
 	case router.HDaftarPelanggan:
 		return s.customerListReply(ctx, caller, sessKey, msg, dec.List), true
+	case router.HMintaTarget:
+		return router.TargetPrompt, true
 	case router.HHandoff:
 		return s.handoffCommandReply(ctx, caller, dec.Handoff), true
 	case router.HLLM:

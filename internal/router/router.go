@@ -11,7 +11,13 @@
 //     dicatat, dan dibandingkan (mode shadow).
 package router
 
-import "ainoc/internal/directory"
+import (
+	"strings"
+	"unicode"
+
+	"ainoc/internal/directory"
+	"ainoc/internal/standard"
+)
 
 // Team adalah tim yang menangani pesan.
 type Team string
@@ -35,6 +41,8 @@ const (
 	HCekPPPoE        Handler = "cek_pppoe"
 	HCekTraffic      Handler = "cek_traffic"
 	HHandoff         Handler = "handoff" // tutup/update kasus serah-terima
+	// HMintaTarget: staf menulis keluhan tanpa menyebut pelanggan -> tanya "pelanggan mana?".
+	HMintaTarget Handler = "minta_target"
 	// HLLM = tidak cocok pola deterministik; diteruskan ke agen LLM tim terkait.
 	HLLM Handler = "llm"
 )
@@ -102,4 +110,50 @@ func Route(c directory.Caller, msg string) Decision {
 		return Decision{Team: team, Handler: HCekPPPoE, Cmd: cmd, Reason: "perintah cek PPPoE"}
 	}
 	return Decision{Team: team, Handler: HLLM, Reason: "tak cocok pola; diteruskan ke LLM"}
+}
+
+// RouteByRole = Route + aturan jabatan (rules.go). Hanya dipakai saat routing=on.
+// Beda dari Route: staf yang menulis keluhan tanpa menyebut pelanggan TIDAK
+// diperlakukan sebagai pelanggan; ditanya "pelanggan mana?".
+func RouteByRole(c directory.Caller, msg string) Decision {
+	d := Route(c, msg)
+	if d.Handler == HLLM && c.IsStaff && RuleFor(c.Role).ComplaintNeedsTarget &&
+		standard.Classify(msg) == standard.IntentComplaint && isCustomerSymptom(msg) && !hasExplicitTarget(msg) {
+		return Decision{Team: d.Team, Handler: HMintaTarget, Reason: "staf: keluhan tanpa pelanggan yang disebut"}
+	}
+	return d
+}
+
+// hasExplicitTarget: pesan menyebut subjek konkret (angka/IP/ID/@). Sengaja
+// longgar ke arah "ada target" agar pesan ambigu tetap ke LLM seperti semula.
+func hasExplicitTarget(msg string) bool {
+	for _, r := range msg {
+		if unicode.IsDigit(r) || r == '@' {
+			return true
+		}
+	}
+	return strings.Contains(strings.ToLower(msg), "pelanggan ")
+}
+
+var (
+	symptomWords = []string{"internet", "wifi", "koneksi", "lemot", "lambat", "mati", "putus", "down", "gangguan", "los", "nyala"}
+	// Menyebut komponen sistem = pertanyaan tentang sistem, bukan keluhan pelanggan.
+	systemWords = []string{"radius", "mikrotik", "genieacs", "billing", "server", "olt", "router", "gateway", "api", "database", "sentinel"}
+)
+
+// isCustomerSymptom: pesan terdengar seperti keluhan layanan pelanggan dan tidak
+// sedang menanyakan komponen sistem.
+func isCustomerSymptom(msg string) bool {
+	low := " " + strings.ToLower(msg) + " "
+	for _, w := range systemWords {
+		if strings.Contains(low, " "+w+" ") || strings.Contains(low, " "+w+"?") {
+			return false
+		}
+	}
+	for _, w := range symptomWords {
+		if strings.Contains(low, w) {
+			return true
+		}
+	}
+	return false
 }

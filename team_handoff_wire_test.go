@@ -476,3 +476,22 @@ func TestSeverityPolicyDitolakBilaSalah(t *testing.T) {
 		t.Fatal("kebijakan harus terlihat di config tersunting")
 	}
 }
+
+// Kasus nyata: Super Admin menulis "cek internet sekarang" tanpa menyebut pelanggan.
+func TestRoutingOnStafKeluhanDitanyaTarget(t *testing.T) {
+	s, _ := handoffServer(t, "off")
+	s.cfg.TeamRouting = "on"
+	for _, nomor := range []string{nomorNOC, nomorAdmin} {
+		got := balas(s, nomor, "cek internet sekarang")
+		if !strings.Contains(got, "Pelanggan mana") {
+			t.Errorf("%s: %q", nomor, got)
+		}
+	}
+	// shadow/off: perilaku lama (diteruskan ke LLM -> tidak ditangani handler staf)
+	for _, mode := range []string{"off", "shadow"} {
+		s.cfg.TeamRouting = mode
+		if got := balas(s, nomorNOC, "cek internet sekarang"); got != "" {
+			t.Errorf("[%s] harus tetap jalur lama, dapat %q", mode, got)
+		}
+	}
+}

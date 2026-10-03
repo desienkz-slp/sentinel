@@ -25,8 +25,8 @@ import (
 	"ainoc/internal/diag"
 	"ainoc/internal/directory"
 	"ainoc/internal/escalation"
-	"ainoc/internal/handoff"
 	"ainoc/internal/genieacs"
+	"ainoc/internal/handoff"
 	"ainoc/internal/health"
 	"ainoc/internal/incident"
 	"ainoc/internal/learning"
@@ -37,7 +37,6 @@ import (
 	"ainoc/internal/policy"
 	"ainoc/internal/radius"
 	"ainoc/internal/registry"
-	"ainoc/internal/router"
 	"ainoc/internal/security"
 	"ainoc/internal/session"
 	"ainoc/internal/standard"
@@ -237,19 +236,19 @@ func (s *Server) routes() http.Handler {
 			BillingURL   *string `json:"billing_url"`
 			BillingToken *string `json:"billing_token"`
 			// Mode tim CS/NOC: off | shadow | on. Nilai lain ditolak (400).
-			TeamRouting   *string `json:"team_routing"`
-			TeamCSScope   *string `json:"team_cs_scope"`
-			TeamHandoff   *string `json:"team_handoff"`
-			TeamSeverity  *string `json:"team_severity"`
+			TeamRouting    *string          `json:"team_routing"`
+			TeamCSScope    *string          `json:"team_cs_scope"`
+			TeamHandoff    *string          `json:"team_handoff"`
+			TeamSeverity   *string          `json:"team_severity"`
 			SeverityPolicy *severity.Policy `json:"severity_policy"`
-			TeamPresenter *string `json:"team_presenter"`
-			RadiusURL     *string `json:"radius_url"`
-			RadiusToken   *string `json:"radius_token"`
-			MikrotikHost  *string `json:"mikrotik_host"`
-			MikrotikPort  *int    `json:"mikrotik_port"`
-			MikrotikUser  *string `json:"mikrotik_user"`
-			MikrotikPass  *string `json:"mikrotik_pass"`
-			MikrotikTLS   *bool   `json:"mikrotik_tls"`
+			TeamPresenter  *string          `json:"team_presenter"`
+			RadiusURL      *string          `json:"radius_url"`
+			RadiusToken    *string          `json:"radius_token"`
+			MikrotikHost   *string          `json:"mikrotik_host"`
+			MikrotikPort   *int             `json:"mikrotik_port"`
+			MikrotikUser   *string          `json:"mikrotik_user"`
+			MikrotikPass   *string          `json:"mikrotik_pass"`
+			MikrotikTLS    *bool            `json:"mikrotik_tls"`
 			// Multi-router: daftar lengkap router (menggantikan field tunggal).
 			MikrotikRouters *[]config.MikrotikRouter `json:"mikrotik_routers"`
 			GenieACSURL     *string                  `json:"genieacs_url"`
@@ -1143,7 +1142,7 @@ func (s *Server) routes() http.Handler {
 			text, handled := s.handleStaffCommand(cmdCtx, caller, session.Key(id), msg.Message)
 			cmdCancel()
 			if handled {
-				dec := router.Route(caller, msg.Message)
+				dec := s.route(caller, msg.Message)
 				s.teams.Record(observability.TeamDecision{Team: string(dec.Team), Handler: string(dec.Handler), HandledBy: "code",
 					Latency: time.Since(cmdStart), OK: true, Mode: string(s.routerMode())})
 				s.compareRouter(caller, msg.Message, pathCode)
