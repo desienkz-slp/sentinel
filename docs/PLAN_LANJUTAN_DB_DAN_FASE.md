@@ -41,10 +41,19 @@ dari apt. Tidak ada yang dibuka ke jaringan (hanya `127.0.0.1`/socket).
 | Fase | Status | Rilis |
 |---|---|---|
 | A | SELESAI di kode; `noc_toolfirst=shadow`; belum `on` | v0.2.30 |
-| B | belum | |
+| B | SELESAI (dievaluasi; tanpa perubahan kode) | - |
 | C | belum | |
 | D | belum | |
 | E | belum | |
 | F | belum | |
 | G | belum | |
 | H | belum | |
+
+## Catatan Fase B (hasil evaluasi)
+
+- Nama `GenieACS`: 48 pemakaian, satu ejaan. Tidak ada yang disamakan.
+- Dua `Authorize` sengaja terpisah: `directory.Authorize` = siapa (jabatan, izin, PIN);
+  `policy.ExecutionGuard.Authorize` = apakah aksi lolos kebijakan, risiko, persetujuan.
+  Digabung = lapisan hilang. Tidak digabung.
+- `internal/agent` kini 1.000 baris di `agent.go`; logika tim sudah berkas sendiri.
+  Pemindahan antar-paket ditunda: risiko untuk produksi lebih besar dari manfaatnya.
