@@ -9,7 +9,7 @@ func TestParseCommand(t *testing.T) {
 		tgt  string
 	}{
 		{"cek user pppor pelanggan-uji", CmdPPPoE, "pelanggan-uji"},
-		{"Cek user PPPoE JttJavic", CmdPPPoE, "JttJavic"},
+		{"Cek user PPPoE Pelanggan-Uji", CmdPPPoE, "Pelanggan-Uji"},
 		{"cek traffict", CmdTraffic, ""},
 		{"cek traffic pelanggan-uji", CmdTraffic, "pelanggan-uji"},
 		{"traffic pelanggan-uji", CmdTraffic, "pelanggan-uji"},
