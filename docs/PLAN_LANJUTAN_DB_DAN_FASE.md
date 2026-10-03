@@ -44,8 +44,8 @@ dari apt. Tidak ada yang dibuka ke jaringan (hanya `127.0.0.1`/socket).
 | B | SELESAI (dievaluasi; tanpa perubahan kode) | - |
 | C | SELESAI: PostgreSQL 14 + Redis 6 aktif di 133, hanya lokal; `--check` bersih 2x | c2c22cf |
 | D | SELESAI: runner migrasi + checksum + 003_handoffs; teruji di PostgreSQL asli | v0.2.31 |
-| E | handoff -> PostgreSQL (shadow) selesai di kode; kasus menyusul | v0.2.31 |
-| F | belum | |
+| E | SELESAI: handoff + kasus -> PostgreSQL (`store_pg=shadow`), JSON sumber kebenaran; PG mati tidak mengganggu | v0.2.31-32 |
+| F | SELESAI di kode: `ai-noc-go -import-pg [-dry-run]`, idempoten, terverifikasi | v0.2.32 |
 | G | belum | |
 | H | belum | |
 

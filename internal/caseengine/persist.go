@@ -153,3 +153,14 @@ func (t *Tracker) Load(path string) error {
 	t.mu.Unlock()
 	return nil
 }
+
+// Record = bentuk data satu case untuk penyimpanan lain (mis. PostgreSQL).
+type Record = caseData
+
+// Record mengembalikan salinan data case (tidak membuka mutasi).
+func (c *Case) Record() Record {
+	if c == nil {
+		return Record{}
+	}
+	return toData(c)
+}

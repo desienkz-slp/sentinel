@@ -71,9 +71,19 @@ func timeoutCtx(r *http.Request, d time.Duration) (context.Context, context.Canc
 func main() {
 	cfgPath := flag.String("config", "", "path config.json (opsional)")
 	addr := flag.String("addr", "", "alamat listen, mis. :8090")
+	importPGFlag := flag.Bool("import-pg", false, "salin data JSON lama (kasus, handoff) ke PostgreSQL lalu keluar")
+	dryRunFlag := flag.Bool("dry-run", false, "dengan -import-pg: hanya hitung dan bandingkan, tidak menulis")
 	flag.Parse()
 
 	cfg := config.Load(*cfgPath)
+	if *importPGFlag {
+		exe, _ := os.Executable()
+		mdir := filepath.Join(filepath.Dir(filepath.Dir(exe)), "migrations")
+		if err := importPG(context.Background(), os.Stdout, cfg, db.Default(), mdir, *dryRunFlag); err != nil {
+			log.Fatalf("impor gagal: %v", err)
+		}
+		return
+	}
 	if *addr != "" {
 		cfg.Addr = *addr
 	}
@@ -228,6 +238,7 @@ func main() {
 	// dan metrik. Tanpa isi pesan, nomor pelanggan, atau data akun.
 	srv.pg = pgs
 	srv.attachHandoffSink()
+	srv.attachCaseSink(casew)
 	engine.ScopeHook = srv.recordScopeEvent
 	engine.NOCHook = srv.recordNOCToolEvent
 

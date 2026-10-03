@@ -25,6 +25,15 @@ import (
 type CaseWire struct {
 	tracker *caseengine.Tracker
 	aud     *audit.Store
+	sink    func(caseengine.Record) // opsional: salinan ke penyimpanan lain (PostgreSQL)
+}
+
+// SetSink memasang penerima salinan case setiap kali ia bertransisi. Tidak boleh
+// memblokir; kegagalannya tidak pernah memengaruhi alur diagnosis.
+func (w *CaseWire) SetSink(f func(caseengine.Record)) {
+	if w != nil {
+		w.sink = f
+	}
 }
 
 // NewCaseWire membuat wiring dengan tracker in-memory.
@@ -52,6 +61,9 @@ func (w *CaseWire) SetAudit(aud *audit.Store) {
 func (w *CaseWire) transition(c *caseengine.Case, next caseengine.State, actor, reason string) error {
 	err := recordTransition(w.aud, c, next, actor, reason)
 	w.persist()
+	if w.sink != nil && c != nil {
+		w.sink(c.Record())
+	}
 	return err
 }
 

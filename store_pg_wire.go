@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"ainoc/internal/caseengine"
 	"ainoc/internal/config"
 	"ainoc/internal/db"
 	"ainoc/internal/handoff"
@@ -26,6 +27,7 @@ import (
 type pgState struct {
 	mu       sync.Mutex
 	repo     *pgstore.HandoffRepo
+	cases    *pgstore.CaseRepo
 	lastErr  string
 	writes   int64
 	failures int64
@@ -93,6 +95,7 @@ func connectPG(ctx context.Context, cfg *config.Config, dbcfg db.Config, migrati
 	}
 	log.Printf("[pg] tersambung; migrasi diterapkan=%v dilewati=%d", res.Applied, len(res.Skipped))
 	st.repo = pgstore.NewHandoffRepo(pool)
+	st.cases = pgstore.NewCaseRepo(pool)
 	return st
 }
 
@@ -141,4 +144,32 @@ func (s *Server) verifyHandoffPG(ctx context.Context) []string {
 		log.Printf("[pg] SELISIH JSON vs PostgreSQL: %d (contoh: %s)", len(d), d[0])
 	}
 	return d
+}
+
+// attachCaseSink memasang penulis PostgreSQL ke CaseWire (kasus). Sama seperti
+// handoff: JSON tetap sumber kebenaran, kegagalan PG hanya dicatat.
+func (s *Server) attachCaseSink(cw interface{ SetSink(func(caseengine.Record)) }) {
+	if cw == nil || s.pg == nil || s.pg.cases == nil {
+		return
+	}
+	var mu sync.Mutex
+	cw.SetSink(func(rec caseengine.Record) {
+		if s.storePGMode() == config.TeamOff {
+			return
+		}
+		go func() {
+			mu.Lock()
+			defer mu.Unlock()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			err := s.pg.cases.Upsert(ctx, rec)
+			s.pg.ok(err)
+			if err != nil {
+				log.Printf("[pg] GAGAL simpan case %s: %v (JSON tetap tersimpan)", rec.ID, err)
+				s.teams.RecordHandoff("pg_case_failed")
+				return
+			}
+			s.teams.RecordHandoff("pg_case_ok")
+		}()
+	})
 }
