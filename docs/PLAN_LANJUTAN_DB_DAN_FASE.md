@@ -47,7 +47,7 @@ dari apt. Tidak ada yang dibuka ke jaringan (hanya `127.0.0.1`/socket).
 | E | SELESAI: handoff + kasus -> PostgreSQL (`store_pg=shadow`), JSON sumber kebenaran; PG mati tidak mengganggu | v0.2.31-32 |
 | F | SELESAI di kode: `ai-noc-go -import-pg [-dry-run]`, idempoten, terverifikasi | v0.2.32 |
 | G | SELESAI di kode: dedupe bersama Redis (`store_redis`), Redis mati jatuh ke lokal; teruji di Redis asli | v0.2.33 |
-| H | belum | |
+| H | SELESAI: dokumen + verifikasi produksi | v0.2.33 |
 
 ## Catatan Fase B (hasil evaluasi)
 
@@ -57,3 +57,34 @@ dari apt. Tidak ada yang dibuka ke jaringan (hanya `127.0.0.1`/socket).
   Digabung = lapisan hilang. Tidak digabung.
 - `internal/agent` kini 1.000 baris di `agent.go`; logika tim sudah berkas sendiri.
   Pemindahan antar-paket ditunda: risiko untuk produksi lebih besar dari manfaatnya.
+
+## Keadaan produksi (133) saat rencana ini ditutup
+
+| Komponen | Keadaan |
+|---|---|
+| Versi | v0.2.33 |
+| PostgreSQL 14 | aktif, hanya lokal; migrasi 001-003 terterapkan; 2 kasus + 4 handoff diimpor dan terverifikasi |
+| Redis 6 | aktif, hanya lokal, berkata sandi; dipakai dedupe |
+| `store_pg` | shadow: JSON sumber kebenaran, PG menerima salinan |
+| `store_redis` | shadow: keputusan dedupe tetap lokal, Redis dibandingkan |
+| `routing`, `cs_scope` | on |
+| `presenter`, `handoff`, `severity`, `noc_toolfirst` | shadow |
+
+## Perintah operator
+
+- Cek datastore tanpa mengubah: `deploy/install-datastores.sh --check`
+- Impor ulang JSON ke PG: `ai-noc-go -import-pg -dry-run` lalu `ai-noc-go -import-pg`
+- Naikkan mode lewat Pengaturan atau `POST /api/config` (`store_pg`, `store_redis`, ...)
+- Cadangan otomatis `data-backup-*.tar.gz` dibuat tiap skrip pasang dijalankan.
+
+## Belum dilakukan (butuh keputusan atau pengamatan)
+
+1. **`store_pg=on`**: baru bermakna bila pembacaan dari PG ditambahkan. Saat ini `on` dan
+   `shadow` sama (JSON tetap dibaca). Pembacaan dari PG ditunda sampai selisih terbukti
+   nol selama masa pengamatan nyata.
+2. **`store_redis=on`**: baru berguna bila ada lebih dari satu instance. Satu instance
+   cukup dengan dedupe lokal.
+3. **Ambang P1-P3** (`severity_policy`): belum diisi operator, hasil keparahan UNRATED.
+4. **Uji WhatsApp nyata** untuk `presenter`, `handoff`, `noc_toolfirst` sebelum `on`.
+5. Server 139 belum diverifikasi mati.
+6. Pencadangan PostgreSQL terjadwal (`pg_dump`) belum dibuat.
