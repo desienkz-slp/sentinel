@@ -197,6 +197,26 @@ type User struct {
 	LastDisconnect *string `json:"last_disconnect"`
 }
 
+// userOutput is the customer-safe projection returned by the tool. Radius may
+// send a cleartext password; it must never enter tool.Output.Data.
+type userOutput struct {
+	Username       string  `json:"username"`
+	Profile        string  `json:"profile"`
+	NASIP          *string `json:"nas_ip"`
+	LastDisconnect *string `json:"last_disconnect"`
+	PasswordSet    bool    `json:"password_set"`
+}
+
+func projectUser(u User) userOutput {
+	return userOutput{
+		Username:       u.Username,
+		Profile:        u.Profile,
+		NASIP:          u.NASIP,
+		LastDisconnect: u.LastDisconnect,
+		PasswordSet:    u.Password != "",
+	}
+}
+
 // getUser membaca data user PPP (semua atau satu user). Password tidak
 // dicetak ke teks (rahasia) — hanya ditandai ada/tidak.
 func (a *Adapter) getUser(ctx context.Context, args map[string]any) (tool.Output, error) {
@@ -243,7 +263,11 @@ func (a *Adapter) getUser(ctx context.Context, args map[string]any) (tool.Output
 		}
 		b.WriteString(line + "\n")
 	}
-	return tool.Output{Data: match, Text: strings.TrimSpace(b.String())}, nil
+	projected := make([]userOutput, 0, len(match))
+	for _, u := range match {
+		projected = append(projected, projectUser(u))
+	}
+	return tool.Output{Data: projected, Text: strings.TrimSpace(b.String())}, nil
 }
 
 // getSystemStats membaca statistik server Radius UI.

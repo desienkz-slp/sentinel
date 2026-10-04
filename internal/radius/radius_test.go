@@ -2,6 +2,7 @@ package radius
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -82,6 +83,13 @@ func TestGetUser(t *testing.T) {
 	}
 	if strings.Contains(out.Text, "rahasia123") {
 		t.Errorf("password bocor di teks: %q", out.Text)
+	}
+	raw, err := json.Marshal(out.Data)
+	if err != nil {
+		t.Fatalf("marshal data output: %v", err)
+	}
+	if strings.Contains(string(raw), "rahasia123") {
+		t.Errorf("password bocor di data output: %q", string(raw))
 	}
 	if !strings.Contains(out.Text, "Tersimpan") {
 		t.Errorf("Text = %q, mau menandai password 'Tersimpan'", out.Text)
