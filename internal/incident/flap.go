@@ -17,6 +17,9 @@ type UplinkState string
 const (
 	UplinkUp   UplinkState = "UP"
 	UplinkDown UplinkState = "DOWN"
+	// UplinkUnknown represents an unsuccessful read-only poll. It is never a
+	// transition and is excluded from flap evaluation.
+	UplinkUnknown UplinkState = "UNKNOWN"
 )
 
 // UplinkObservation is immutable monitoring evidence supplied to the evaluator.
@@ -25,6 +28,9 @@ type UplinkObservation struct {
 	UplinkID   string
 	State      UplinkState
 	ObservedAt time.Time
+	// Provenance identifies the evidence source; poll-derived evidence is never
+	// presented as a canonical RouterOS event.
+	Provenance string
 }
 
 // UplinkFlapFinding is read-only evidence that a canonical uplink flapped.
@@ -74,6 +80,11 @@ func EvaluateUplinkFlaps(input UplinkFlapInput) []UplinkFlapFinding {
 	}
 	var findings []UplinkFlapFinding
 	for _, observation := range CanonicalizeUplinkObservations(input.Observations) {
+		// A failed poll is retained as evidence but must never manufacture a
+		// state transition or alter the last known concrete state.
+		if observation.State == UplinkUnknown {
+			continue
+		}
 		if observation.EventID != "" {
 			if _, seen := seenEvents[observation.EventID]; seen {
 				continue

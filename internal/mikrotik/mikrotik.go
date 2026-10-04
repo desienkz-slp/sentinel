@@ -145,6 +145,39 @@ func (a *Adapter) Ping(ctx context.Context) (PingResult, error) {
 	return res, nil
 }
 
+// InterfaceRunning reads only the requested RouterOS interface rows. It is
+// deliberately not exposed through the tool dispatcher: the poll producer uses
+// this narrow internal read-only seam and never discovers arbitrary interfaces.
+func (a *Adapter) InterfaceRunning(ctx context.Context, names []string) (map[string]bool, error) {
+	if !a.Configured() {
+		return nil, fmt.Errorf("mikrotik belum dikonfigurasi (isi host + username + password)")
+	}
+	wanted := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			wanted[name] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return map[string]bool{}, nil
+	}
+	out := make(map[string]bool, len(wanted))
+	for name := range wanted {
+		// RouterOS query operator restricts each read to the configured
+		// interface; unconfigured interfaces are neither interpreted nor emitted.
+		rows, err := a.query(ctx, "/interface/print", map[string]string{"?name": name})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			if row["name"] == name {
+				out[name] = row["running"] == "true" && row["disabled"] != "true"
+			}
+		}
+	}
+	return out, nil
+}
+
 // Invoke memenuhi tool.Adapter.
 func (a *Adapter) Invoke(ctx context.Context, name string, args map[string]any) (tool.Output, error) {
 	switch name {

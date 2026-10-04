@@ -47,6 +47,7 @@ import (
 	"ainoc/internal/supervisor"
 	"ainoc/internal/tool"
 	"ainoc/internal/updater"
+	"ainoc/internal/uplinkpoll"
 	"ainoc/internal/wa"
 	"ainoc/internal/workflow"
 )
@@ -342,6 +343,28 @@ func main() {
 	srv.syncRadiusAdapter()
 	// Selaraskan GenieACSAdapter (host NBI dari env/config).
 	srv.syncGenieACSAdapter()
+
+	// Phase 7A: start only the explicit allowlisted, read-only poll-derived
+	// source. Invalid mapping or unavailable store leaves the source disabled.
+	pollCtx, stopPoll := context.WithCancel(context.Background())
+	if monitor != nil && len(cfg.UplinkMonitors) > 0 {
+		if err := cfg.ValidateUplinkMonitors(); err != nil {
+			log.Printf("[uplink-poll] disabled: invalid allowlist: %v", err)
+		} else {
+			readers := make(map[string]uplinkpoll.InterfaceReader, len(srv.mikrotikPool))
+			for name, adapter := range srv.mikrotikPool {
+				readers[name] = adapter
+			}
+			producer, err := uplinkpoll.New(monitor, readers, cfg.UplinkMonitors)
+			if err != nil {
+				log.Printf("[uplink-poll] disabled: %v", err)
+			} else {
+				scheduler := uplinkpoll.NewScheduler(producer, cfg.UplinkPollInterval())
+				go scheduler.Run(pollCtx)
+				log.Printf("[uplink-poll] enabled: %d explicit uplinks, %s interval, poll-derived only", len(cfg.UplinkMonitors), scheduler.Interval())
+			}
+		}
+	}
 	// Selaraskan executor tool custom (setelah adapter domain aktif, supaya
 	// domainConf lengkap). Mendaftarkan tool custom yang sudah active ke dispatcher.
 	srv.syncCustomToolExecutor()
@@ -415,6 +438,7 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
+	stopPoll()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

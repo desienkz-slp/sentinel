@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -106,7 +107,11 @@ type Config struct {
 	MikrotikTLS  bool   `json:"mikrotik_tls"`
 	// MikrotikRouters adalah daftar router untuk fitur multi-MikroTik.
 	MikrotikRouters []MikrotikRouter `json:"mikrotik_routers"`
-	GenieACSURL     string           `json:"genieacs_url"`
+	// UplinkMonitors is an explicit allowlist for read-only poll-derived uplink
+	// observations. No interface is monitored unless it appears here.
+	UplinkMonitors        []UplinkMonitor `json:"uplink_monitors"`
+	UplinkPollIntervalSec int             `json:"uplink_poll_interval_sec"`
+	GenieACSURL           string          `json:"genieacs_url"`
 	// Catatan: GenieACS NBI tidak punya token auth (keamanan via jaringan).
 	// Tidak ada field token — hanya host.
 
@@ -153,6 +158,15 @@ type MikrotikRouter struct {
 	User string `json:"user"`
 	Pass string `json:"pass"`
 	TLS  bool   `json:"tls"`
+}
+
+// UplinkMonitor maps one canonical UplinkID to exactly one configured router
+// and RouterOS interface. It is intentionally explicit: ordinary interfaces
+// cannot become monitored uplinks by discovery.
+type UplinkMonitor struct {
+	UplinkID  string `json:"uplink_id"`
+	Router    string `json:"router"`
+	Interface string `json:"interface"`
 }
 
 // StaffMember adalah satu entri direktori staf internal (master spec §22).
@@ -248,11 +262,12 @@ func Default() *Config {
 		MemoryPath:  defaultMemoryPath(),
 
 		// Blueprint upgrade: deny-by-default, path relatif ke binary.
-		PolicyPath:   defaultPolicyPath(),
-		RegistryPath: defaultRegistryPath(),
-		WorkflowDir:  defaultWorkflowDir(),
-		IncidentPath: defaultIncidentPath(),
-		AuditPath:    defaultAuditPath(),
+		PolicyPath:            defaultPolicyPath(),
+		RegistryPath:          defaultRegistryPath(),
+		WorkflowDir:           defaultWorkflowDir(),
+		IncidentPath:          defaultIncidentPath(),
+		AuditPath:             defaultAuditPath(),
+		UplinkPollIntervalSec: 30,
 
 		// Auto-update: default ke repo rilis kanonik + skrip apply standar.
 		UpdateOwner:  "desienkz-slp",
@@ -610,6 +625,51 @@ func Load(path string) *Config {
 	}
 	c.LLMBaseURL = strings.TrimRight(c.LLMBaseURL, "/")
 	return c
+}
+
+// UplinkPollInterval returns the configured cadence, falling back safely to 30s.
+func (c *Config) UplinkPollInterval() time.Duration {
+	seconds := c.UplinkPollIntervalSec
+	if seconds <= 0 {
+		seconds = 30
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// ValidateUplinkMonitors rejects ambiguous or unconfigured monitor mappings
+// before a read-only poller is permitted to query RouterOS.
+func (c *Config) ValidateUplinkMonitors() error {
+	routers := make(map[string]struct{})
+	for _, router := range c.Routers() {
+		name := strings.TrimSpace(router.Name)
+		if name == "" {
+			name = strings.TrimSpace(router.Host)
+		}
+		if name != "" {
+			routers[name] = struct{}{}
+		}
+	}
+	ids, targets := make(map[string]struct{}), make(map[string]struct{})
+	for _, monitor := range c.UplinkMonitors {
+		id := strings.TrimSpace(monitor.UplinkID)
+		router := strings.TrimSpace(monitor.Router)
+		iface := strings.TrimSpace(monitor.Interface)
+		if id == "" || router == "" || iface == "" {
+			return fmt.Errorf("uplink monitor requires uplink_id, router, and interface")
+		}
+		if _, ok := routers[router]; !ok {
+			return fmt.Errorf("uplink monitor %q references unconfigured router %q", id, router)
+		}
+		if _, ok := ids[id]; ok {
+			return fmt.Errorf("duplicate uplink_id %q", id)
+		}
+		target := router + "\x00" + iface
+		if _, ok := targets[target]; ok {
+			return fmt.Errorf("duplicate uplink monitor target %q/%q", router, iface)
+		}
+		ids[id], targets[target] = struct{}{}, struct{}{}
+	}
+	return nil
 }
 
 // Redacted untuk ditampilkan ke UI (jangan pernah kirim key mentah ke browser).
