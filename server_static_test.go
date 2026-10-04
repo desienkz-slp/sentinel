@@ -40,6 +40,27 @@ func TestSettingsHTMLDisablesBrowserCache(t *testing.T) {
 
 // Kartu "Mode Tim" harus ada, memuat kelima pengendali, dan memanggil endpoint
 // yang benar; kartu setup Endpoint A/B tidak boleh hilang karenanya.
+func TestDashboardOperationsCockpitComposition(t *testing.T) {
+	s := &Server{cfg: &config.Config{Addr: "127.0.0.1:8090"}}
+	h := s.routes()
+	r := httptest.NewRequest(http.MethodGet, "http://noc.local/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	body := w.Body.String()
+
+	// Dashboard utama harus memprioritaskan antrean operasi, KPI dari API nyata,
+	// dan diagnosis ringkas; hook legacy tetap dipertahankan agar tidak memutus API.
+	for _, want := range []string{
+		"ops-kpis", "case-queue", "diagnosis-panel", "integration-drawer",
+		"caseRows", "caseCount", "obsStat", "vText", "steps",
+		"refreshObservability", "refreshCases", "/api/kpi", "/api/cases",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dashboard kehilangan komposisi atau hook %q", want)
+		}
+	}
+}
+
 func TestSettingsHTMLMemuatKartuModeTim(t *testing.T) {
 	s := &Server{cfg: &config.Config{Addr: "127.0.0.1:8090"}}
 	h := s.routes()

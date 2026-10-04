@@ -173,162 +173,78 @@
   </div>
 </header>
 
-<div class="shell">
-  <div class="grid">
-    <!-- ============ KOLOM UTAMA: workflow diagnosis ============ -->
-    <section>
-      <div class="card">
-        <h2>Diagnosis Gangguan</h2>
-        <label for="q">Pertanyaan operator</label>
-        <textarea id="q" placeholder="Contoh: pelanggan di Jl. Melati internet lambat sejak pagi, cek dulu ke 8.8.8.8"></textarea>
-        <div class="row">
-          <div>
-            <label for="tgt">Target (opsional)</label>
-            <input id="tgt" placeholder="8.8.8.8 / pelanggan.net / 10.10.10.1:1812">
-          </div>
-          <div>
-            <label for="mdl">Model analisis</label>
-            <select id="mdl"></select>
-          </div>
-        </div>
-        <div class="btns">
-          <button id="run" onclick="runDiag()">▶ Jalankan Diagnosis</button>
-          <button class="ghost" onclick="loadModels()">Muat daftar model</button>
-          <button class="ghost" onclick="document.getElementById('steps').innerHTML=''">Bersihkan</button>
-        </div>
-        <div class="hint">Agen akan memilih tool diagnostik sendiri (ping → DNS → TCP/HTTP → traceroute → radius), lalu menyimpulkan VERDICT + rekomendasi. Bila keyakinan rendah, analisis dieskalasi otomatis ke Codex CLI.</div>
+<div class="shell cockpit-shell">
+  <section class="ops-kpis" aria-label="Ringkasan operasi">
+    <div class="kpi-card"><span class="kpi-label">Case aktif</span><strong id="kpiActive">—</strong><small>butuh perhatian</small></div>
+    <div class="kpi-card kpi-escalated"><span class="kpi-label">Eskalasi</span><strong id="kpiEscalated">—</strong><small id="kpiEscalationRate">rate —</small></div>
+    <div class="kpi-card kpi-resolved"><span class="kpi-label">Terverifikasi selesai</span><strong id="kpiResolved">—</strong><small>case engine</small></div>
+    <div class="kpi-card"><span class="kpi-label">Kesehatan dependensi</span><strong id="kpiHealth">Memuat</strong><small id="obsAlertTag">status layanan</small></div>
+  </section>
 
-        <details>
-          <summary>Probe manual cepat</summary>
-          <div class="grid-tools" id="toolBtns"></div>
-          <div class="row" style="margin-top:8px">
-            <input id="probeTarget" placeholder="target untuk probe manual">
-            <button class="ghost" onclick="runProbe()">Jalankan probe</button>
-          </div>
-        </details>
+  <div class="cockpit-grid">
+    <section class="card case-queue" aria-labelledby="caseQueueTitle">
+      <div class="pane-heading">
+        <div><span class="eyebrow">Monitor / Operate</span><h1 id="caseQueueTitle">Antrean case operasi</h1></div>
+        <span class="pill" id="caseCount">—</span>
       </div>
-
-      <div class="card">
-        <h2>Hasil</h2>
-        <div id="verdict" class="verdict">
-          <div class="v" id="vText">—</div>
-          <div class="meta" id="vMeta">Belum ada diagnosis dijalankan.</div>
-        </div>
-        <div class="answer" id="answer"></div>
-      </div>
-
-      <div class="card">
-        <h2>Jejak Langkah <span style="color:var(--acc);font-size:11px">live</span></h2>
-        <ul id="steps"><li style="border-color:var(--line);color:var(--dim)">Menunggu permintaan…</li></ul>
-      </div>
-    </section>
-
-    <!-- ============ KOLOM SAMPING: kontrol ============ -->
-    <aside>
-      <div class="card">
-        <h2>WhatsApp Gateway <span id="waEmbedTag" class="pill" style="font-size:11px;padding:3px 8px">terpadu</span></h2>
-        <div class="btns" style="margin-top:0">
-          <button id="btnWaStart" onclick="waCtl('start')">▶ Mulai</button>
-          <button class="ghost" onclick="waCtl('stop')">■ Hentikan</button>
-          <button class="ghost" onclick="waCtl('restart')">↻ Restart</button>
-          <button class="ghost" onclick="waGateway()">Cek proses</button>
-        </div>
-        <div class="hint" id="waGwOut">memeriksa proses…</div>
-        <pre id="waGwLog" class="hidden"></pre>
-
-        <label>Blokir nomor — nomor yang diblokir <b>tidak akan dibalas</b></label>
-        <div class="btns" style="margin-top:6px">
-          <button onclick="openBlocklist()">🛑 Kelola Daftar Blokir</button>
-          <span class="pill" id="blCount" style="margin-left:auto;align-self:center">0 nomor diblokir</span>
-        </div>
-        <div class="hint">Nomor yang diblokir tidak dijawab sama sekali oleh bot.</div>
-
-        <div class="row">
-          <div>
-            <label for="sWAGroup">Pesan dari grup WhatsApp</label>
-            <select id="sWAGroup">
-              <option value="false">Abaikan — hanya balas chat pribadi</option>
-              <option value="true">Proses juga (mis. grup NOC internal)</option>
-            </select>
-          </div>
-          <div>
-            <label for="sWAAsync">Mode pengiriman</label>
-            <select id="sWAAsync">
-              <option value="false">Sinkron (balas langsung, tunggu 10–60 dtk)</option>
-              <option value="true">Async (balas "diterima", hasil menyusul)</option>
-            </select>
-          </div>
-        </div>
-        <div class="btns">
-          <button onclick="saveWASettings()">Simpan pengaturan WA</button>
-          <button class="ghost" onclick="waStatus()">Cek status sesi</button>
-          <button class="ghost" onclick="waQR()">Tampilkan QR pairing</button>
-        </div>
-        <div class="btns" style="margin-top:8px">
-          <button class="ghost" onclick="waSend()">Kirim tes</button>
-          <button class="ghost" onclick="waReconnect()">↻ Reconnect</button>
-          <button class="ghost" style="color:var(--bad)" onclick="waLogout()">Keluar (Logout)</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <input id="waTo" placeholder="nomor tujuan, mis. 628123456789">
-          <input id="waMsg" placeholder="pesan tes (kosong = laporan contoh)">
-        </div>
-        <div class="hint" id="waMsgOut">Webhook masuk: <code>POST /api/wa/webhook</code> (diatur otomatis oleh aplikasi).</div>
-        <div id="waQRBox" class="hidden" style="margin-top:12px"></div>
-      </div>
-
-      <div class="card">
-        <h2>Blueprint NOC <span class="pill" id="bpMode" style="font-size:11px;padding:3px 8px">—</span></h2>
-        <div class="hint" id="bpStat">memuat…</div>
-        <div class="hint">Tool registry &amp; policy engine — semua tool eksternal <b>deny-by-default</b> sampai endpoint &amp; kredensial nyata diberikan.</div>
-      </div>
-    </aside>
-  </div>
-
-  <!-- ============ BARIS BAWAH: data ============ -->
-  <div class="bottom">
-    <section class="card" style="margin-bottom:0">
-      <h2>Observabilitas <span class="pill" id="obsAlertTag" style="font-size:11px;padding:3px 8px">memuat…</span></h2>
-      <div class="hint" id="obsStat">Memuat KPI, status dependensi, dan alert…</div>
-      <div class="hint" style="margin-top:10px">KPI resolusi hanya dihitung setelah case engine menyimpan verifikasi berhasil; diagnosis sehat bukan klaim resolusi.</div>
-    </section>
-
-    <section class="card" style="margin-bottom:0">
-      <h2>Case Aktif <span class="pill" id="caseCount" style="font-size:11px;padding:3px 8px">—</span></h2>
       <div class="hint" id="caseStat">Memuat lifecycle case…</div>
-      <div class="table-wrap case-scroll" id="caseTableWrap" style="margin-top:10px" tabindex="0" aria-label="Daftar case aktif yang dapat digulir">
+      <div class="table-wrap case-scroll" id="caseTableWrap" tabindex="0" aria-label="Daftar case aktif yang dapat digulir">
         <table>
-          <thead><tr><th>Case ID</th><th>State</th><th>Events</th><th>Eskalasi</th><th>Verifikasi</th></tr></thead>
+          <thead><tr><th>Case</th><th>Status</th><th>Alur lifecycle</th><th>Handoff</th><th>Verifikasi</th></tr></thead>
           <tbody id="caseRows"><tr><td colspan="5" style="color:var(--dim)">Belum ada case.</td></tr></tbody>
         </table>
       </div>
+      <p class="queue-footnote">Urutan case dan lifecycle berasal dari tracker; tidak ada aksi baru yang dibuat oleh tampilan ini.</p>
     </section>
 
-    <section class="card" style="margin-bottom:0">
-      <h2>Standar Konteks &amp; Sesi <span class="pill" id="stdTag" style="font-size:11px;padding:3px 8px">v—</span></h2>
-      <div class="hint" id="sesiStat">memuat…</div>
-      <div class="btns">
-        <button class="ghost" onclick="muatSesi()">↻ Muat ulang</button>
-        <button class="ghost" onclick="hapusCache()">🗑 Kosongkan cache</button>
+    <aside class="diagnosis-panel" aria-label="Diagnosis cepat">
+      <div class="card diagnosis-card">
+        <div class="pane-heading"><div><span class="eyebrow">AI assistance</span><h2>Diagnosis cepat</h2></div><span class="live-dot">LIVE</span></div>
+        <label for="q">Pertanyaan operator</label>
+        <textarea id="q" placeholder="Contoh: pelanggan di Jl. Melati internet lambat sejak pagi"></textarea>
+        <div class="row compact-inputs">
+          <input id="tgt" aria-label="Target opsional" placeholder="Target (opsional)">
+          <select id="mdl" aria-label="Model analisis"></select>
+        </div>
+        <div class="btns diagnosis-actions">
+          <button id="run" onclick="runDiag()">▶ Diagnosis</button>
+          <button class="ghost" onclick="loadModels()" title="Muat daftar model">Model</button>
+          <button class="ghost" onclick="document.getElementById('steps').innerHTML=''" title="Bersihkan jejak">Bersihkan</button>
+        </div>
+        <div id="verdict" class="verdict"><div class="v" id="vText">—</div><div class="meta" id="vMeta">Siap untuk diagnosis.</div></div>
+        <div class="answer" id="answer"></div>
+        <details class="trace-disclosure">
+          <summary>Jejak diagnosis &amp; probe manual</summary>
+          <div class="grid-tools" id="toolBtns"></div>
+          <div class="row"><input id="probeTarget" placeholder="target probe"><button class="ghost" onclick="runProbe()">Probe</button></div>
+          <ul id="steps"><li style="border-color:var(--line);color:var(--dim)">Menunggu permintaan…</li></ul>
+        </details>
       </div>
-      <div class="table-wrap" style="margin-top:10px">
-        <table>
-          <thead><tr><th>Nomor</th><th>Giliran</th><th>Intent</th><th>Target</th><th>Idle</th><th>Pesan terakhir</th></tr></thead>
-          <tbody id="sesiRows"><tr><td colspan="6" style="color:var(--dim)">Belum ada percakapan.</td></tr></tbody>
-        </table>
-      </div>
-      <div class="hint">Konteks dipisah per nomor: riwayat &amp; cache satu pelanggan tidak bercampur dengan pelanggan lain. Standar konteks dijalankan kode, jadi tetap sama untuk model apa pun.</div>
-    </section>
+    </aside>
 
-    <section class="card" style="margin-bottom:0">
-      <h2>Riwayat Insiden</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Waktu</th><th>Target</th><th>Verdict</th><th>Engine</th><th>ms</th></tr></thead>
-          <tbody id="hist"><tr><td colspan="5" style="color:var(--dim)">Belum ada insiden.</td></tr></tbody>
-        </table>
-      </div>
-    </section>
+    <aside class="operations-side">
+      <section class="card operational-context">
+        <h2>Postur operasi <span class="pill" id="bpMode">—</span></h2>
+        <div class="hint" id="bpStat">memuat…</div>
+        <div class="hint" id="obsStat">Memuat KPI, status dependensi, dan alert…</div>
+      </section>
+      <details class="card integration-drawer">
+        <summary>Administrasi integrasi WhatsApp <span id="waEmbedTag" class="pill">terpadu</span></summary>
+        <div class="integration-content">
+          <div class="btns"><button id="btnWaStart" onclick="waCtl('start')">▶ Mulai</button><button class="ghost" onclick="waCtl('stop')">■ Hentikan</button><button class="ghost" onclick="waCtl('restart')">↻ Restart</button><button class="ghost" onclick="waGateway()">Cek proses</button></div>
+          <div class="hint" id="waGwOut">memeriksa proses…</div><pre id="waGwLog" class="hidden"></pre>
+          <label>Blokir nomor</label><div class="btns"><button onclick="openBlocklist()">🛑 Kelola daftar blokir</button><span class="pill" id="blCount">0 nomor diblokir</span></div>
+          <div class="row"><div><label for="sWAGroup">Pesan grup</label><select id="sWAGroup"><option value="false">Abaikan</option><option value="true">Proses juga</option></select></div><div><label for="sWAAsync">Pengiriman</label><select id="sWAAsync"><option value="false">Sinkron</option><option value="true">Async</option></select></div></div>
+          <div class="btns"><button onclick="saveWASettings()">Simpan WA</button><button class="ghost" onclick="waStatus()">Status sesi</button><button class="ghost" onclick="waQR()">QR pairing</button><button class="ghost" onclick="waSend()">Kirim tes</button><button class="ghost" onclick="waReconnect()">↻ Reconnect</button><button class="ghost" style="color:var(--bad)" onclick="waLogout()">Logout</button></div>
+          <div class="row"><input id="waTo" placeholder="nomor tujuan"><input id="waMsg" placeholder="pesan tes"></div><div class="hint" id="waMsgOut">Webhook masuk: <code>POST /api/wa/webhook</code></div><div id="waQRBox" class="hidden"></div>
+        </div>
+      </details>
+    </aside>
+  </div>
+
+  <div class="support-grid">
+    <section class="card"><h2>Standar konteks &amp; sesi <span class="pill" id="stdTag">v—</span></h2><div class="hint" id="sesiStat">memuat…</div><div class="btns"><button class="ghost" onclick="muatSesi()">↻ Muat ulang</button><button class="ghost" onclick="hapusCache()">🗑 Kosongkan cache</button></div><div class="table-wrap"><table><thead><tr><th>Nomor</th><th>Giliran</th><th>Intent</th><th>Target</th><th>Idle</th><th>Pesan terakhir</th></tr></thead><tbody id="sesiRows"><tr><td colspan="6" style="color:var(--dim)">Belum ada percakapan.</td></tr></tbody></table></div></section>
+    <section class="card"><h2>Riwayat insiden</h2><div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Target</th><th>Verdict</th><th>Engine</th><th>ms</th></tr></thead><tbody id="hist"><tr><td colspan="5" style="color:var(--dim)">Belum ada insiden.</td></tr></tbody></table></div></section>
   </div>
 </div>
 
@@ -779,15 +695,21 @@ async function refreshHistory() {
 async function refreshObservability() {
   try {
     const [kpi, alerts] = await Promise.all([api('/api/kpi'), api('/api/alerts')]);
-    $('obsAlertTag').textContent = (alerts||[]).length ? `${alerts.length} alert` : 'tanpa alert';
+    const active = kpi.active_cases || 0;
+    const escalated = kpi.escalated || 0;
+    const resolved = kpi.verified_resolved || kpi.resolved || 0;
+    const alertCount = (alerts || []).length;
+    $('kpiActive').textContent = active;
+    $('kpiEscalated').textContent = escalated;
+    $('kpiResolved').textContent = resolved;
+    $('kpiEscalationRate').textContent = `${kpi.escalation_rate_percent || 0}% rate`;
+    $('kpiHealth').textContent = alertCount ? `${alertCount} alert` : 'Normal';
+    $('obsAlertTag').textContent = alertCount ? `${alertCount} alert` : 'tanpa alert';
     $('obsStat').innerHTML =
       `kasus diproses: <b>${kpi.total_cases||kpi.cases_processed||0}</b> · ` +
-      `aktif: <b>${kpi.active_cases||0}</b> · resolved: <b>${kpi.resolved||0}</b> · ` +
-      `eskalasi: <b>${kpi.escalated||0}</b> · gagal: <b>${kpi.failed||0}</b> · ` +
-      `resolusi terverifikasi: <b>${kpi.verified_resolved||0}</b> · ` +
-      `eskalasi: <b>${kpi.escalation_rate_percent||0}%</b> · ` +
-      `rata-rata resolusi: <b>${kpi.avg_resolution_ms||0}ms</b>` +
-      ((alerts||[]).length ? `<br><span style="color:var(--warn)">${esc(alerts.slice(0,3).map(a=>`${a.subject}: ${a.message||a.severity}`).join(' · '))}</span>` : '');
+      `aktif: <b>${active}</b> · terverifikasi selesai: <b>${resolved}</b> · ` +
+      `eskalasi: <b>${escalated}</b> (${kpi.escalation_rate_percent||0}%)` +
+      (alertCount ? `<br><span style="color:var(--warn)">${esc(alerts.slice(0,3).map(a=>`${a.subject}: ${a.message||a.severity}`).join(' · '))}</span>` : '');
   } catch(e) {
     $('obsAlertTag').textContent = 'tidak tersedia';
     $('obsStat').textContent = 'Gagal memuat observabilitas: ' + e.message;
@@ -821,11 +743,11 @@ async function refreshCases() {
         ? `${esc(c.escalation.role||'—')} · ${esc(c.escalation.phone||'—')}${c.escalation.sent ? ' · terkirim' : ' · belum terkirim'}`
         : '—';
       const ver = (c.verifications||[]).map(v => `${v.passed ? '✔' : '✘'} ${esc(v.source||'')}`).join('; ') || '—';
-      const evs = (c.events||[]).map(e => `${e.from}→${e.to}`).join(' · ');
+      const evs = (c.events||[]).map(e => `<span class="event-step"><span>${esc(e.from)}</span><i>→</i><span>${esc(e.to)}</span></span>`).join('');
       return `<tr>
         <td><span class="tag">${esc(c.case_id)}</span></td>
         <td style="color:${stateColor(c.state)}"><b>${esc(c.state)}</b></td>
-        <td style="color:var(--dim);font-family:var(--mono);font-size:11px">${esc(evs)}</td>
+        <td class="case-events">${evs || '<span class="tag">Belum ada event</span>'}</td>
         <td>${escTxt}</td>
         <td style="font-family:var(--mono);font-size:11px">${ver}</td></tr>`;
     }).join('');
