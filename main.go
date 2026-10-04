@@ -65,6 +65,20 @@ func portFromURL(raw string, def int) int {
 	return def
 }
 
+// monitoringStorePath keeps monitoring evidence alongside the configured
+// incident data. Audit is a deterministic fallback for older configurations
+// that do not set an incident path.
+func monitoringStorePath(cfg *config.Config) string {
+	if cfg == nil {
+		return "monitoring.json"
+	}
+	path := cfg.IncidentPath
+	if path == "" {
+		path = cfg.AuditPath
+	}
+	return filepath.Join(filepath.Dir(path), "monitoring.json")
+}
+
 func timeoutCtx(r *http.Request, d time.Duration) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(r.Context(), d)
 	return ctx, cancel
@@ -152,6 +166,22 @@ func main() {
 	}
 	inc := incident.New(cfg.IncidentPath, 500)
 	aud := audit.New(cfg.AuditPath, 2000)
+	monitor, monitorErr := incident.OpenMonitoringStore(monitoringStorePath(cfg), 500)
+	if monitorErr != nil {
+		log.Printf("[monitoring] gagal membuka store: %v", monitorErr)
+		// Audit is already initialized and is the existing safe seam for runtime
+		// initialization failures. No event source is started as a fallback.
+		aud.Record(audit.Entry{
+			EventType:       "monitoring_store_init_failed",
+			Actor:           "runtime",
+			EntityType:      "monitoring_store",
+			EntityID:        monitoringStorePath(cfg),
+			ExecutionStatus: "FAILED",
+			Error:           monitorErr.Error(),
+			Note:            "monitoring projections disabled; no source adapter started",
+		})
+		monitor = nil
+	}
 
 	// Hubungkan incident & audit ke engine supaya tiap diagnosis otomatis
 	// terdokumentasi (blueprint: "Document the incident").
@@ -268,7 +298,7 @@ func main() {
 		}
 	}()
 
-	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, hreg: hreg, ded: ded, obs: obs, teams: observability.NewTeamCollector(), disp: disp, esc: escalation.NewDedup(), ho: handoff.New(filepath.Join(filepath.Dir(cfg.IncidentPath), "handoffs.json")), csUnknown: newCSUnknownState(), customTools: customtool.NewStore(filepath.Join(filepath.Dir(cfg.IncidentPath), "customtools.json"))}
+	srv := &Server{cfg: cfg, llm: client, diag: runner, codex: bridge, engine: engine, wa: waclient, sup: sup, sesi: sesi, mem: mem, learn: learn, pol: pol, reg: reg, wkf: wkf, inc: inc, aud: aud, monitor: monitor, hreg: hreg, ded: ded, obs: obs, teams: observability.NewTeamCollector(), disp: disp, esc: escalation.NewDedup(), ho: handoff.New(filepath.Join(filepath.Dir(cfg.IncidentPath), "handoffs.json")), csUnknown: newCSUnknownState(), customTools: customtool.NewStore(filepath.Join(filepath.Dir(cfg.IncidentPath), "customtools.json"))}
 	// Pembatas tim CS (Fase 2): penolakan/penimpaan identitas tercatat ke audit
 	// dan metrik. Tanpa isi pesan, nomor pelanggan, atau data akun.
 	srv.pg = pgs

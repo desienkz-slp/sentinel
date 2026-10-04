@@ -120,6 +120,36 @@ func (s *MonitoringStore) ParentSnapshot(parentID string) (MassIncidentParentSna
 	return cloneParentSnapshot(parent.Snapshot), found
 }
 
+// ParentSnapshots returns immutable parent evidence in deterministic newest-first
+// order. It is read-only and does not alter retention or lifecycle state.
+func (s *MonitoringStore) ParentSnapshots() []MassIncidentParentSnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]MassIncidentParentSnapshot, 0, len(s.data.Parents))
+	for _, parent := range s.data.Parents {
+		out = append(out, cloneParentSnapshot(parent.Snapshot))
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].OpenedAt.Equal(out[j].OpenedAt) {
+			return out[i].ParentID < out[j].ParentID
+		}
+		return out[i].OpenedAt.After(out[j].OpenedAt)
+	})
+	return out
+}
+
+// LatestRecoveryEvaluation returns the latest stored evaluator result, if any.
+// The returned value is copied from durable evidence and has no side effects.
+func (s *MonitoringStore) LatestRecoveryEvaluation(parentID string) (RecoveryEvaluation, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	evaluations := s.data.RecoveryEvaluations[parentID]
+	if len(evaluations) == 0 {
+		return RecoveryEvaluation{}, false
+	}
+	return evaluations[len(evaluations)-1], true
+}
+
 func cloneParentSnapshot(snapshot MassIncidentParentSnapshot) MassIncidentParentSnapshot {
 	snapshot.CustomerIDs = append([]string(nil), snapshot.CustomerIDs...)
 	return snapshot

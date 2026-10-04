@@ -71,6 +71,9 @@ type Server struct {
 	wkf *workflow.Registry
 	inc *incident.Store
 	aud *audit.Store
+	// monitor holds durable read-only evidence only. It is not wired to agent
+	// incident recording or a live event source.
+	monitor *incident.MonitoringStore
 
 	// Blueprint upgrade: health, dedupe.
 	hreg  *health.Registry
@@ -237,7 +240,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/cases", s.handleCases)
 
 	mux.HandleFunc("/api/alerts", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, observability.BuildAlerts(s.observabilityDependencies(), s.observabilityOutcomes()))
+		alerts := observability.BuildAlerts(s.observabilityDependencies(), s.observabilityOutcomes())
+		alerts = append(alerts, s.monitoringAlerts()...)
+		writeJSON(w, http.StatusOK, alerts)
 	})
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
@@ -659,7 +664,6 @@ func (s *Server) routes() http.Handler {
 	// Resep "cara pengecekan" Endpoint B (deep-dive) yang terbukti konklusif.
 	// List + delete resep ada di settings_crud_wire.go (/api/recipes GET/DELETE).
 
-
 	// ---- Blueprint upgrade: policy, registry, workflow, incident, audit ----
 
 	// Ringkasan komponen blueprint (untuk dashboard).
@@ -943,6 +947,10 @@ func (s *Server) routes() http.Handler {
 			"version": version,
 		})
 	})
+
+	// Proyeksi bukti monitoring parent mass incident. Read-only: tidak ada source
+	// adapter atau perubahan lifecycle di endpoint ini.
+	mux.HandleFunc("/api/incidents/mass", s.handleMassIncidents)
 
 	// Riwayat insiden terstruktur.
 	mux.HandleFunc("/api/incidents", func(w http.ResponseWriter, r *http.Request) {
