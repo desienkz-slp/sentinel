@@ -34,6 +34,24 @@ The current MikroTik adapter reads current interface snapshots only. It does not
 
 `ReadAfter(cursor) -> {events:[{event_id,uplink_id,UP|DOWN,observed_at,source,sequence}], next_cursor, source}`
 
+## Optimalisasi sumber yang tersedia (Q226)
+
+Cek read-only pada server produksi membuktikan Billing, RADIUS, MikroTik, dan
+GenieACS semuanya menjawab. Sistem dapat memanfaatkan mereka untuk **assessment
+best-effort** berikut tanpa mengarang evidence:
+
+1. Billing: snapshot akun aktif dan metadata router/area.
+2. RADIUS: re-read sesi PPP aktif yang fresh.
+3. MikroTik: re-read PPP aktif yang fresh.
+4. GenieACS: status perangkat sebagai evidence tambahan, namun threshold online
+   tujuh hari tidak boleh dianggap fresh recovery.
+
+Assessment harus menghasilkan `BLOCKED_HUMAN_TOUCH` bila mapping customer→node
+PON/OLT/NAS, snapshot membership yang konsisten, atau source independen tidak
+terbukti. Pada status ini sistem membuat audit/handoff ke manusia dengan daftar
+bukti dan data yang hilang; **tidak** mengeluarkan `parent_closure_eligible`,
+tidak menutup parent/case, dan tidak mengubah perangkat.
+
 ## Safety
 
 All source adapters remain disabled/read-only until contract tests pass. A `parent_closure_eligible` finding never closes parent/case automatically. Flap finding remains dashboard/audit alert only.
