@@ -1,4 +1,4 @@
-import { test, expect, openSettings, actionResponse, configOf, keys } from '../support/fixtures.js';
+import { test, expect, openSettings, navigateSettings, actionResponse, configOf, keys } from '../support/fixtures.js';
 
 const admin = { number: '628120000555', pin: 'ui-test-pin' };
 async function createAdmin(request) {
@@ -13,7 +13,7 @@ async function fillAdmin(page, pin = admin.pin) {
 
 test('@audit API-03 recipe delete confirms, cancels, rejects wrong PIN then persists deletion across restart', async ({ page, request, app }) => {
   await createAdmin(request);
-  await openSettings(page);
+  await openSettings(page, '#recipesCard');
   const remove = page.getByRole('button', { name: 'Hapus resep ui-recipe', exact: true });
   await expect(remove).toBeVisible();
   page.once('dialog', d => d.dismiss());
@@ -47,7 +47,7 @@ test('@audit API-03 recipe delete confirms, cancels, rejects wrong PIN then pers
   expect((await remaining.json()).resep).toEqual([]);
   expect((await app.recipes()).recipes).not.toHaveProperty('ui-recipe');
   await app.restart();
-  await openSettings(page);
+  await openSettings(page, '#recipesCard');
   await expect(remove).toHaveCount(0);
   await expect(page.locator('#recipesList')).toContainText('Belum ada resep');
   expect((await (await request.get('/api/recipes', { timeout: 5000 })).json()).resep).toEqual([]);
@@ -59,7 +59,7 @@ for (const decision of ['REMOVE', '']) {
   test(`@audit POLICY-01 ${decision || 'empty decision'} survives repeated browser saves, reload and restart`, async ({ page, request, app }) => {
     await createAdmin(request);
     const baseline = await app.policyBaseline();
-    await openSettings(page);
+    await openSettings(page, '#policyCard');
     const before = (await (await request.get('/api/rules')).json()).rules;
     expect(before.length).toBeGreaterThan(1);
     const [removed, edited] = before;
@@ -106,7 +106,7 @@ for (const decision of ['REMOVE', '']) {
     expect((await save()).response.status()).toBe(200);
     await assertPersisted('ui-regression-second');
     await app.restart();
-    await openSettings(page);
+    await openSettings(page, '#policyCard');
     await expect(permission).toHaveValue('ui-regression-second');
     await assertPersisted('ui-regression-second');
   });
@@ -119,6 +119,7 @@ test('clearing endpoint and integration URLs sends explicit empty strings', asyn
   const ai = await actionResponse(page, '/api/config', 'POST', () => page.getByRole('button', { name: 'Simpan Endpoint & Perilaku Agen' }).click());
   expect(ai.sent.codex_base_url).toBe('');
   expect(ai.body.config.codex_base_url).toBe('');
+  await navigateSettings(page, '#integrations');
   for (const id of ['billingUrl', 'radiusUrl', 'genieacsUrl']) await page.locator(`#${id}`).fill('');
   const integrations = await actionResponse(page, '/api/config', 'POST', () => page.getByRole('button', { name: 'Simpan Integrasi', exact: true }).click());
   expect(integrations.sent).toMatchObject({ billing_url: '', radius_url: '', genieacs_url: '' });
@@ -153,16 +154,18 @@ test('Endpoint B browser ping uses saved B key, honors explicit override and doe
 
 test('boot failure disables writes, retry recovers and invalid settings stay local', async ({ page }) => {
   await page.route('**/api/status', route => route.fulfill({ status: 503, json: { error: 'fixture offline' } }));
-  await page.goto('/settings.html');
+  await page.goto('/settings.html#integrations');
   await expect(page.locator('#retryBoot')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Simpan Integrasi', exact: true })).toBeDisabled();
   await page.unroute('**/api/status');
   await page.locator('#retryBoot').click();
   await expect(page.locator('#pageMsg')).toContainText('Konfigurasi dimuat');
+  await navigateSettings(page, '#agent');
   await page.locator('#sSteps').fill('21');
   await page.getByRole('button', { name: 'Simpan Endpoint & Perilaku Agen' }).click();
   await expect(page.locator('#setMsg')).toContainText('1–20');
   await page.locator('#sSteps').fill('2');
+  await navigateSettings(page, '#conversation');
   await page.locator('#sBase').fill('javascript:invalid');
   await page.getByRole('button', { name: 'Simpan Endpoint & Perilaku Agen' }).click();
   await expect(page.locator('#setMsg')).toContainText('Periksa URL');

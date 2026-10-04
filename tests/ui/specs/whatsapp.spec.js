@@ -2,8 +2,8 @@ import { test, expect, openDashboard, actionResponse } from '../support/fixtures
 import { qrPayload } from '../support/schemas.js';
 
 test('send requires recipient, explicit text and confirmation; real disabled gateway error', async ({ page }) => {
-  await openDashboard(page);
-  await page.locator('#adminDrawer summary').click();
+  await openDashboard(page, '#adminDrawer');
+  await expect(page.locator('#adminDrawer')).toHaveAttribute('open', '');
   const send = page.getByRole('button', { name: 'Kirim Uji Coba' });
   const sent = [];
   page.on('request', r => { if (new URL(r.url()).pathname === '/api/wa/send') sent.push(r); });
@@ -28,8 +28,8 @@ test('send requires recipient, explicit text and confirmation; real disabled gat
 });
 
 test('gateway controls call Go but cannot start an external process in fixture', async ({ page }) => {
-  await openDashboard(page);
-  await page.locator('#adminDrawer summary').click();
+  await openDashboard(page, '#adminDrawer');
+  await expect(page.locator('#adminDrawer')).toHaveAttribute('open', '');
   for (const [label, endpoint, method] of [
     ['Cek Proses', 'gateway', 'GET'], ['Status Sesi', 'status', 'GET'],
     ['▶ Mulai', 'start', 'POST'], ['■ Hentikan', 'stop', 'POST'], ['↻ Restart', 'restart', 'POST'],
@@ -48,8 +48,8 @@ test('gateway controls call Go but cannot start an external process in fixture',
 
 test('QR rendering accepts PNG data only, handles expiry and never leaks externally', async ({ page, app }) => {
   // Synthetic gateway response; real /api/wa/qr disabled contract is checked first.
-  await openDashboard(page);
-  await page.locator('#adminDrawer summary').click();
+  await openDashboard(page, '#adminDrawer');
+  await expect(page.locator('#adminDrawer')).toHaveAttribute('open', '');
   const qr = page.getByRole('button', { name: 'QR Pairing' });
   const disabled = await actionResponse(page, '/api/wa/qr', 'GET', () => qr.click());
   expect(disabled.response.status()).toBeGreaterThanOrEqual(400);

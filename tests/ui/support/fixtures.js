@@ -157,15 +157,42 @@ export const test = base.extend({
 });
 export { expect };
 
-export async function openSettings(page) {
-  await page.goto('/settings.html');
+export async function openSettings(page, hash = '') {
+  await page.goto(`/settings.html${hash}`);
   await expect(page.locator('#pageMsg')).toContainText('Konfigurasi dimuat');
   await expect(page.locator('#tmStatus')).toContainText('Pesan tercatat');
 }
-export async function openDashboard(page) {
-  await page.goto('/');
+// Keep readiness checks independent of the selected view: hidden data still loads.
+export async function openDashboard(page, hash = '') {
+  await page.goto(`/${hash}`);
   await expect(page.locator('#mdl')).toHaveValue('ui-model-a');
   await expect(page.locator('#sesiStat')).toContainText('Percakapan aktif');
+}
+export async function navigateSettings(page, hash) {
+  await page.locator(`.settings-nav a[href="${hash}"]`).click();
+  await expect.poll(() => new URL(page.url()).hash).toBe(hash);
+  await expect(page.locator(hash)).toBeVisible();
+}
+// Navigate through the real shared shell; never unhide panels in test code.
+export async function navigateDashboard(page, hash = '') {
+  await page.locator(`.workspace-nav a[href="/${hash}"]`).click();
+  await expect.poll(() => new URL(page.url()).hash).toBe(hash);
+}
+export async function expectDashboardView(page, hash = '') {
+  const views = [
+    ['', '#kpiActive'],
+    ['#caseQueueTitle', '#caseQueueTitle'],
+    ['#diagnosisPanel', '#diagnosisPanel'],
+    ['#adminDrawer', '#adminDrawer'],
+    ['#historySection', '#historySection'],
+  ];
+  for (const [route, selector] of views) {
+    if (route === hash) await expect(page.locator(selector)).toBeVisible();
+    else await expect(page.locator(selector)).toBeHidden();
+  }
+  const active = page.locator('.workspace-nav [aria-current="page"]');
+  await expect(active).toHaveCount(1);
+  await expect(active).toHaveAttribute('href', `/${hash}`);
 }
 export async function actionResponse(page, path, method, action) {
   const pending = page.waitForResponse(r => new URL(r.url()).pathname === path && r.request().method() === method)

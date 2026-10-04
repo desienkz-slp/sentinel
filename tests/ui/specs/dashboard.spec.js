@@ -1,4 +1,4 @@
-import { test, expect, openDashboard, actionResponse, configOf } from '../support/fixtures.js';
+import { test, expect, openDashboard, navigateDashboard, actionResponse, configOf } from '../support/fixtures.js';
 
 test('dashboard renders real empty-state, KPI, tools and navigates settings', async ({ page, request }) => {
   const errors = [];
@@ -6,10 +6,11 @@ test('dashboard renders real empty-state, KPI, tools and navigates settings', as
   await openDashboard(page);
   const kpi = await (await request.get('/api/kpi')).json();
   await expect(page.locator('#kpiActive')).toHaveText(String(kpi.active_cases));
+  await expect(page.locator('#bpStat')).not.toContainText('undefined');
+  await navigateDashboard(page, '#caseQueueTitle');
   await expect(page.locator('#caseRows')).toContainText('Belum ada kasus tercatat');
   await expect(page.locator('#caseCount')).toHaveText('0 kasus');
-  await expect(page.locator('#bpStat')).not.toContainText('undefined');
-  await page.locator('#toggleDiagnosis').click();
+  await navigateDashboard(page, '#diagnosisPanel');
   await page.locator('.trace-disclosure summary').click();
   const tools = await (await request.get('/api/tools')).json();
   await expect(page.locator('#toolBtns button')).toHaveCount(tools.length);
@@ -50,8 +51,11 @@ test('@audit API-02 diagnosis consumes actual Go SSE report and refreshes histor
   await expect(page.locator('#answer')).toHaveText(report.answer);
   await expect(page.locator('#answer b')).toHaveCount(0);
   await expect(page.locator('#run')).toBeEnabled();
+  await navigateDashboard(page, '#historySection');
+  await expect(page.locator('#hist')).toBeVisible();
   await expect(page.locator('#hist')).toContainText(report.engine);
   expect(reports[0].id).toBe(report.id);
+  await navigateDashboard(page, '#diagnosisPanel');
   await page.getByRole('button', { name: 'Bersihkan', exact: true }).click();
   await expect(page.locator('#steps li')).toHaveCount(0);
 });
@@ -70,7 +74,7 @@ test('manual probe displays real allowlist rejection without network probe', asy
 });
 
 test('cache confirmation supports cancel and real clear', async ({ page, request }) => {
-  await openDashboard(page);
+  await openDashboard(page, '#historySection');
   const before = (await (await request.get('/api/sesi')).json()).statistik;
   page.once('dialog', d => d.dismiss());
   await page.getByRole('button', { name: /Kosongkan Cache/ }).click();
@@ -82,8 +86,8 @@ test('cache confirmation supports cancel and real clear', async ({ page, request
 });
 
 test('WhatsApp blocklist normalizes, deduplicates, persists and removes', async ({ page, request, app }) => {
-  await openDashboard(page);
-  await page.locator('#adminDrawer summary').click();
+  await openDashboard(page, '#adminDrawer');
+  await expect(page.locator('#adminDrawer')).toHaveAttribute('open', '');
   await page.getByRole('button', { name: /Kelola Daftar Blokir/ }).click();
   await expect(page.locator('#blModal [role=dialog]')).toBeVisible();
   await page.locator('#blInput').fill('+62 812-000-111');

@@ -1552,3 +1552,16 @@ section, #diagnosisPanel, #historySection, #adminDrawer { scroll-margin-top: 90p
   .auth-card { padding: 28px 24px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* Exclusive workspace views: hidden content never occupies layout space. */
+.app-page [hidden] { display: none !important; }
+.dashboard-page .cockpit-grid,
+.dashboard-page .cockpit-grid.with-diagnosis { grid-template-columns: minmax(0, 1fr); }
+.dashboard-page .operations-side { width: 100%; }
+.dashboard-page .diagnosis-panel { width: 100%; min-width: 0; }
+.dashboard-page[data-view="diagnostics"] .diagnosis-card { max-width: 1120px; margin: 0 auto; }
+.dashboard-page[data-view="whatsapp"] .integration-drawer { max-width: 1120px; width: 100%; margin: 0 auto; }
+.dashboard-page[data-view="overview"] .operational-context { max-width: none; }
+.dashboard-page[data-view="history"] .support-grid { margin-top: 0; }
+.page-heading h1:focus { outline: none; }
+.settings-page #aiSaveBar { grid-column: 1 / -1; }

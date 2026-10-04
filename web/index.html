@@ -36,11 +36,11 @@
 </header>
 
 <main class="cockpit-shell" id="mainContent">
-  <div class="page-heading"><div><span class="eyebrow">WORKSPACE / OVERVIEW</span><h1>Operations overview<span class="heading-dot">.</span></h1><p class="page-description">Pantau kasus. Temukan bukti. Kendalikan operasi.</p></div><div class="page-actions"><span id="lastRefresh" class="refresh-state" role="status">Menunggu sinkronisasi</span><button class="ghost" id="refreshDashboard" onclick="refreshDashboard()">↻ Refresh</button><button id="toggleDiagnosis" onclick="toggleDiagnosis()" aria-expanded="false" aria-controls="diagnosisPanel">✧ AI Diagnostics</button></div></div>
+  <div class="page-heading"><div><span class="eyebrow" id="viewEyebrow">WORKSPACE / OVERVIEW</span><h1 id="viewTitle" tabindex="-1">Operations overview<span class="heading-dot">.</span></h1><p class="page-description" id="viewDescription">Pantau kasus. Temukan bukti. Kendalikan operasi.</p></div><div class="page-actions"><span id="lastRefresh" class="refresh-state" role="status">Menunggu sinkronisasi</span><button class="ghost" id="refreshDashboard" onclick="refreshDashboard()">↻ Refresh</button><a class="button-link" id="toggleDiagnosis" href="/#diagnosisPanel">✧ AI Diagnostics</a></div></div>
   <div id="dashboardError" class="notice hidden" role="alert"></div>
-  <div id="alertBanner" class="alert-banner hidden" role="status"></div>
+  <div data-view="overview" id="alertBanner" class="alert-banner hidden" role="status"></div>
   <!-- Operations KPI Tiles -->
-  <section class="ops-kpis" aria-label="Ringkasan Operasi">
+  <section data-view="overview" class="ops-kpis" aria-label="Ringkasan Operasi">
     <div class="kpi-card">
       <span class="kpi-label">Case Aktif</span>
       <strong id="kpiActive">—</strong>
@@ -66,7 +66,7 @@
   <!-- High-Density Cockpit Grid (3-Zone Enterprise Layout) -->
   <div class="cockpit-grid">
     <!-- Zone 1: Case Active Queue -->
-    <section class="card case-queue" aria-labelledby="caseQueueTitle">
+    <section data-view="cases" class="card case-queue" aria-labelledby="caseQueueTitle">
       <div class="pane-heading">
         <div>
           <span class="eyebrow">Monitor &amp; Operate</span>
@@ -97,7 +97,7 @@
     </section>
 
     <!-- Zone 2: Fast Diagnosis & AI Telemetry -->
-    <aside class="diagnosis-panel hidden" id="diagnosisPanel" aria-label="Panel Diagnosis Cepat">
+    <aside data-view="diagnostics" class="diagnosis-panel" id="diagnosisPanel" aria-label="Panel Diagnosis Cepat">
       <div class="card diagnosis-card">
         <div class="pane-heading">
           <div>
@@ -149,13 +149,13 @@
 
     <!-- Zone 3: Posture, Observability & WA Admin Drawer -->
     <aside class="operations-side">
-      <section class="card operational-context">
+      <section data-view="overview" class="card operational-context">
         <h2>Postur operasi <span class="pill" id="bpMode">—</span></h2><p class="section-caption">Kebijakan, workflow & observabilitas</p>
         <div class="hint" id="bpStat">Memuat postur…</div>
         <div class="hint" id="obsStat">Memuat status observabilitas dependensi…</div>
       </section>
 
-      <details class="card integration-drawer" id="adminDrawer">
+      <details data-view="whatsapp" open class="card integration-drawer" id="adminDrawer">
         <summary>Administrasi Integrasi WhatsApp <span id="waEmbedTag" class="pill">terpadu</span></summary>
         <div class="integration-content">
           <div class="btns">
@@ -211,7 +211,7 @@
   </div>
 
   <!-- Bottom Support Grid: Sessions & Incident Audit Log -->
-  <div class="support-grid" id="historySection">
+  <div data-view="history" class="support-grid" id="historySection">
     <section class="card">
       <h2>Standar Konteks &amp; Sesi Aktif <span class="pill" id="stdTag">v—</span></h2>
       <div class="hint" id="sesiStat">Memuat sesi…</div>
@@ -846,13 +846,7 @@ $('caseRows').addEventListener('click', e => {
 function closeCaseDetail() { $('caseDetail').close(); }
 $('caseDetail').addEventListener('click', e => { if (e.target === $('caseDetail') && e.offsetX < 0) closeCaseDetail(); });
 
-function toggleDiagnosis() {
-  const opened = $('diagnosisPanel').classList.toggle('hidden') === false;
-  document.querySelector('.cockpit-grid').classList.toggle('with-diagnosis', opened);
-  $('toggleDiagnosis').setAttribute('aria-expanded', String(opened));
-  $('toggleDiagnosis').textContent = opened ? 'Tutup AI Diagnostics' : '✧ AI Diagnostics';
-  if (opened) $('q').focus();
-}
+function toggleDiagnosis() { location.hash = "#diagnosisPanel"; }
 function clearDiagnosis() {
   if ($('run').disabled || $('probeRun').disabled) return;
   $('steps').replaceChildren(); $('answer').textContent = ''; $('vText').textContent = '—';

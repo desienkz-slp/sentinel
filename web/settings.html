@@ -204,9 +204,7 @@ body.settings-page { --accent-cyan:#22d3ee; --status-purple:#a78bfa; --status-ok
         <label for="sSteps">Maksimum Langkah Penalaran per Sesi</label>
         <input id="sSteps" type="number" min="1" max="20">
       </div>
-      <div style="display:flex;align-items:flex-end">
-        <button style="width:100%" onclick="saveSettings()">Simpan Endpoint &amp; Perilaku Agen</button>
-      </div>
+
     </div>
 
     <div style="margin-top:16px;padding:12px;border:1px solid var(--border-default);border-radius:var(--radius-sm);background:var(--bg-surface)">
@@ -224,8 +222,15 @@ body.settings-page { --accent-cyan:#22d3ee; --status-purple:#a78bfa; --status-ok
       </div>
     </div>
 
-    <div class="hint" id="setMsg"></div>
+
     <div class="status">Maks langkah tersimpan: <b id="stSteps">—</b></div>
+  </section>
+
+  <section class="card" id="aiSaveBar" data-group="ai">
+    <h2>Simpan konfigurasi AI</h2>
+    <p class="hint">Endpoint AI dan perilaku agen disimpan bersama. Perubahan tetap tersedia saat berpindah tab.</p>
+    <button onclick="saveSettings()">Simpan Endpoint &amp; Perilaku Agen</button>
+    <div class="hint" id="setMsg"></div>
   </section>
 
   <!-- Card 4: Integrasi Sistem Eksternal -->
@@ -513,7 +518,14 @@ function validateURL(id, required=false) {
   let valid = !value && !required;
   if (value) { try { const url = new URL(value); valid = ['http:','https:'].includes(url.protocol) && !!url.hostname && !url.username && !url.password; } catch {} }
   el.setCustomValidity(valid ? '' : 'Gunakan URL http:// atau https:// tanpa kredensial di URL.');
-  if (!valid) { el.reportValidity(); el.focus(); throw new Error('Periksa URL: ' + id); }
+  if (!valid) {
+    const section = el.closest('.settings-content > section');
+    if (section?.hidden) {
+      const hash = section.id === 'reasoning' ? '#conversation' : '#' + section.id;
+      document.querySelector('.settings-nav a[href="' + hash + '"]')?.click();
+    }
+    el.reportValidity(); el.focus(); throw new Error('Periksa URL: ' + id);
+  }
   return value;
 }
 function authorizeAdmin(title) {
@@ -1232,13 +1244,7 @@ document.addEventListener('input', e => {
   if (e.target.setCustomValidity) e.target.setCustomValidity('');
 });
 window.addEventListener('beforeunload', e => { if (dirtyGroups.size) { e.preventDefault(); e.returnValue = ''; } });
-function highlightSection() {
-  document.querySelectorAll('.settings-nav a').forEach(a => {
-    if (a.hash === location.hash || !location.hash && a.hash === '#conversation') a.setAttribute('aria-current','location');
-    else a.removeAttribute('aria-current');
-  });
-}
-window.addEventListener('hashchange', highlightSection); highlightSection();
+// Section visibility and active navigation are managed by noc-shell.js.
 ['ai','integrations','team','staff','rules','recipes'].forEach(g => controls(g, true));
 // Read-only retries remain available even when an initial request fails.
 document.querySelectorAll('button[onclick^="loadStaff"],button[onclick^="loadRules"],button[onclick^="loadRecipes"],button[onclick^="loadTeamModes"]').forEach(b => b.disabled = false);

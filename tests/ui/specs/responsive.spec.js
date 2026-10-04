@@ -1,4 +1,4 @@
-import { test, expect, openDashboard, openSettings } from '../support/fixtures.js';
+import { test, expect, openDashboard, navigateDashboard, openSettings } from '../support/fixtures.js';
 
 test.use({ seedCases: true });
 
@@ -10,6 +10,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
     };
     await openDashboard(page);
     await noOverflow();
+    await navigateDashboard(page, '#caseQueueTitle');
+    await noOverflow();
     await page.locator('[data-case-id]').first().click();
     await expect(page.locator('#caseDetail')).toBeVisible();
     await noOverflow();
@@ -17,12 +19,14 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
     expect(dialog.x).toBeGreaterThanOrEqual(0);
     expect(dialog.x + dialog.width).toBeLessThanOrEqual(viewport.width);
     await page.getByRole('button', { name: 'Tutup detail kasus' }).click();
+    await navigateDashboard(page);
     await expect(page.locator('#diagnosisPanel')).toBeHidden();
     await page.locator('#toggleDiagnosis').click();
-    await expect(page.locator('#q')).toBeFocused();
+    await expect(page).toHaveURL(/#diagnosisPanel$/);
+    await expect(page.locator('#q')).toBeVisible();
     await expect(page.locator('#diagnosisPanel')).toBeVisible();
     await noOverflow();
-    await page.locator('#toggleDiagnosis').click();
+    await navigateDashboard(page);
     await expect(page.locator('#diagnosisPanel')).toBeHidden();
     if (viewport.width === 1440) {
       const sidebar = await page.locator('.app-sidebar').boundingBox();
@@ -31,7 +35,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
       await page.getByRole('link', { name: 'AI Diagnostics', exact: true }).click();
       await expect(page.locator('#diagnosisPanel')).toBeVisible();
     }
-    await page.locator('#adminDrawer summary').click();
+    await navigateDashboard(page, '#adminDrawer');
+    await expect(page.locator('#adminDrawer')).toHaveAttribute('open', '');
     await page.getByRole('button', { name: /Kelola Daftar Blokir/ }).click();
     await expect(page.locator('#blInput')).toBeFocused();
     await noOverflow();
@@ -59,7 +64,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
       await expect(page.locator('.workspace-nav [aria-current="page"]')).toHaveText('Pengaturan');
     }
     await page.locator('.settings-nav a[href="#policyCard"]').click();
-    await expect(page.locator('.settings-nav a[href="#policyCard"]')).toHaveAttribute('aria-current', 'location');
+    await expect(page.locator('.settings-nav a[href="#policyCard"]')).toHaveAttribute('aria-current', 'page');
     await page.getByRole('button', { name: 'Simpan Perubahan Aturan' }).click();
     await expect(page.locator('#adminDialog')).toBeVisible();
     await expect(page.locator('#adminNumber')).toBeFocused();

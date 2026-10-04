@@ -1,4 +1,4 @@
-import { test, expect, openDashboard, openSettings, actionResponse } from '../support/fixtures.js';
+import { test, expect, openDashboard, navigateDashboard, openSettings, navigateSettings, actionResponse } from '../support/fixtures.js';
 
 test('manual model prompts cancel/trim and both model lists preserve custom selection', async ({ page }) => {
   await openSettings(page);
@@ -25,8 +25,9 @@ test('staff search, form reset, reloads and settings section navigation', async 
   await openSettings(page);
   for (const link of await page.locator('.settings-nav a').all()) {
     await link.click();
-    await expect(link).toHaveAttribute('aria-current', 'location');
+    await expect(link).toHaveAttribute('aria-current', 'page');
   }
+  await navigateSettings(page, '#staffCard');
   await page.locator('#staffFilter').fill('not-present');
   await expect(page.locator('#staffFilterEmpty')).toContainText('Tidak ada staf');
   await page.locator('#staffFilter').fill('searchable');
@@ -35,13 +36,14 @@ test('staff search, form reset, reloads and settings section navigation', async 
   await page.getByRole('button', { name: 'Bersihkan Form' }).click();
   await expect(page.locator('#stfNumber')).toHaveValue('');
   await expect(page.locator('#stfPin')).toHaveValue('');
-  for (const [label, route] of [['Muat ulang staf', '/api/staff'], ['Muat ulang mode', '/api/team/metrics'], ['↻ Muat Ulang Resep', '/api/recipes']]) {
+  for (const [hash, label, route] of [['#staffCard', 'Muat ulang staf', '/api/staff'], ['#teamCard', 'Muat ulang mode', '/api/team/metrics'], ['#recipesCard', '↻ Muat Ulang Resep', '/api/recipes']]) {
+    await navigateSettings(page, hash);
     await actionResponse(page, route, 'GET', () => page.getByRole('button', { name: label, exact: true }).click());
   }
 });
 
 test('router fields persist, unsaved test blocked, remove cancel then accept', async ({ page, request }) => {
-  await openSettings(page);
+  await openSettings(page, '#integrations');
   await page.getByRole('button', { name: /Tambah Router MikroTik/ }).click();
   const row = page.locator('#mkList .mk-row');
   for (const [field, value] of Object.entries({ name: 'UI router', host: '127.0.0.1', port: '1', user: 'ui-router', pass: 'synthetic-router-only' })) {
@@ -68,7 +70,8 @@ test('shared shell links reveal panels; reload sessions and clear probe validati
   await openDashboard(page);
   await page.locator('.workspace-nav').getByRole('link', { name: 'AI Diagnostics' }).click();
   await expect(page.locator('#diagnosisPanel')).toBeVisible();
-  await expect(page.locator('#toggleDiagnosis')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page).toHaveURL(/#diagnosisPanel$/);
+  await expect(page.locator('#caseQueueTitle')).toBeHidden();
   await page.locator('.trace-disclosure summary').click();
   await page.locator('#probeRun').click();
   await expect(page.locator('#probeHint')).toContainText('Pilih tool');
@@ -100,5 +103,7 @@ test('SSE rendering uses actual nonstream Go report, not invented report fields'
   await expect(page.locator('#answer')).toHaveText(report.answer);
   await expect(page.locator('#answer b')).toHaveCount(0);
   await expect(page.locator('#run')).toBeEnabled();
+  await navigateDashboard(page, '#historySection');
+  await expect(page.locator('#hist')).toBeVisible();
   await expect(page.locator('#hist')).toContainText(report.engine);
 });

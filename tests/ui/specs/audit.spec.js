@@ -1,4 +1,4 @@
-import { test, expect, login, keys, openSettings } from '../support/fixtures.js';
+import { test, expect, login, keys, openSettings, expectDashboardView } from '../support/fixtures.js';
 
 // Former integration findings are ordinary release-blocking regressions.
 test('@audit AUTH-01 logout revokes only the copied session token server-side', async ({ request, playwright, app }) => {
@@ -57,7 +57,7 @@ test('@audit UI-01 settings includes shared shell, active navigation and working
     ['WhatsApp', '#adminDrawer', '#adminDrawer'],
     ['Kasus operasi', '#caseQueueTitle', '#caseQueueTitle'],
     ['Riwayat & sesi', '#historySection', '#historySection'],
-    ['Overview', '', '#caseQueueTitle'],
+    ['Overview', '', '#kpiActive'],
   ]) {
     await openSettings(page);
     await expect(page.locator('script[src="/noc-shell.js"]')).toHaveCount(1);
@@ -67,7 +67,8 @@ test('@audit UI-01 settings includes shared shell, active navigation and working
     await page.locator('.workspace-nav').getByRole('link', { name, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/${hash}$`));
     await expect(page.locator(target)).toBeVisible();
-    if (hash === '#diagnosisPanel') await expect(page.locator('#toggleDiagnosis')).toHaveAttribute('aria-expanded', 'true');
+    await expectDashboardView(page, hash);
+    if (hash === '#diagnosisPanel') await expect(page.locator('#q')).toBeVisible();
     if (hash === '#adminDrawer') await expect(page.locator('#adminDrawer')).toHaveAttribute('open', '');
     await page.locator('.workspace-nav').getByRole('link', { name: 'Pengaturan', exact: true }).click();
     await expect(page).toHaveURL(/\/settings.html$/);

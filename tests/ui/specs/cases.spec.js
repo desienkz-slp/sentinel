@@ -4,7 +4,7 @@ import { unverifiedKPI } from '../support/schemas.js';
 test.describe('authentic Go case store projections', () => {
   test.use({ seedCases: true });
   test('search, all filters, details, evidence, Escape and close', async ({ page, request }) => {
-    await openDashboard(page);
+    await openDashboard(page, '#caseQueueTitle');
     const response = await request.get('/api/cases');
     const { cases, count } = await response.json();
     expect(count).toBe(5);
@@ -58,6 +58,8 @@ test('KPI zero verified is not replaced by resolved; invalid types are unavailab
 test('case API failure is visible and refresh recovers', async ({ page }) => {
   await page.route('**/api/cases', route => route.fulfill({ status: 503, json: { error: 'fixture unavailable' } }));
   await openDashboard(page);
+  await page.locator('.workspace-nav a[href="/#caseQueueTitle"]').click();
+  await expect(page.locator('#caseRows')).toBeVisible();
   await expect(page.locator('#caseRows')).toContainText('Data kasus tidak tersedia');
   await page.unroute('**/api/cases');
   await page.locator('#refreshDashboard').click();

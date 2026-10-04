@@ -2,7 +2,7 @@
 
 ## Final verification
 
-Verified against the completed, uncommitted backend fixes and shared Settings shell on **2026-10-04**. This task modified only `tests/ui`; application changes were supplied by the backend/frontend owners. No commit was created.
+Verified against the completed, uncommitted backend fixes and exclusive dashboard/Settings sidebar views on **2026-10-04**. This task modified only `tests/ui`; application changes were supplied by the backend/frontend owners. No commit was created.
 
 Command from `tests/ui`:
 
@@ -10,18 +10,18 @@ Command from `tests/ui`:
 npm test && npm run test:summary
 ```
 
-**Exit 0. All 48 tests passed: 2 Node unit tests + 46 Playwright Chromium tests.**
+**Exit 0. All 55 tests passed: 2 Node unit tests + 53 Playwright Chromium tests.**
 
 | Result | Count |
 | --- | ---: |
-| Playwright ordinary passes | 46 |
+| Playwright ordinary passes | 53 |
 | Included `@audit` regressions | 7 |
 | Expected-failure allowances | 0 |
 | Failed / skipped / flaky | 0 / 0 / 0 |
 | Report-level errors | 0 |
 | Node endpoint-B unit passes | 2 |
 
-Playwright JSON start time: `2026-10-04T14:13:20.382Z`; duration **78.694 seconds**. Counts were aggregated from `test-results/results.json` by `support/summarize.js`, not inferred from the list reporter. Node counts are from its TAP output and are not included in the Playwright JSON/HTML report.
+Playwright JSON start time: `2026-10-04T14:33:33.562Z`; duration **62.322 seconds**. Counts were aggregated from `test-results/results.json` by `support/summarize.js`, not inferred from the list reporter. Node counts are from its TAP output and are not included in the Playwright JSON/HTML report.
 
 Environment: Node 22.23.2, Playwright 1.61.1, Chromium, Windows. Global setup successfully rebuilt the current Go worktree with embedded assets. The parent reported full Go/race verification separately; this UI task did not rerun or claim ownership of those checks.
 
@@ -40,6 +40,10 @@ All five old failure annotations and their environment-dependent allowances were
 
 ## Added harness and coverage
 
+- Existing interaction tests now enter the correct dashboard hash or Settings tab before interacting, retaining all 46 original Playwright cases and both Node tests.
+- Seven new navigation regressions cover exclusive dashboard views at 1440/768/390px, direct hashes and reload, active-link uniqueness, back/forward, repeated route selection, and unsaved case/diagnosis/WhatsApp drafts.
+- Settings coverage checks every actual section group (conversation includes reasoning), the sole shared AI/agent save bar, direct hashes/reload/history, drafts surviving tab changes, and saving combined endpoint/agent fields without integration or staff fields.
+
 - Isolated server restart keeps the same disposable config/stores; read-only helpers inspect recipe JSON, policy overlay and baseline files.
 - Responsive interactions pass at **1440×900, 768×1024 and 390×844**. Narrow screens use the actual shared horizontal scrollable navigation rather than an assumed hidden sidebar.
 - Agent B's `settings-b-ping.test.cjs` is included in `npm test` and can run separately with `npm run test:unit`. Its two VM tests verify omitted/explicit keys with blank saved URL/model fields; browser success coverage remains independent and uses real Go handlers and a local provider.
@@ -47,7 +51,7 @@ All five old failure annotations and their environment-dependent allowances were
 
 ## Artifacts and rerun
 
-- `test-results/results.json`: full 46-test Playwright machine report.
+- `test-results/results.json`: full 53-test Playwright machine report.
 - `playwright-report/index.html`: full Playwright HTML report (`npm run report`).
 - `npm run test:summary`: verifies and prints the latest report totals without replacing it.
 - `npm test`: runs both Node tests and all Playwright tests again.

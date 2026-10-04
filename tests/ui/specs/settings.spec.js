@@ -1,14 +1,15 @@
-import { test, expect, openSettings, actionResponse, configOf, keys } from '../support/fixtures.js';
+import { test, expect, openSettings, navigateSettings, actionResponse, configOf, keys } from '../support/fixtures.js';
 
 test('settings save round-trips fields and preserves omitted secrets', async ({ page, request, app }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await openSettings(page);
   await expect(page.locator('#sKey')).toHaveValue('');
-  await page.locator('#sSteps').fill('7');
   await page.getByRole('button', { name: 'Cek Daftar Model', exact: true }).first().click();
   await expect(page.locator('#setMsgA')).toContainText('model dimuat');
   await page.locator('#sModel').selectOption('ui-model-b');
+  await navigateSettings(page, '#agent');
+  await page.locator('#sSteps').fill('7');
   await page.locator('#greetingFirstMessage').check();
   await page.locator('#greetingTemplate').fill('Halo {{name}} — UI regression');
   const { response, sent, body } = await actionResponse(page, '/api/config', 'POST', () => page.getByRole('button', { name: 'Simpan Endpoint & Perilaku Agen' }).click());
@@ -21,6 +22,7 @@ test('settings save round-trips fields and preserves omitted secrets', async ({ 
   await expect(page.locator('#setMsg')).toContainText('Tersimpan');
   await page.reload();
   await expect(page.locator('#sSteps')).toHaveValue('7');
+  await navigateSettings(page, '#conversation');
   await expect(page.locator('#sModel')).toHaveValue('ui-model-b');
   expect((await configOf(request)).greeting_template).toBe('Halo {{name}} — UI regression');
   expect(errors).toEqual([]);
@@ -37,7 +39,7 @@ test('conversation connection check reaches real API and local provider', async 
 });
 
 test('all team mode fields persist through real metrics API', async ({ page, request }) => {
-  await openSettings(page);
+  await openSettings(page, '#teamCard');
   for (const id of ['tmRouting', 'tmCSScope', 'tmPresenter', 'tmHandoff', 'tmSeverity', 'tmNOCTools']) {
     await page.locator(`#${id}`).selectOption('shadow');
   }
@@ -49,7 +51,7 @@ test('all team mode fields persist through real metrics API', async ({ page, req
 });
 
 test('staff validates required fields and supports create edit delete', async ({ page, request }) => {
-  await openSettings(page);
+  await openSettings(page, '#staffCard');
   await page.getByRole('button', { name: 'Simpan Data Staf' }).click();
   await expect(page.locator('#staffMsg')).toContainText('wajib diisi');
   await page.locator('#stfNumber').fill('628120009999');
@@ -77,7 +79,7 @@ test('staff validates required fields and supports create edit delete', async ({
 });
 
 test('integration checks show backend unconfigured errors', async ({ page }) => {
-  await openSettings(page);
+  await openSettings(page, '#integrations');
   for (const [label, route] of [['Billing', 'billing'], ['MikroTik', 'mikrotik'], ['RADIUS', 'radius'], ['GenieACS', 'genieacs']]) {
     const { body } = await actionResponse(page, `/api/${route}/check`, 'GET', () => page.getByRole('button', { name: label === 'MikroTik' ? 'Tes Router Utama' : `Tes Koneksi ${label}`, exact: true }).click());
     expect(body.ok).toBe(false);
@@ -87,7 +89,7 @@ test('integration checks show backend unconfigured errors', async ({ page }) => 
 });
 
 test('router add validates locally and rule reload discards unsaved removal', async ({ page, request }) => {
-  await openSettings(page);
+  await openSettings(page, '#integrations');
   await page.getByRole('button', { name: /Tambah Router MikroTik/ }).click();
   await page.getByRole('button', { name: 'Tes Koneksi Router', exact: true }).click();
   await expect(page.locator('#intMsg')).toContainText('Isi Host dan Username');
@@ -96,6 +98,7 @@ test('router add validates locally and rule reload discards unsaved removal', as
   await expect(page.locator('#mkList .mk-row')).toHaveCount(0);
   const count = (await (await request.get('/api/rules')).json()).rules.length;
   expect(count).toBeGreaterThan(0);
+  await navigateSettings(page, '#policyCard');
   await expect(page.locator('#rulesList .rule-row')).toHaveCount(count);
   page.once('dialog', d => d.accept());
   await page.locator('#rulesList button').first().click();

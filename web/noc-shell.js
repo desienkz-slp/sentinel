@@ -28,19 +28,83 @@
   const skip = document.createElement('a');
   skip.href = '#mainContent'; skip.className = 'skip-link'; skip.textContent = 'Lewati navigasi';
   document.body.prepend(skip);
-  const reveal = () => {
-    if (location.hash === '#adminDrawer') document.getElementById('adminDrawer')?.setAttribute('open', '');
-    if (location.hash === '#diagnosisPanel') {
-      document.getElementById('diagnosisPanel')?.classList.remove('hidden');
-      const toggle = document.getElementById('toggleDiagnosis');
-      if (toggle) { toggle.setAttribute('aria-expanded', 'true'); toggle.textContent = 'Tutup AI Diagnostics'; }
-      document.querySelector('.cockpit-grid')?.classList.add('with-diagnosis');
-    }
+  const dashboardRoutes = {
+    '': ['overview', 'Operations overview', 'Ringkasan kasus, alert dependensi, dan postur operasi.'],
+    '#caseQueueTitle': ['cases', 'Kasus operasi', 'Cari, filter, dan telusuri timeline serta bukti setiap kasus.'],
+    '#diagnosisPanel': ['diagnostics', 'AI Diagnostics', 'Investigasi keluhan, telusuri langkah AI, dan jalankan probe.'],
+    '#adminDrawer': ['whatsapp', 'WhatsApp', 'Kelola gateway, sesi, pairing, pesan uji, dan proteksi nomor.'],
+    '#historySection': ['history', 'Riwayat & sesi', 'Tinjau percakapan aktif dan riwayat investigasi.']
   };
-  window.addEventListener('hashchange', reveal);
-  nav.addEventListener('click', e => {
-    if (e.target.closest('[data-open-diagnosis],[data-open-wa]') && !settings) setTimeout(reveal, 0);
+  const settingRoutes = {
+    '#conversation': ['conversation', 'reasoning'], '#agent': ['agent'],
+    '#integrations': ['integrations'], '#teamCard': ['teamCard'],
+    '#staffCard': ['staffCard'], '#policyCard': ['policyCard'], '#recipesCard': ['recipesCard']
+  };
+  function activate(link, active) {
+    link.classList.toggle('is-active', active);
+    if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+  }
+  function route(focus = false) {
+    let hash = location.hash;
+    // The skip link is an accessibility anchor, not a view change.
+    if (hash === '#mainContent') {
+      if (document.body.dataset.view || document.body.dataset.settingsView) return;
+      hash = ''; // A direct skip-anchor URL still initializes an exclusive view.
+    }
+    if (settings) {
+      if (hash === '#reasoning') hash = '#conversation';
+      if (!settingRoutes[hash]) hash = '#conversation';
+      const ids = settingRoutes[hash];
+      document.querySelectorAll('.settings-content > section').forEach(el => el.hidden = !ids.includes(el.id));
+      const save = document.getElementById('aiSaveBar');
+      if (save) save.hidden = !['#conversation', '#agent'].includes(hash);
+      document.querySelectorAll('.settings-nav a').forEach(a => activate(a, a.hash === hash));
+      document.body.dataset.settingsView = hash.slice(1);
+      const active = document.querySelector('.settings-nav a[aria-current]');
+      document.title = `${active?.textContent.trim().replace(/^\d+\s*/, '') || 'Pengaturan'} — NOC Sentinel`;
+    } else {
+      if (!dashboardRoutes[hash]) hash = '';
+      const [view, title, description] = dashboardRoutes[hash];
+      document.body.dataset.view = view;
+      document.querySelectorAll('[data-view]').forEach(el => {
+        if (el !== document.body) el.hidden = el.dataset.view !== view;
+      });
+      document.querySelector('.cockpit-grid').hidden = view === 'history';
+      document.querySelector('.operations-side').hidden = !['overview','whatsapp'].includes(view);
+      document.getElementById('viewTitle').textContent = title;
+      document.getElementById('viewEyebrow').textContent = 'WORKSPACE / ' + title.toUpperCase();
+      document.getElementById('viewDescription').textContent = description;
+      document.getElementById('toggleDiagnosis').hidden = view === 'diagnostics';
+      if (view === 'whatsapp') document.getElementById('adminDrawer').open = true;
+      document.title = `${title} — NOC Sentinel`;
+      nav.querySelectorAll('.workspace-nav a').forEach(a => activate(a, a.pathname === '/' && a.hash === hash));
+      // A modal from the previous view must never obscure a new destination.
+      const detail = document.getElementById('caseDetail');
+      if (detail?.open) detail.close();
+      document.getElementById('blModal')?.classList.add('hidden');
+    }
+    if (focus) {
+      const heading = document.querySelector('.page-heading h1');
+      heading?.setAttribute('tabindex', '-1');
+      heading?.focus({preventScroll:true});
+      window.scrollTo({top:0, behavior:'instant'});
+    }
+  }
+  window.addEventListener('hashchange', () => route(true));
+  // Push state only for in-document navigation; modified clicks keep native behavior.
+  document.addEventListener('click', e => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest('a[href]');
+    if (!a || a.target || a.hasAttribute('download')) return;
+    const url = new URL(a.href, location.href);
+    const samePage = url.origin === location.origin && (settings ? url.pathname === location.pathname : ['/', '/index.html'].includes(url.pathname));
+    const known = settings ? !!settingRoutes[url.hash] || url.hash === '#reasoning' : Object.hasOwn(dashboardRoutes, url.hash);
+    if (!samePage || !known) return;
+    e.preventDefault();
+    if (location.href !== url.href) history.pushState(null, '', url);
+    route(true);
   });
-  reveal();
+  window.addEventListener('popstate', () => route(true));
+  route();
   document.querySelectorAll('.hint[id], .status[id]').forEach(el => { el.setAttribute('role','status'); el.setAttribute('aria-live','polite'); });
 })();
