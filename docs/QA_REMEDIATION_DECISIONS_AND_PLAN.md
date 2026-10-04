@@ -18,7 +18,8 @@ Aturan final:
 
 - **Severity:** PON terverifikasi dengan minimal tiga pelanggan = P3; OLT/area = P2; upstream = P1.
 - **Recovery massal:** threshold 90% hanya menjadi gate penutupan **insiden induk**; case pelanggan individual tetap memerlukan verification record sendiri.
-- **Flapping uplink:** hanya alert dan eskalasi read-only; tidak ada tindakan jaringan otomatis.
+- **Flapping uplink:** hanya alert dan eskalasi read-only; tidak ada tindakan jaringan otomatis. Deteksi awal: minimal tiga transisi UP↔DOWN dalam 15 menit; duplikat/same-state tidak dihitung; cooldown 15 menit.
+- **Recovery massal 90%:** denominator adalah snapshot pelanggan aktif pada node saat insiden induk dibuka. Hanya re-read aktif yang masih fresh dihitung pulih; `UNKNOWN` tidak dihitung.
 
 ### Q211 — severity PON
 
