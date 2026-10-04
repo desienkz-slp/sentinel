@@ -875,7 +875,14 @@ pre {
   min-height: 32px;
 }
 .integration-content #waGwLog {
-  max-height: 130px;
+  max-height: 240px;
+  overflow: auto;
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-bottom: 16px;
+  scrollbar-gutter: stable;
 }
 
 #waQRBox img {

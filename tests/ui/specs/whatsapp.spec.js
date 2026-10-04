@@ -1,6 +1,40 @@
 import { test, expect, openDashboard, actionResponse } from '../support/fixtures.js';
 import { qrPayload } from '../support/schemas.js';
 
+for (const width of [1440, 768, 390]) {
+  test(`long gateway logs scroll without overlapping WhatsApp controls at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 960 });
+    const lines = Array.from({ length: 120 }, (_, i) => `[synthetic log ${i}] ${'long-token-'.repeat(50)}`);
+    await page.route('**/api/wa/gateway', route => route.fulfill({ json: {
+      state: 'running', pid: 123, port: 3001, restarts: 0, installed: true,
+      credentials_linked: true, log_tail: lines
+    } }));
+    await openDashboard(page, '#adminDrawer');
+    const log = page.locator('#waGwLog');
+    await expect(log).toContainText('[synthetic log 119]');
+    const geometry = await log.evaluate(el => ({
+      bottom: el.getBoundingClientRect().bottom,
+      nextTop: el.nextElementSibling.getBoundingClientRect().top,
+      client: el.clientHeight, scroll: el.scrollHeight,
+      overflow: getComputedStyle(el).overflowY,
+      pageWidth: document.documentElement.scrollWidth, viewport: innerWidth
+    }));
+    expect(geometry.overflow).toBe('auto');
+    expect(geometry.scroll).toBeGreaterThan(geometry.client);
+    expect(geometry.client).toBeLessThanOrEqual(240);
+    expect(geometry.nextTop).toBeGreaterThanOrEqual(geometry.bottom);
+    expect(geometry.pageWidth).toBeLessThanOrEqual(geometry.viewport);
+    await log.evaluate(el => { el.scrollTop = 0; });
+    expect(await log.evaluate(el => el.scrollTop)).toBe(0);
+    await page.getByRole('button', { name: /Kelola Daftar Blokir/ }).click();
+    await expect(page.locator('#blModal')).toBeVisible();
+    await page.getByRole('button', { name: 'Tutup Dialog' }).click();
+    await page.getByRole('button', { name: 'Status Sesi', exact: true }).click();
+    await expect(page.locator('#waMsgOut')).not.toBeEmpty();
+  });
+}
+
+
 test('send requires recipient, explicit text and confirmation; real disabled gateway error', async ({ page }) => {
   await openDashboard(page, '#adminDrawer');
   await expect(page.locator('#adminDrawer')).toHaveAttribute('open', '');
