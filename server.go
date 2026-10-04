@@ -251,23 +251,25 @@ func (s *Server) routes() http.Handler {
 			return
 		}
 		var body struct {
-			LLMBaseURL    *string   `json:"llm_base_url"`
-			LLMAPIKey     *string   `json:"llm_api_key"`
-			LLMModel      *string   `json:"llm_model"`
-			LLMWireAPI    *string   `json:"llm_wire_api"`
-			MaxSteps      *int      `json:"max_steps"`
-			CodexModel    *string   `json:"codex_model"`
-			CodexBaseURL  *string   `json:"codex_base_url"`
-			CodexProvider *string   `json:"codex_provider"`
-			CodexAPIKey   *string   `json:"codex_api_key"`
-			CodexWireAPI  *string   `json:"codex_wire_api"`
-			WABaseURL     *string   `json:"wa_base_url"`
-			WABlocklist   *[]string `json:"wa_blocklist"`
-			NOCNumber     *string   `json:"noc_number"`
-			AdminNumber   *string   `json:"admin_number"`
-			WAAutoReply   *bool     `json:"wa_auto_reply"`
-			WAAsync       *bool     `json:"wa_async"`
-			WAGroup       *bool     `json:"wa_group"`
+			LLMBaseURL           *string   `json:"llm_base_url"`
+			LLMAPIKey            *string   `json:"llm_api_key"`
+			LLMModel             *string   `json:"llm_model"`
+			LLMWireAPI           *string   `json:"llm_wire_api"`
+			MaxSteps             *int      `json:"max_steps"`
+			CodexModel           *string   `json:"codex_model"`
+			CodexBaseURL         *string   `json:"codex_base_url"`
+			CodexProvider        *string   `json:"codex_provider"`
+			CodexAPIKey          *string   `json:"codex_api_key"`
+			CodexWireAPI         *string   `json:"codex_wire_api"`
+			GreetingFirstMessage *bool     `json:"greeting_first_message"`
+			GreetingTemplate     *string   `json:"greeting_template"`
+			WABaseURL            *string   `json:"wa_base_url"`
+			WABlocklist          *[]string `json:"wa_blocklist"`
+			NOCNumber            *string   `json:"noc_number"`
+			AdminNumber          *string   `json:"admin_number"`
+			WAAutoReply          *bool     `json:"wa_auto_reply"`
+			WAAsync              *bool     `json:"wa_async"`
+			WAGroup              *bool     `json:"wa_group"`
 			// Endpoint adaptor eksternal (URL + token; token opsional = "tidak diubah").
 			BillingURL   *string `json:"billing_url"`
 			BillingToken *string `json:"billing_token"`
@@ -389,6 +391,12 @@ func (s *Server) routes() http.Handler {
 		if body.CodexWireAPI != nil {
 			s.cfg.CodexWireAPI = strings.TrimSpace(*body.CodexWireAPI)
 			s.codex.WireAPI = s.cfg.CodexWireAPI
+		}
+		if body.GreetingFirstMessage != nil {
+			s.cfg.GreetingFirstMessage = *body.GreetingFirstMessage
+		}
+		if body.GreetingTemplate != nil {
+			s.cfg.GreetingTemplate = strings.TrimSpace(*body.GreetingTemplate)
 		}
 		// WhatsApp: base URL boleh dikosongkan untuk mematikan integrasi.
 		if body.WABaseURL != nil {
@@ -1194,7 +1202,11 @@ func (s *Server) routes() http.Handler {
 		// Bila pelanggan berhasil di-resolve lewat lokasi, lanjut diagnosis
 		// normal dengan identitas tersebut.
 		if !caller.IsStaff && !caller.IsCustomer {
+			// cs-unknown bypasses the agent classifier; its explicit waiting state is
+			// the equivalent continuation marker for this deterministic CS flow.
+			unknownContinuation := s.csUnknown != nil && s.csUnknown.isWaiting(session.Key(id))
 			if r, handled, enriched := s.resolveUnknownCaller(r.Context(), caller, session.Key(id), msg.Message); handled {
+				r = customerReply(s.cfg, caller, unknownContinuation, r)
 				out := wa.Reply{Accepted: true, MessageID: msg.MessageID, Engine: "cs-unknown", Report: r}
 				if s.cfg.WAAutoReply {
 					out.Reply = r
@@ -1281,7 +1293,8 @@ func (s *Server) routes() http.Handler {
 				s.deliverEscalation(context.Background(), rep, id, escalation.ClassifyDomain(msg.Message))
 				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.WATimeout)*time.Second)
 				defer cancel()
-				if _, err := s.wa.Send(ctx, chatID, s.presentReply(caller, wa.FormatReport(toView(rep)))); err != nil {
+				text := s.presentReply(caller, wa.FormatReport(toView(rep)))
+				if _, err := s.wa.Send(ctx, chatID, customerReply(s.cfg, caller, rep.Lanjutan, text)); err != nil {
 					log.Printf("[WA] gagal kirim hasil async ke %s: %v", chatID, err)
 					return
 				}
@@ -1303,7 +1316,7 @@ func (s *Server) routes() http.Handler {
 			ElapsedMS:  rep.ElapsedMS,
 			CaseID:     rep.CaseID,
 			CaseState:  rep.CaseState,
-			Report:     s.presentReply(caller, wa.FormatReport(toView(rep))),
+			Report:     customerReply(s.cfg, caller, rep.Lanjutan, s.presentReply(caller, wa.FormatReport(toView(rep)))),
 		}
 		s.deliverEscalation(r.Context(), rep, id, escalation.ClassifyDomain(msg.Message))
 		// Hanya isi "reply" bila auto-reply aktif; kalau tidak, operator ambil dari dashboard.

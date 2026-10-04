@@ -9,6 +9,8 @@
   "codex_sandbox": "read-only",
   "diag_timeout_sec": 30,
   "org": "NetLayer",
+  "greeting_first_message": false,
+  "greeting_template": "Halo {{name}}, terima kasih sudah menghubungi {{org}}.",
 
   "wa_base_url": "http://127.0.0.1:3001",
   "wa_timeout_sec": 45,

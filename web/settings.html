@@ -177,6 +177,9 @@
       <div><label for="sSteps">Maks langkah per sesi</label><input id="sSteps" type="number" min="1" max="20"></div>
       <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan Semua Pengaturan</button></div>
     </div>
+    <div style="margin-top:14px"><label><input id="greetingFirstMessage" type="checkbox"> <b>Greeting First Message (Mode Developer)</b></label></div>
+    <div style="margin-top:8px"><label for="greetingTemplate">Template Chat Sapaan (Custom)</label><textarea id="greetingTemplate" rows="3" placeholder="Halo {{name}}, terima kasih sudah menghubungi {{org}}. Ada yang bisa kami bantu?"></textarea></div>
+    <div class="hint">Toggle ON/OFF untuk mengaktifkan sapaan otomatis di awal chat pelanggan. Hanya pesan pertama dalam percakapan yang diberi awalan; pesan lanjutan tidak akan menduplikasi sapaan. Placeholder aman: <code>{{name}}</code> (nama pelanggan/fallback), <code>{{org}}</code> (nama provider/organisasi), <code>{{role}}</code> (role pengguna).</div>
     <div class="hint">Nomor NOC Senior &amp; Admin untuk eskalasi diambil dari <b>Direktori Staf &amp; Hak Akses</b> di bawah (satu sumber data).</div>
     <div class="hint" id="setMsg"></div>
     <div class="status">Maks langkah tersimpan: <b id="stSteps">—</b></div>
@@ -454,6 +457,8 @@ async function boot() {
     const c = st.config;
     $('sBase').value = c.llm_base_url; 
     $('sSteps').value = c.max_steps;
+    $('greetingFirstMessage').checked = !!c.greeting_first_message;
+    $('greetingTemplate').value = c.greeting_template || '';
     $('sCodexBase').value = c.codex_base_url || '';
     // Isi dropdown model dengan nilai tersimpan dulu (opsi lengkap dimuat
     // via tombol "Cek daftar model" atau otomatis di bawah).
@@ -540,6 +545,8 @@ async function saveSettings() {
       llm_base_url: $('sBase').value, llm_api_key: $('sKey').value || undefined,
       llm_model: $('sModel').value, llm_wire_api: $('sWire').value,
       max_steps: parseInt($('sSteps').value,10)||undefined,
+      greeting_first_message: $('greetingFirstMessage').checked,
+      greeting_template: $('greetingTemplate').value,
       codex_model: $('sCodex').value,
       codex_base_url: $('sCodexBase').value || undefined,
       codex_api_key: $('sCodexKey').value || undefined,
