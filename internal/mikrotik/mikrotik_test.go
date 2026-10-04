@@ -106,29 +106,41 @@ func TestLoginWrongPassword(t *testing.T) {
 	}
 }
 
-// TestGetPPPoEStatus: cocokkan username persis/contains.
-func TestGetPPPoEStatus(t *testing.T) {
-	addr, stop := mockRouterOS(t, "staff", "rahasia", func(cmd string) [][]string {
-		if cmd == "/ppp/active/print" {
-			return [][]string{
-				{"=name=628123456789@netlayer", "=service=pppoe", "=caller-id=AA:BB", "=address=10.0.0.5", "=uptime=1h2m"},
-				{"=name=other-user", "=service=pppoe", "=address=10.0.0.6", "=uptime=2h"},
-			}
+// TestGetPPPoEStatusUsesExactIdentityFilter ensures this tool cannot list or
+// prefix-search active PPPoE sessions.
+func TestGetPPPoEStatusUsesExactIdentityFilter(t *testing.T) {
+	var commands [][]string
+	addr, stop := mockRouterOSWithSentence(t, "staff", "rahasia", func(sentence []string) [][]string {
+		commands = append(commands, append([]string(nil), sentence...))
+		if sentence[0] == "/ppp/active/print" {
+			return [][]string{{"=name=628123456789@netlayer", "=service=pppoe", "=caller-id=AA:BB", "=address=10.0.0.5", "=uptime=1h2m"}}
 		}
 		return nil
 	})
 	defer stop()
 
 	a := New(Config{Host: hostOf(addr), Port: portOf(addr), User: "staff", Pass: "rahasia"})
-	out, err := a.Invoke(context.Background(), "mikrotik.get_pppoe_status", map[string]any{"identity": "628123456789"})
+	out, err := a.Invoke(context.Background(), "mikrotik.get_pppoe_status", map[string]any{"identity": "628123456789@netlayer"})
 	if err != nil {
 		t.Fatalf("Invoke error: %v", err)
 	}
 	if !strings.Contains(out.Text, "628123456789@netlayer") {
 		t.Errorf("Text = %q, mau memuat username cocok", out.Text)
 	}
-	if strings.Contains(out.Text, "other-user") {
-		t.Errorf("Text = %q, tidak boleh memuat username tidak cocok", out.Text)
+	if len(commands) != 1 || commands[0][0] != "/ppp/active/print" || !sentenceHas(commands[0], "=?name=628123456789@netlayer") {
+		t.Errorf("commands = %v, mau satu lookup PPPoE exact tanpa daftar sesi", commands)
+	}
+	rows, ok := out.Data.([]map[string]string)
+	if !ok || len(rows) != 1 || rows[0]["name"] != "628123456789@netlayer" {
+		t.Errorf("Data = %#v, mau tepat satu sesi yang diminta", out.Data)
+	}
+}
+
+func TestGetPPPoEStatusRequiresIdentityWithoutQuery(t *testing.T) {
+	a := New(Config{Host: "127.0.0.1", Port: 1, User: "staff", Pass: "rahasia"})
+	_, err := a.Invoke(context.Background(), "mikrotik.get_pppoe_status", map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "butuh identity") {
+		t.Fatalf("status tanpa identity error = %v, mau penolakan sebelum query", err)
 	}
 }
 
@@ -217,29 +229,44 @@ func portOf(addr string) int {
 	return n
 }
 
-// TestGetInterfaceStats: parse rx/tx byte + humanBytes.
-func TestGetInterfaceStats(t *testing.T) {
-	addr, stop := mockRouterOS(t, "staff", "rahasia", func(cmd string) [][]string {
-		if cmd == "/interface/print" {
-			return [][]string{
-				{"=name=ether1", "=type=ether", "=rx-byte=228405285520454", "=tx-byte=23184709199749"},
-				{"=name=ether2", "=type=ether", "=rx-byte=27235253974210", "=tx-byte=211288494220234"},
-			}
+// TestGetInterfaceStatsUsesExactInterfaceFilter ensures cumulative statistics
+// are bounded to one requested interface at the RouterOS query layer.
+func TestGetInterfaceStatsUsesExactInterfaceFilter(t *testing.T) {
+	var commands [][]string
+	addr, stop := mockRouterOSWithSentence(t, "staff", "rahasia", func(sentence []string) [][]string {
+		commands = append(commands, append([]string(nil), sentence...))
+		if sentence[0] == "/interface/print" {
+			return [][]string{{"=name=ether1", "=type=ether", "=rx-byte=228405285520454", "=tx-byte=23184709199749"}}
 		}
 		return nil
 	})
 	defer stop()
 
 	a := New(Config{Host: hostOf(addr), Port: portOf(addr), User: "staff", Pass: "rahasia"})
-	out, err := a.Invoke(context.Background(), "mikrotik.get_interface_stats", map[string]any{})
+	out, err := a.Invoke(context.Background(), "mikrotik.get_interface_stats", map[string]any{"interface": "ether1"})
 	if err != nil {
 		t.Fatalf("Invoke error: %v", err)
 	}
-	if !strings.Contains(out.Text, "ether1") || !strings.Contains(out.Text, "ether2") {
-		t.Errorf("Text = %q, mau memuat kedua interface", out.Text)
+	if !strings.Contains(out.Text, "ether1") || strings.Contains(out.Text, "ether2") {
+		t.Errorf("Text = %q, mau hanya memuat interface yang diminta", out.Text)
 	}
 	if !strings.Contains(out.Text, "TB") {
 		t.Errorf("Text = %q, mau memuat ukuran terbaca (TB)", out.Text)
+	}
+	if len(commands) != 1 || commands[0][0] != "/interface/print" || !sentenceHas(commands[0], "=?name=ether1") {
+		t.Errorf("commands = %v, mau satu lookup interface exact tanpa daftar interface", commands)
+	}
+	rows, ok := out.Data.([]map[string]string)
+	if !ok || len(rows) != 1 || rows[0]["name"] != "ether1" {
+		t.Errorf("Data = %#v, mau tepat satu interface", out.Data)
+	}
+}
+
+func TestGetInterfaceStatsRequiresInterfaceWithoutQuery(t *testing.T) {
+	a := New(Config{Host: "127.0.0.1", Port: 1, User: "staff", Pass: "rahasia"})
+	_, err := a.Invoke(context.Background(), "mikrotik.get_interface_stats", map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "butuh interface") {
+		t.Fatalf("stats tanpa interface error = %v, mau penolakan sebelum query", err)
 	}
 }
 
@@ -260,6 +287,28 @@ func TestGetInterfaceLive(t *testing.T) {
 	}
 	if !strings.Contains(out.Text, "Gbps") {
 		t.Errorf("Text = %q, mau memuat 'Gbps' (1531456376 bps ~ 1.5 Gbps)", out.Text)
+	}
+}
+
+func TestGetInterfaceLiveRejectsNonUniqueResponse(t *testing.T) {
+	addr, stop := mockRouterOS(t, "staff", "rahasia", func(cmd string) [][]string {
+		if cmd == "/interface/monitor-traffic" {
+			return [][]string{
+				{"=name=ether1", "=rx-bits-per-second=1", "=tx-bits-per-second=2"},
+				{"=name=ether2", "=rx-bits-per-second=3", "=tx-bits-per-second=4"},
+			}
+		}
+		return nil
+	})
+	defer stop()
+
+	a := New(Config{Host: hostOf(addr), Port: portOf(addr), User: "staff", Pass: "rahasia"})
+	out, err := a.Invoke(context.Background(), "mikrotik.get_interface_live", map[string]any{"interface": "ether1"})
+	if err != nil {
+		t.Fatalf("Invoke error: %v", err)
+	}
+	if !strings.Contains(out.Text, "tidak dapat di-resolve secara unik") || out.Data != nil {
+		t.Errorf("non-unique live output = %+v, mau diblok tanpa data", out)
 	}
 }
 

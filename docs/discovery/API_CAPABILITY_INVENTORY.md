@@ -68,13 +68,13 @@ Sumber kontrak: `radius_api.md` dan `internal/radius`.
 |---|---|
 | Transport | HTTP REST Radius UI, bukan RADIUS UDP |
 | Auth | `Authorization: Bearer <machine token>` |
-| Read yang dipakai | `GET /api/sessions`, `GET /api/users`, `GET /api/system/stats` |
-| Tool | `radius.get_session`, `radius.get_user`, `radius.get_system_stats` |
+| Read yang dipakai | `GET /api/system/stats` saja |
+| Tool | `radius.get_system_stats` saja |
 | Kapabilitas referensi lain | auth/accounting log, traffic harian, NAS, profile, FUP, tunnel/VPN; termasuk mutasi yang belum diekspos adapter |
 | Registry | NONAKTIF (`enabled: false`) |
 | Bukti live | BELUM TERVERIFIKASI |
 
-Catatan keamanan: response `/api/users` menurut kontrak memuat password cleartext. Formatter teks menyembunyikannya, tetapi objek `Data` adapter saat ini masih membawa field password; ini dicatat sebagai gap kebocoran data.
+Catatan keamanan: `/api/users` memuat password cleartext dan `/api/sessions` memuat PII/session data. Keduanya hanya menyediakan bulk response tanpa exact server-side filter/projection, jadi tidak di-dispatch dan tidak ada di registry/manifest.
 
 ## GenieACS
 
@@ -84,8 +84,9 @@ Sumber: `docs/genieacs-api.md`, `internal/genieacs`.
 |---|---|
 | Base | NBI HTTP(S), port default 7557 |
 | Auth | NBI standar tidak menyediakan token header; pembatasan jaringan/VPN diperlukan |
-| Read yang dipakai | `GET /devices/?projection=...`, `GET /devices/?query=<MongoDB-JSON-terencode>` |
-| Tool | `genieacs.get_device_state`, `genieacs.get_devices` |
+| Read yang dipakai | Exact `GET /devices/?query=<MongoDB-JSON-terencode>&limit=1&projection=<fixed-state-fields>` |
+| Tool | `genieacs.get_device_state` saja; `genieacs.get_devices` dinonaktifkan |
+| Batas respons | Satu device ID tepat, projection state tetap, tanpa raw device ID; respons >1 ditolak |
 | Status online | dihitung dari `_lastInform`; implementasi memakai ambang 7 hari |
 | Registry | NONAKTIF (`enabled: false`) |
 | Bukti live | BELUM TERVERIFIKASI |

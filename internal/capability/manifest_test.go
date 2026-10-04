@@ -53,4 +53,18 @@ func TestManifestContainsOnlyBoundedNonSensitiveReadCapabilities(t *testing.T) {
 		}
 		seen[entry.Tool] = true
 	}
+	for tool, boundedArg := range map[string]string{
+		"mikrotik.get_pppoe_status":    "identity",
+		"mikrotik.get_interface_stats": "interface",
+		"mikrotik.get_interface_live":  "interface",
+	} {
+		if !seen[tool] {
+			t.Errorf("bounded MikroTik tool %q must be manifest-enabled", tool)
+		}
+		for _, entry := range doc.Capabilities {
+			if entry.Tool == tool && entry.RequiredBounded != boundedArg {
+				t.Errorf("%q bounded argument = %q, want %q", tool, entry.RequiredBounded, boundedArg)
+			}
+		}
+	}
 }

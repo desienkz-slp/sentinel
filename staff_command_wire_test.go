@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -67,8 +67,11 @@ func TestStaffCommandRunsForNOCAndSkipsCustomers(t *testing.T) {
 	}
 
 	text, ok := s.handleStaffCommand(context.Background(), noc, "628111222333", "cek user pppor pelanggan-uji")
-	if !ok || !strings.Contains(text, "pelanggan-uji") || !strings.Contains(text, "status=AKTIF") || !strings.Contains(text, "sesi online") {
+	if !ok || !strings.Contains(text, "pelanggan-uji") || !strings.Contains(text, "status=AKTIF") {
 		t.Fatalf("balasan perintah PPPoE tidak sesuai: ok=%v %q", ok, text)
+	}
+	if strings.Contains(text, "*RADIUS:*") {
+		t.Fatalf("perintah staf tidak boleh memanggil Radius bulk session: %q", text)
 	}
 	if strings.Contains(text, "kendala") {
 		t.Fatalf("staf tidak boleh ditanya 'kendala': %q", text)
@@ -195,17 +198,14 @@ func TestStaffCustomerList(t *testing.T) {
 			t.Errorf("ringkasan tak memuat %q: %s", want, got)
 		}
 	}
-	if iso := ask("daftar pelanggan isolir"); !strings.Contains(iso, "2 pelanggan") || !strings.Contains(iso, "uji-isolir") {
-		t.Errorf("daftar isolir salah: %s", iso)
+	if iso := ask("daftar pelanggan isolir"); !strings.Contains(iso, "2 pelanggan") || strings.Contains(iso, "uji-isolir") {
+		t.Errorf("ringkasan isolir harus aggregate tanpa PII: %s", iso)
 	}
-	if cari := ask("cari uji-isolir"); !strings.Contains(cari, "uji-isolir") {
-		t.Errorf("cari salah: %s", cari)
+	if cari := ask("cari uji-isolir"); !strings.Contains(cari, "1 pelanggan") || strings.Contains(cari, "uji-isolir") {
+		t.Errorf("hasil cari harus aggregate tanpa PII: %s", cari)
 	}
-	// Riwayat pembayaran per pelanggan: tunggakan tahun 2020 (< bulan berjalan).
 	his := ask("riwayat uji-isolir")
-	for _, want := range []string{"TUNGGAKAN 1 bulan", "Rp100.000", "Terakhir lunas: 2020-01"} {
-		if !strings.Contains(his, want) {
-			t.Errorf("riwayat tak memuat %q: %s", want, his)
-		}
+	if !strings.Contains(his, "tidak tersedia") || !strings.Contains(his, "diblokir") {
+		t.Errorf("riwayat harus dilaporkan blocked: %s", his)
 	}
 }

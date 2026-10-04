@@ -174,11 +174,10 @@ keluhan masuk (intent=COMPLAINT)
    │
    ├─ 1. resolve_identity          (nomor pengirim sudah dinormalisasi 628xxx)
    ├─ 2. billing.get_customer      → status akun
-   ├─ 3. radius.get_session        → status autentikasi PPP
-   ├─ 4. mikrotik.get_pppoe_status → status sesi PPPoE
-   ├─ 5. genieacs.get_device_state → status ONT/CPE
+   ├─ 3. mikrotik.get_pppoe_status → status sesi PPPoE
+   ├─ 4. genieacs.get_device_state → status ONT/CPE
    │
-   └─ 6. correlate_and_diagnose    (kode mengorelasikan bukti lintas sistem)
+   └─ 5. correlate_and_diagnose    (kode mengorelasikan bukti lintas sistem)
         → diagnosis + keyakinan + area utama
 ```
 

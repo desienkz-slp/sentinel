@@ -58,7 +58,7 @@ membocorkan istilah teknis berlebihan, tidak mengarang.
 | Sistem | Tool | Batas |
 |---|---|---|
 | Billing | `billing.get_customer`, `billing.get_history` | hanya pelanggan itu |
-| RADIUS | `radius.get_session` | hanya akun pelanggan itu |
+| RADIUS | — | tidak ada tool per-pelanggan: upstream hanya menyediakan bulk session/user tanpa exact server-side filter/projection |
 | MikroTik | `mikrotik.get_pppoe_status` | hanya akun pelanggan itu |
 | GenieACS | `genieacs.get_device_state` | hanya perangkat pelanggan itu |
 | Probe | ping, dns, tcp, http | target dari pelanggan/akun itu |
@@ -110,9 +110,9 @@ teknis yang dieskalasi dari CS.
 | Sistem | Tool | Batas |
 |---|---|---|
 | Billing | semua `billing.*` (termasuk `list_customers`, `get_history`) | read-only |
-| RADIUS | `get_session`, `get_user`, `get_system_stats` | read-only |
+| RADIUS | `get_system_stats` | aggregate-only; session/user bulk endpoints are blocked |
 | MikroTik | `get_pppoe_status`, `get_interface_stats`, `get_interface_live`, `get_customer_traffic` | read-only |
-| GenieACS | `get_device_state`, `get_devices` | read-only |
+| GenieACS | `get_device_state` (device ID tepat, respons terproyeksi) | read-only; bulk device list dinonaktifkan |
 | Probe | ping, dns, tcp, http, mtr | read-only |
 | Tulis | `mikrotik.disconnect_pppoe` | NONAKTIF; butuh persetujuan + PIN |
 | Staf | direktori | sesuai jabatan, lihat §7 |

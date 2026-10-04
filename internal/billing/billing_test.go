@@ -91,8 +91,8 @@ func TestGetCustomerFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("invoke: %v", err)
 	}
-	if !strings.Contains(out.Text, "Budi Santoso") || !strings.Contains(out.Text, "08123456789") {
-		t.Errorf("Text = %q, mau memuat nama & WA", out.Text)
+	if strings.Contains(out.Text, "Budi Santoso") || strings.Contains(out.Text, "08123456789") {
+		t.Errorf("Text must not leak name or WA: %q", out.Text)
 	}
 	if !strings.Contains(out.Text, "active") {
 		t.Errorf("Text = %q, mau memuat status active", out.Text)

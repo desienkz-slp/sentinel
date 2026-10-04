@@ -48,7 +48,7 @@ func enabledRegistry(t *testing.T, content string) *registry.Registry {
 	return registry.Load(path)
 }
 
-func TestManifestGateBlocksEnabledCapabilityAbsentFromManifest(t *testing.T) {
+func TestManifestGateAllowsBoundedBillingCustomerIdentity(t *testing.T) {
 	reg := enabledRegistry(t, `  - name: billing.get_customer
     domain: billing
     enabled: true
@@ -64,9 +64,13 @@ func TestManifestGateBlocksEnabledCapabilityAbsentFromManifest(t *testing.T) {
 	d.SetCapabilityManifest(canonicalManifest(t))
 	d.Register(manifestAdapter{domain: "billing"})
 
-	result := d.Invoke(context.Background(), "billing.get_customer", map[string]any{"identity": "customer-a"})
-	if result.OK || result.Decision != policy.Deny {
-		t.Fatalf("capability absent from manifest must be denied: %+v", result)
+	allowed := d.Invoke(context.Background(), "billing.get_customer", map[string]any{"identity": "customer-a"})
+	if !allowed.OK || allowed.Decision != policy.Allow {
+		t.Fatalf("bounded billing customer lookup must be allowed: %+v", allowed)
+	}
+	blocked := d.Invoke(context.Background(), "billing.get_customer", nil)
+	if blocked.OK || blocked.Decision != policy.Deny {
+		t.Fatalf("billing lookup without identity must be denied: %+v", blocked)
 	}
 }
 
@@ -184,6 +188,19 @@ func TestEveryEnabledReadToolRequiresExactlyOneAdapterAndManifestEntry(t *testin
 	}
 }
 
+func TestRadiusBulkSessionAndUserToolsAreAbsentFromCanonicalRegistryAndManifest(t *testing.T) {
+	reg := registry.Load(filepath.Join("..", "..", "tools", "registry.yaml"))
+	manifest := canonicalManifest(t)
+	for _, name := range []string{"radius.get_session", "radius.get_user"} {
+		if _, exists := reg.Get(name); exists {
+			t.Errorf("bulk PII capability %q must be removed from canonical registry", name)
+		}
+		if manifest.Has(name) {
+			t.Errorf("bulk PII capability %q must not be manifest-enabled", name)
+		}
+	}
+}
+
 func TestManifestIncludesOnlyBoundedPPPoETrafficCapability(t *testing.T) {
 	reg := registry.Load(filepath.Join("..", "..", "tools", "registry.yaml"))
 	manifest := canonicalManifest(t)
@@ -205,15 +222,21 @@ func TestManifestIncludesOnlyBoundedPPPoETrafficCapability(t *testing.T) {
 	if err := manifest.Allows(traffic, map[string]any{}); err == nil {
 		t.Fatal("PPPoE traffic without identity must be denied")
 	}
+	deviceState, ok := reg.Get("genieacs.get_device_state")
+	if !ok || !manifest.Has(deviceState.Name) {
+		t.Fatal("bounded GenieACS device-state lookup must be manifest-enabled")
+	}
+	if err := manifest.Allows(deviceState, map[string]any{"device_id": "ONT-001"}); err != nil {
+		t.Fatalf("bounded GenieACS device-state lookup must pass manifest gate: %v", err)
+	}
+	if err := manifest.Allows(deviceState, map[string]any{}); err == nil {
+		t.Fatal("GenieACS device-state lookup without device_id must be denied")
+	}
 	for _, name := range []string{
-		"billing.get_customer",
 		billing.ToolHistory,
 		billing.ToolList,
 		"radius.get_session",
 		"radius.get_user",
-		"mikrotik.get_pppoe_status",
-		"mikrotik.get_interface_stats",
-		"genieacs.get_device_state",
 		"genieacs.get_devices",
 	} {
 		if manifest.Has(name) {

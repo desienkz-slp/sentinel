@@ -81,18 +81,17 @@ func TestRunWorkflowDeterministic(t *testing.T) {
 	if h.Aborted != "" {
 		t.Fatalf("workflow terhenti: %s", h.Aborted)
 	}
-	// Empat domain (billing/radius/mikrotik/genieacs) harus punya bukti.
+	// Tiga domain customer-scoped (billing/mikrotik/genieacs) harus punya bukti.
 	domains := h.Evidence.Domains()
-	if len(domains) != 4 {
-		t.Fatalf("domain bukti = %v, mau 4 (billing radius mikrotik genieacs)", domains)
+	if len(domains) != 3 {
+		t.Fatalf("domain bukti = %v, mau 3 (billing mikrotik genieacs)", domains)
 	}
 	if h.Conclusion.Diagnosis == "" {
 		t.Error("kesimpulan korelasi kosong")
 	}
-	// Evidence mikrotik = OFFLINE, billing AKTIF, radius OK, genieacs ONLINE ->
-	// seharusnya "sesi PPPoE stale/putus" (area mikrotik).
-	if h.Conclusion.PrimaryArea != "mikrotik" {
-		t.Errorf("primary_area = %q, mau mikrotik (PPPoE down)", h.Conclusion.PrimaryArea)
+	// Tanpa bukti Radius customer-scoped, korelasi tidak boleh menebak diagnosis.
+	if h.Conclusion.PrimaryArea != "" {
+		t.Errorf("primary_area = %q, mau kosong tanpa bukti Radius", h.Conclusion.PrimaryArea)
 	}
 	// Harus ada langkah tool yang tereksekusi.
 	toolSteps := 0
@@ -101,8 +100,8 @@ func TestRunWorkflowDeterministic(t *testing.T) {
 			toolSteps++
 		}
 	}
-	if toolSteps != 4 {
-		t.Errorf("langkah tool = %d, mau 4", toolSteps)
+	if toolSteps != 3 {
+		t.Errorf("langkah tool = %d, mau 3", toolSteps)
 	}
 }
 
@@ -173,19 +172,16 @@ func (f *recWfAdapter) Invoke(ctx context.Context, name string, args map[string]
 
 // TestRunWorkflowResolvesIdentityToUsername membuktikan perbaikan resolve_identity:
 // bila penelepon sudah teridentifikasi sebagai pelanggan (Caller.Customer.Username
-// terisi), langkah hilir (radius/mikrotik/genieacs) menerima USERNAME PPPoE —
-// bukan nomor telepon 628xxx. Tanpa ini, adapter RADIUS/MikroTik yang mencocokkan
-// username selalu menjawab "tidak ada sesi" walau datanya ada.
+// terisi), langkah hilir (mikrotik/genieacs) menerima USERNAME PPPoE — bukan
+// nomor telepon 628xxx.
 func TestRunWorkflowResolvesIdentityToUsername(t *testing.T) {
 	reg := writeWfReg(t, true)
 	pol := policy.Load("")
 	disp := tool.New(reg, pol, time.Second)
 
-	radiusRec := &recWfAdapter{domain: "radius"}
 	mikrotikRec := &recWfAdapter{domain: "mikrotik"}
 	genieacsRec := &recWfAdapter{domain: "genieacs"}
 	disp.Register(&recWfAdapter{domain: "billing"})
-	disp.Register(radiusRec)
 	disp.Register(mikrotikRec)
 	disp.Register(genieacsRec)
 
@@ -215,9 +211,8 @@ func TestRunWorkflowResolvesIdentityToUsername(t *testing.T) {
 		t.Fatalf("workflow terhenti: %s", h.Aborted)
 	}
 
-	// Radius + MikroTik + GenieACS harus menerima username "jttcitra", BUKAN nomor.
+	// MikroTik + GenieACS harus menerima username "jttcitra", BUKAN nomor.
 	for name, rec := range map[string]*recWfAdapter{
-		"radius":   radiusRec,
 		"mikrotik": mikrotikRec,
 		"genieacs": genieacsRec,
 	} {
@@ -243,10 +238,9 @@ func TestRunWorkflowIdentityFallbackToPhone(t *testing.T) {
 	reg := writeWfReg(t, true)
 	pol := policy.Load("")
 	disp := tool.New(reg, pol, time.Second)
-	radiusRec := &recWfAdapter{domain: "radius"}
+	mikrotikRec := &recWfAdapter{domain: "mikrotik"}
 	disp.Register(&recWfAdapter{domain: "billing"})
-	disp.Register(radiusRec)
-	disp.Register(&recWfAdapter{domain: "mikrotik"})
+	disp.Register(mikrotikRec)
 	disp.Register(&recWfAdapter{domain: "genieacs"})
 
 	wf, _ := workflow.LoadDir("../../workflows")
@@ -256,14 +250,14 @@ func TestRunWorkflowIdentityFallbackToPhone(t *testing.T) {
 	// context.Background() tanpa caller -> harus fallback ke nomor.
 	_ = e.runWorkflow(context.Background(), "6281210797235", "", def, nil)
 
-	for _, id := range radiusRec.ids {
+	for _, id := range mikrotikRec.ids {
 		if id != "6281210797235" {
 			t.Errorf("tanpa caller, identity = %q, mau fallback ke nomor 6281210797235", id)
 		}
 	}
 }
 
-// writeWfReg menulis registry dengan keempat tool READ untuk workflow.
+// writeWfReg menulis registry dengan tiga tool READ untuk workflow.
 func writeWfReg(t *testing.T, enabled bool) *registry.Registry {
 	t.Helper()
 	dir := t.TempDir()
@@ -274,7 +268,6 @@ func writeWfReg(t *testing.T, enabled bool) *registry.Registry {
 	}
 	content := "version: 1.0.0\ntools:\n" +
 		"  - name: billing.get_customer\n    domain: billing\n    enabled: " + en + "\n    permission: READ\n    risk: LOW\n    scope: single_customer\n" +
-		"  - name: radius.get_session\n    domain: radius\n    enabled: " + en + "\n    permission: READ\n    risk: LOW\n    scope: single_customer\n" +
 		"  - name: mikrotik.get_pppoe_status\n    domain: mikrotik\n    enabled: " + en + "\n    permission: READ\n    risk: LOW\n    scope: single_customer\n" +
 		"  - name: genieacs.get_device_state\n    domain: genieacs\n    enabled: " + en + "\n    permission: READ\n    risk: LOW\n    scope: single_customer\n"
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {

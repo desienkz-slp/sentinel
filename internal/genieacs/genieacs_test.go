@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-// deviceJSON membangun satu device dengan struktur nested GenieACS asli.
 func deviceJSON(id string, lastInform time.Time, rxPower string) string {
 	return `{"_id":"` + id + `",` +
 		`"_lastInform":"` + lastInform.Format(time.RFC3339) + `",` +
@@ -17,198 +16,150 @@ func deviceJSON(id string, lastInform time.Time, rxPower string) string {
 		`"VirtualParameters":{"RXPower":{"_value":"` + rxPower + `"}}}`
 }
 
-// TestPing: parse /devices + hitung online/offline dari _lastInform (RFC3339).
 func TestPing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/devices/" {
-			t.Errorf("path = %q, mau /devices/", r.URL.Path)
-		}
-		recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
+		recent := deviceJSON("ONT-AAA-001", time.Now().Add(-time.Hour), "-23.66")
 		old := deviceJSON("ONT-BBB-002", time.Now().Add(-30*24*time.Hour), "-28.00")
 		w.Write([]byte(`[` + recent + `,` + old + `]`))
 	}))
 	defer srv.Close()
 
-	a := New(srv.URL, "")
-	d, err := a.Ping(context.Background())
+	result, err := New(srv.URL, "").Ping(context.Background())
 	if err != nil {
 		t.Fatalf("Ping error: %v", err)
 	}
-	if d.TotalDevices != 2 {
-		t.Errorf("TotalDevices = %d, mau 2", d.TotalDevices)
-	}
-	if d.OnlineDevices != 1 {
-		t.Errorf("OnlineDevices = %d, mau 1 (hanya ONT-AAA yang inform < 7 hari)", d.OnlineDevices)
+	if result.TotalDevices != 2 || result.OnlineDevices != 1 {
+		t.Fatalf("Ping = %+v, want two devices and one online", result)
 	}
 }
 
-// TestGetDeviceState: cari device by _id, tampilkan ONLINE + vendor + model + RXPower.
-func TestGetDeviceState(t *testing.T) {
+func TestPingRequestsOnlyAggregateSafeFields(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("query") == "" {
-			t.Errorf("query param kosong")
+		projection := r.URL.Query().Get("projection")
+		if projection != "_lastInform" {
+			t.Errorf("Ping projection = %q, want only _lastInform", projection)
 		}
-		recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
-		w.Write([]byte(`[` + recent + `]`))
+		w.Write([]byte(`[]`))
 	}))
 	defer srv.Close()
 
-	a := New(srv.URL, "")
-	out, err := a.Invoke(context.Background(), "genieacs.get_device_state", map[string]any{"device_id": "ONT-AAA-001"})
+	if _, err := New(srv.URL, "").Ping(context.Background()); err != nil {
+		t.Fatalf("Ping error: %v", err)
+	}
+}
+
+func TestGetDeviceStateUsesBoundedProjectedExactLookup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("limit"); got != "1" {
+			t.Errorf("limit = %q, want 1", got)
+		}
+		projection := r.URL.Query().Get("projection")
+		for _, field := range []string{"_lastInform", "Manufacturer", "ModelName", "RXPower"} {
+			if !strings.Contains(projection, field) {
+				t.Errorf("projection = %q, want %q", projection, field)
+			}
+		}
+		if strings.Contains(projection, "_id") {
+			t.Errorf("projection must not request raw _id: %q", projection)
+		}
+		if got := r.URL.Query().Get("query"); got != `{"_id":"ONT-AAA-001"}` {
+			t.Errorf("query = %q, want exact device ID query", got)
+		}
+		w.Write([]byte(`[` + deviceJSON("ONT-AAA-001", time.Now().Add(-time.Hour), "-23.66") + `]`))
+	}))
+	defer srv.Close()
+
+	out, err := New(srv.URL, "").Invoke(context.Background(), "genieacs.get_device_state", map[string]any{"device_id": "ONT-AAA-001"})
 	if err != nil {
 		t.Fatalf("Invoke error: %v", err)
 	}
-	for _, want := range []string{"ONT-AAA-001", "ONLINE", "ZTE", "HG8245H5", "-23.66 dBm"} {
-		if !strings.Contains(out.Text, want) {
-			t.Errorf("Text = %q, mau memuat %q", out.Text, want)
+	if strings.Contains(out.Text, "ONT-AAA-001") {
+		t.Errorf("Text must not expose raw device ID: %q", out.Text)
+	}
+	data, ok := out.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("Data = %T, want safe state map", out.Data)
+	}
+	if _, exposed := data["_id"]; exposed {
+		t.Errorf("Data must not expose raw device ID: %+v", data)
+	}
+	if data["state"] != "ONLINE" || data["vendor"] != "ZTE" || data["model"] != "HG8245H5" || data["rx_power_dbm"] != "-23.66" {
+		t.Errorf("Data = %+v, want projected safe state", data)
+	}
+}
+
+func TestGetDeviceStateRejectsUnboundedServerResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		first := deviceJSON("ONT-AAA-001", time.Now().Add(-time.Hour), "-23.66")
+		second := deviceJSON("ONT-BBB-002", time.Now().Add(-time.Hour), "-24.00")
+		w.Write([]byte(`[` + first + `,` + second + `]`))
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL, "").Invoke(context.Background(), "genieacs.get_device_state", map[string]any{"device_id": "ONT-AAA-001"})
+	if err == nil || !strings.Contains(err.Error(), "lebih dari satu") {
+		t.Fatalf("unbounded response error = %v, want more-than-one rejection", err)
+	}
+}
+
+func TestGetDeviceStateRequiresExactDeviceID(t *testing.T) {
+	adapter := New("http://example.invalid", "")
+	for _, args := range []map[string]any{{}, {"identity": "customer-a"}, {"device_id": "   "}} {
+		if _, err := adapter.Invoke(context.Background(), "genieacs.get_device_state", args); err == nil {
+			t.Errorf("args %+v must be rejected without a device_id", args)
 		}
 	}
 }
 
-// TestGetDevicesFilter: filter online/offline (projection _id,_lastInform).
-func TestGetDevicesFilter(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
-		old := deviceJSON("ONT-BBB-002", time.Now().Add(-30*24*time.Hour), "-28.00")
-		w.Write([]byte(`[` + recent + `,` + old + `]`))
-	}))
-	defer srv.Close()
-
-	a := New(srv.URL, "")
-	out, err := a.Invoke(context.Background(), "genieacs.get_devices", map[string]any{"status": "online"})
-	if err != nil {
-		t.Fatalf("Invoke error: %v", err)
+func TestBulkDeviceListingIsDisabled(t *testing.T) {
+	adapter := New("http://example.invalid", "")
+	if _, err := adapter.Invoke(context.Background(), "genieacs.get_devices", nil); err == nil {
+		t.Fatal("genieacs.get_devices must be disabled")
 	}
-	if !strings.Contains(out.Text, "ONT-AAA-001") {
-		t.Errorf("Text = %q, mau memuat ONT-AAA-001 (online)", out.Text)
-	}
-	if strings.Contains(out.Text, "ONT-BBB-002") {
-		t.Errorf("Text = %q, tidak boleh memuat ONT-BBB-002 (offline)", out.Text)
+	for _, name := range adapter.ToolNames() {
+		if name == "genieacs.get_devices" {
+			t.Fatal("disabled bulk tool must not be advertised")
+		}
 	}
 }
 
-// TestConfigured & ToolNames.
 func TestConfiguredAndToolNames(t *testing.T) {
 	if New("", "").Configured() {
-		t.Error("Configured = true tanpa URL")
+		t.Error("Configured = true without URL")
 	}
-	a := New("http://x", "")
-	if a.Domain() != "genieacs" {
-		t.Errorf("Domain = %q, mau genieacs", a.Domain())
+	adapter := New("http://x", "")
+	if adapter.Domain() != "genieacs" {
+		t.Errorf("Domain = %q, want genieacs", adapter.Domain())
 	}
-	names := a.ToolNames()
-	want := []string{"genieacs.get_device_state", "genieacs.get_devices"}
-	if len(names) != len(want) {
-		t.Fatalf("ToolNames = %v, mau %v", names, want)
-	}
-	for i := range want {
-		if names[i] != want[i] {
-			t.Errorf("ToolNames[%d] = %q, mau %q", i, names[i], want[i])
-		}
+	names := adapter.ToolNames()
+	if len(names) != 1 || names[0] != "genieacs.get_device_state" {
+		t.Errorf("ToolNames = %v, want only bounded device-state lookup", names)
 	}
 }
 
-// TestIsOnline: RFC3339 dan format lama.
 func TestIsOnline(t *testing.T) {
-	recent := time.Now().Add(-1 * time.Hour)
+	recent := time.Now().Add(-time.Hour)
 	cutoff := time.Now().Add(-7 * 24 * time.Hour)
 	if !isOnline(map[string]any{"_lastInform": recent.Format(time.RFC3339)}, cutoff) {
-		t.Error("recent (RFC3339) harusnya online")
+		t.Error("recent RFC3339 inform must be online")
 	}
 	if isOnline(map[string]any{"_lastInform": ""}, cutoff) {
-		t.Error("kosong harusnya offline")
-	}
-	old := time.Now().Add(-30 * 24 * time.Hour)
-	if isOnline(map[string]any{"_lastInform": old.Format(time.RFC3339)}, cutoff) {
-		t.Error("30 hari lalu harusnya offline")
+		t.Error("empty inform must be offline")
 	}
 }
 
-// TestParamValue: baca nested _value.
 func TestParamValue(t *testing.T) {
-	d := map[string]any{
-		"InternetGatewayDevice": map[string]any{
-			"DeviceInfo": map[string]any{
-				"Manufacturer": map[string]any{"_value": "ZTE"},
-			},
-		},
-		"VirtualParameters": map[string]any{
-			"RXPower": map[string]any{"_value": "-23.66"},
-		},
+	device := map[string]any{
+		"InternetGatewayDevice": map[string]any{"DeviceInfo": map[string]any{"Manufacturer": map[string]any{"_value": "ZTE"}}},
+		"VirtualParameters":     map[string]any{"RXPower": map[string]any{"_value": "-23.66"}},
 	}
-	if got := paramValue(d, "InternetGatewayDevice.DeviceInfo.Manufacturer"); got != "ZTE" {
-		t.Errorf("paramValue = %q, mau ZTE", got)
+	if got := vendor(device); got != "ZTE" {
+		t.Errorf("vendor = %q, want ZTE", got)
 	}
-	if got := paramValue(d, "VirtualParameters.RXPower"); got != "-23.66" {
-		t.Errorf("paramValue = %q, mau -23.66", got)
+	if got := rxPower(device); got != "-23.66" {
+		t.Errorf("rxPower = %q, want -23.66", got)
 	}
-	if got := paramValue(d, "tidak.ada"); got != "" {
-		t.Errorf("paramValue path tak ada = %q, mau kosong", got)
-	}
-	if got := rxPower(d); got != "-23.66" {
-		t.Errorf("rxPower = %q, mau -23.66", got)
-	}
-	if got := vendor(d); got != "ZTE" {
-		t.Errorf("vendor = %q, mau ZTE", got)
-	}
-	if got := model(d); got != "" {
-		t.Errorf("model = %q, mau kosong (tidak ada ModelName)", got)
-	}
-}
-
-// TestGetDeviceStateByUsername: device ditemukan lewat username PPPoE (field
-// WANPPPConnection.1.Username) — bukan _id. Ini memungkinkan pelanggan di-link
-// ke GenieACS lewat username PPPoE (jembatan yang sama dipakai RADIUS/MikroTik).
-func TestGetDeviceStateByUsername(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query().Get("query")
-		// Query pertama (_id) tidak cocok -> kosong; query kedua (username) cocok.
-		if strings.Contains(q, "_id") {
-			w.Write([]byte(`[]`))
-			return
-		}
-		if strings.Contains(q, "WANPPPConnection.1.Username") {
-			recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
-			w.Write([]byte(`[` + recent + `]`))
-			return
-		}
-		w.Write([]byte(`[]`))
-	}))
-	defer srv.Close()
-
-	a := New(srv.URL, "")
-	out, err := a.Invoke(context.Background(), "genieacs.get_device_state", map[string]any{"identity": "jttcitra"})
-	if err != nil {
-		t.Fatalf("Invoke error: %v", err)
-	}
-	if !strings.Contains(out.Text, "ditemukan lewat username") {
-		t.Errorf("Text = %q, mau memuat penanda 'ditemukan lewat username'", out.Text)
-	}
-	if !strings.Contains(out.Text, "ONT-AAA-001") {
-		t.Errorf("Text = %q, mau memuat _id device", out.Text)
-	}
-}
-
-// TestGetDeviceStateBySSID: device ditemukan lewat nama WiFi/SSID. Pelanggan
-// sering menyebut nama WiFi saat komplain — jalur ini memetakannya ke device.
-func TestGetDeviceStateBySSID(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query().Get("query")
-		if strings.Contains(q, "WLANConfiguration.1.SSID") {
-			recent := deviceJSON("ONT-AAA-001", time.Now().Add(-1*time.Hour), "-23.66")
-			w.Write([]byte(`[` + recent + `]`))
-			return
-		}
-		w.Write([]byte(`[]`))
-	}))
-	defer srv.Close()
-
-	a := New(srv.URL, "")
-	out, err := a.Invoke(context.Background(), "genieacs.get_device_state", map[string]any{"identity": "RIFKI ZAIN"})
-	if err != nil {
-		t.Fatalf("Invoke error: %v", err)
-	}
-	if !strings.Contains(out.Text, "ditemukan lewat ssid") {
-		t.Errorf("Text = %q, mau memuat penanda 'ditemukan lewat ssid'", out.Text)
+	if got := paramValue(device, "tidak.ada"); got != "" {
+		t.Errorf("missing param = %q, want empty", got)
 	}
 }

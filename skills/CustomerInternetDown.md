@@ -12,15 +12,13 @@ Investigate customer internet loss using correlated evidence from authoritative 
 
 ## Tools (READ-ONLY only; disabled until contract + creds provided)
 1. `billing.get_customer(identity)` — account status
-2. `radius.get_session(identity)` — session status
-3. `mikrotik.get_pppoe_status(customer_or_device)` — PPPoE state
-4. `genieacs.get_device_state(device_id)` — ONT/router state
+2. `mikrotik.get_pppoe_status(customer_or_device)` — PPPoE state
+3. `genieacs.get_device_state(device_id)` — ONT/router state
 
 ## Diagnostic Sequence
 1. Resolve customer identity to known identity ID (lookup via customers table).
 2. Correlate evidence:
    - BILLING_ACTIVE = `account_status == ACTIVE`
-   - AUTHENTICATED = `session_exists AND auth_ok`
    - DEVICE_ONLINE = `device.state in [ONLINE, READY]`
    - PPPOE_STALE = `pppoe_exists but NOT active`
 3. Normalize evidence into canonical states.
@@ -29,7 +27,7 @@ Investigate customer internet loss using correlated evidence from authoritative 
 ## Decision Logic
 | Evidence Set | Diagnosis | Confidence | Recommendation |
 |--------------|-----------|------------|----------------|
-| Billing=ACTIVE, RADIUS=OK, Device=ONLINE, PPPoE=OFF | Session/PPPoE issue | HIGH | escalate |
+| Billing=ACTIVE, Device=ONLINE, PPPoE=OFF | PPPoE issue | HIGH | escalate |
 | Billing=ACTIVE, Device=OFFLINE | CPE/ONT power/link issue | HIGH | escalate |
 | Any component UNKNOWN | Insufficient data | LOW | ask for more info |
 

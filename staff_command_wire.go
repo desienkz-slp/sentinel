@@ -63,7 +63,7 @@ func (s *Server) handleStaffCommand(ctx context.Context, caller directory.Caller
 		tools = []string{"mikrotik.get_customer_traffic"}
 	default:
 		title = "PPPoE"
-		tools = []string{"billing.get_customer", "radius.get_session", "mikrotik.get_pppoe_status"}
+		tools = []string{"billing.get_customer", "mikrotik.get_pppoe_status"}
 	}
 
 	pinOK := s.pinSesi != nil && s.pinSesi.verified(caller.Number)

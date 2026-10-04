@@ -34,11 +34,10 @@ var toolPerms = map[string]Permission{
 	"mikrotik.get_interface_stats":  PermNetworkingRead,
 	"mikrotik.get_interface_live":   PermNetworkingRead,
 	"mikrotik.get_customer_traffic": PermNetworkingRead,
-	"radius.get_session":            PermNetworkingRead,
-	"radius.get_user":               PermNetworkingRead,
-	"radius.get_system_stats":       PermNetworkingRead,
-	"genieacs.get_device_state":     PermNetworkingRead,
-	"genieacs.get_devices":          PermNetworkingRead,
+
+	"radius.get_system_stats":   PermNetworkingRead,
+	"genieacs.get_device_state": PermNetworkingRead,
+	"genieacs.get_devices":      PermNetworkingRead,
 	// --- Billing READ ---
 	"billing.get_customer":   PermReadAll,
 	"billing.get_history":    PermReadAll,

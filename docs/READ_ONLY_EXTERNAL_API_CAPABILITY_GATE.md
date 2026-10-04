@@ -16,14 +16,14 @@ Registry produksi memiliki 12 READ aktif dan satu WRITE tetap nonaktif (`mikroti
 
 | Domain | Capability read-only | Status operasional |
 |---|---|---|
-| Billing | customer, history, list customer | adapter/registry parity dan bounded pagination harus diuji sebelum klaim full capability |
-| RADIUS | session, user, system stats | system stats verified; session/user diblokir dari live contract sampai server-side filtering ada |
+| Billing | customer | VERIFIED: identity wajib; `search`, `per_page=1`, `page=1`; ambiguity ditolak dan output hanya projection status tanpa PII. History diblokir di adapter (upstream tanpa pagination/projection). List hanya count aggregate dari satu halaman metadata, tanpa record pelanggan. |
+| RADIUS | system stats | hanya aggregate tetap terdaftar; session/user dihapus dari adapter dan registry karena upstream hanya menyediakan bulk data |
 | MikroTik | PPPoE, interface stats/live, queue traffic | health verified; per-customer/queue harus server-filtered dan identity required |
 | GenieACS | device state, device list | aggregate/device query terbatas aman; bulk list diblokir sampai pagination/projection/redaction terbukti |
 
 ## Remediasi yang sudah diterapkan
 
-`radius.get_user` sebelumnya dapat menyimpan password cleartext dari Radius API pada `tool.Output.Data`. Perbaikan commit `7133d69` hanya mengembalikan projection aman dengan `password_set`, tidak pernah nilai password.
+Commit `7133d69` sudah meredaksi password output. Hardening berikutnya menghapus `radius.get_user` dan `radius.get_session` dari adapter dispatch dan registry: endpoint upstream hanya memberi daftar bulk tanpa exact server-side filter atau projection, sehingga projection client-side tidak diterima.
 
 ## Contract gates sebelum mengaktifkan capability baru
 
@@ -37,9 +37,9 @@ Registry produksi memiliki 12 READ aktif dan satu WRITE tetap nonaktif (`mikroti
 
 ## Status BLOCKED yang benar
 
-- RADIUS `/users` dan `/sessions`: endpoint bulk sampai ada filter upstream atau adapter safe projection yang tidak mendownload seluruh data.
+- RADIUS `/users` dan `/sessions`: endpoint bulk diblokir dan tidak terdaftar. Re-enable hanya jika upstream menyediakan exact server-side filter dan non-PII projection yang dibuktikan contract test; adapter tidak boleh mengunduh lalu memfilter lokal.
 - MikroTik PPP/queue: bulk read tetap BLOCKED sampai filter RouterOS server-side wajib. Pengecualian terbatas `mikrotik.get_customer_traffic` memakai exact `?name=<identity>` pada `/ppp/active/print`, lalu tepat satu `/interface/monitor-traffic once` untuk interface PPPoE yang ter-resolve unik; tidak ada fallback queue.
 - `mikrotik.get_pppoe_interface_traffic` tetap capability masa depan yang belum diimplementasikan dan deny-by-default; traffic pelanggan yang aman menggunakan `mikrotik.get_customer_traffic` di atas.
 - GenieACS device-list: bulk output sampai pagination, aggregate mode, dan ID redaction tersedia.
-- Billing history/list: gunakan setelah parity binary+registry dan bounded page/filter terbukti.
+- Billing history: BLOCKED pada permukaan adapter meski identity wajib, karena endpoint upstream tidak mendokumentasikan pagination atau projection terikat. `billing.list_customers` hanya aggregate count dari `per_page=1&page=1`; raw customer rows tidak pernah diteruskan.
 - Semua write dan sensitive-read tetap forbidden.

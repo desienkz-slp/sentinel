@@ -36,7 +36,6 @@ type Verdict struct {
 var csTools = map[string]bool{
 	"billing.get_customer":      true,
 	"billing.get_history":       true,
-	"radius.get_session":        true,
 	"mikrotik.get_pppoe_status": true,
 	"genieacs.get_device_state": true,
 }
@@ -60,9 +59,9 @@ var identityKeys = []string{
 // pelanggan/sistem. Tidak pernah boleh untuk CS.
 // (Dipakai untuk pesan penolakan yang jelas.)
 var scopeless = map[string]string{
-	"billing.list_customers":        "daftar pelanggan",
-	"radius.get_system_stats":       "statistik sistem",
-	"radius.get_user":               "data akun lain",
+	"billing.list_customers":  "daftar pelanggan",
+	"radius.get_system_stats": "statistik sistem",
+
 	"mikrotik.get_interface_stats":  "statistik interface",
 	"mikrotik.get_interface_live":   "trafik interface",
 	"mikrotik.get_customer_traffic": "trafik pelanggan",

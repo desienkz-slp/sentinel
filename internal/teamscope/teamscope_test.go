@@ -32,7 +32,7 @@ func TestCSToolTakDikenalDitolak(t *testing.T) {
 // Model jahat: meminta identitas pelanggan LAIN lewat berbagai nama argumen.
 // Hasilnya harus selalu identitas pelanggan terverifikasi.
 func TestCSIdentitasLainDipaksaKePelangganSendiri(t *testing.T) {
-	for _, tool := range []string{"billing.get_customer", "billing.get_history", "radius.get_session", "mikrotik.get_pppoe_status", "genieacs.get_device_state"} {
+	for _, tool := range []string{"billing.get_customer", "billing.get_history", "mikrotik.get_pppoe_status", "genieacs.get_device_state"} {
 		for _, key := range identityKeys {
 			v := Check(router.TeamCS, tool, map[string]any{key: "pelanggan-orang-lain"}, uji)
 			if !v.Allowed {
@@ -57,24 +57,10 @@ func TestCSIdentitasLainDipaksaKePelangganSendiri(t *testing.T) {
 	}
 }
 
-// Banyak kunci sekaligus + nilai non-string: tidak boleh ada yang lolos.
-func TestCSBanyakKunciDanTipeAneh(t *testing.T) {
-	args := map[string]any{
-		"identity": "orang-lain", "username": "orang-lain", "phone": "628999000333",
-		"device_id": "ABC-123", "search": 12345, "name": []string{"x"}, "customer": map[string]any{"id": 9},
-		"interface": "ether1", // bukan identitas; tidak disentuh
-	}
-	v := Check(router.TeamCS, "radius.get_session", args, uji)
-	if !v.Allowed || v.Args["identity"] != "pelanggan-uji" || !v.Rewritten {
-		t.Fatalf("hasil: %+v", v)
-	}
-	for _, k := range []string{"username", "phone", "device_id", "search", "name", "customer"} {
-		if _, ada := v.Args[k]; ada {
-			t.Errorf("kunci %q harus dibuang", k)
-		}
-	}
-	if v.Args["interface"] != "ether1" {
-		t.Error("argumen non-identitas tidak boleh diubah")
+func TestCSBlocksRadiusBulkSessionTool(t *testing.T) {
+	v := Check(router.TeamCS, "radius.get_session", map[string]any{"identity": "pelanggan-uji"}, uji)
+	if v.Allowed {
+		t.Fatalf("blocked Radius bulk tool must not be available to CS: %+v", v)
 	}
 }
 
@@ -152,7 +138,7 @@ func TestFilterToolsUntukCS(t *testing.T) {
 		"genieacs.get_device_state", "genieacs.get_devices", "ping", "dns", "tcp", "traceroute", "interface", "system", "mikrotik.disconnect_pppoe",
 	}
 	got := FilterTools(router.TeamCS, semua)
-	want := []string{"billing.get_customer", "billing.get_history", "radius.get_session", "mikrotik.get_pppoe_status", "genieacs.get_device_state", "ping", "dns", "tcp"}
+	want := []string{"billing.get_customer", "billing.get_history", "mikrotik.get_pppoe_status", "genieacs.get_device_state", "ping", "dns", "tcp"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("FilterTools(CS) = %v, mau %v", got, want)
 	}

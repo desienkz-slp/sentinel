@@ -112,7 +112,9 @@ func (a *Adapter) Name() string { return "NETORA Billing" }
 func (a *Adapter) Configured() bool { return a.http != nil && a.http.Configured() }
 
 // ToolNames memenuhi tool.Adapter.
-func (a *Adapter) ToolNames() []string { return []string{"billing.get_customer", ToolHistory, ToolList} }
+func (a *Adapter) ToolNames() []string {
+	return []string{"billing.get_customer", ToolHistory, ToolList}
+}
 
 // Health memenuhi tool.Adapter: probe dengan GET /customers?per_page=1.
 func (a *Adapter) Health(ctx context.Context) (string, error) {
@@ -171,7 +173,7 @@ func (a *Adapter) getCustomer(ctx context.Context, args map[string]any) (tool.Ou
 		return tool.Output{}, fmt.Errorf("billing.get_customer butuh identity (nomor WA / username / nama)")
 	}
 
-	path := "/customers?search=" + url.QueryEscape(identity) + "&per_page=10"
+	path := "/customers?search=" + url.QueryEscape(identity) + "&per_page=1&page=1"
 	var out customersResponse
 	if err := a.http.GetJSON(ctx, path, &out); err != nil {
 		return tool.Output{}, err
@@ -179,58 +181,55 @@ func (a *Adapter) getCustomer(ctx context.Context, args map[string]any) (tool.Ou
 	if out.Status != "success" {
 		return tool.Output{}, fmt.Errorf("respons billing tidak success: %s", out.Status)
 	}
-
 	if len(out.Data) == 0 {
-		return tool.Output{
-			Text: fmt.Sprintf("Tidak ditemukan pelanggan dengan identitas %q.", identity),
-		}, nil
+		return tool.Output{Text: "Tidak ditemukan pelanggan untuk identitas yang diberikan."}, nil
 	}
+	// A search may be a partial name or phone. Never select one customer from an
+	// ambiguous result, even though the response page itself is bounded.
+	if len(out.Data) != 1 || out.Meta.Total > 1 {
+		return tool.Output{}, fmt.Errorf("identitas tidak unik; gunakan username atau nomor pelanggan yang lebih spesifik")
+	}
+	return safeCustomerOutput(out.Data[0])
+}
 
-	// Ringkas ke teks untuk LLM + data mentah untuk audit.
+// safeCustomerOutput deliberately omits identifiers and contact/location PII.
+// The caller already supplied the identity; diagnostics only need service state.
+func safeCustomerOutput(c Customer) (tool.Output, error) {
+	data := map[string]any{
+		"status":      c.Status,
+		"is_isolated": c.IsIsolated,
+		"is_on_leave": c.IsOnLeave,
+	}
+	if c.JenisBayar != "" {
+		data["payment_type"] = c.JenisBayar
+	}
+	if c.BillingDate > 0 {
+		data["billing_day"] = c.BillingDate
+	}
+	if c.TglIsolir > 0 {
+		data["isolation_day"] = c.TglIsolir
+	}
+	if c.IsolatedSince != nil {
+		data["isolated_since"] = *c.IsolatedSince
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Ditemukan %d pelanggan untuk %q:\n", len(out.Data), identity)
-	for _, c := range out.Data {
-		fmt.Fprintf(&b, "- %s (%s): status=%s", c.Name, c.Username, c.Status)
-		if c.IsIsolated {
-			b.WriteString(", ISOLIR")
-		}
-		if c.Phone != "" {
-			fmt.Fprintf(&b, ", WA=%s", c.Phone)
-		}
-		if c.Package.Name != "" {
-			fmt.Fprintf(&b, ", paket=%s", c.Package.Name)
-			if c.Package.Price > 0 {
-				fmt.Fprintf(&b, " (Rp%d)", c.Package.Price)
-			}
-		}
-		if c.JenisBayar != "" {
-			fmt.Fprintf(&b, ", bayar=%s", c.JenisBayar)
-		}
-		if c.BillingDate > 0 {
-			fmt.Fprintf(&b, ", tgl_tagih=%d", c.BillingDate)
-		}
-		if c.TglIsolir > 0 {
-			fmt.Fprintf(&b, ", tgl_isolir=%d", c.TglIsolir)
-		}
-		if c.IsIsolated && c.IsolatedSince != nil {
-			fmt.Fprintf(&b, ", isolir_sejak=%s", *c.IsolatedSince)
-		}
-		if c.IsOnLeave {
-			b.WriteString(", CUTI")
-		}
-		if c.Area.Name != "" {
-			fmt.Fprintf(&b, ", area=%s", c.Area.Name)
-		}
-		b.WriteString("\n")
+	fmt.Fprintf(&b, "Status akun: %s", c.Status)
+	if c.IsIsolated {
+		b.WriteString(", ISOLIR")
 	}
-	if out.Meta.Total > len(out.Data) {
-		fmt.Fprintf(&b, "(total %d, menampilkan %d teratas)\n", out.Meta.Total, len(out.Data))
+	if c.IsOnLeave {
+		b.WriteString(", CUTI")
 	}
-
-	return tool.Output{
-		Data: out.Data,
-		Text: strings.TrimSpace(b.String()),
-	}, nil
+	if c.JenisBayar != "" {
+		fmt.Fprintf(&b, ", bayar=%s", c.JenisBayar)
+	}
+	if c.BillingDate > 0 {
+		fmt.Fprintf(&b, ", tgl_tagih=%d", c.BillingDate)
+	}
+	if c.TglIsolir > 0 {
+		fmt.Fprintf(&b, ", tgl_isolir=%d", c.TglIsolir)
+	}
+	return tool.Output{Data: data, Text: b.String()}, nil
 }
 
 func firstString(m map[string]any, keys ...string) string {

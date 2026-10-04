@@ -112,3 +112,19 @@ func TestWorkflowStepsParsed(t *testing.T) {
 		t.Error("workflow harusnya audit:true")
 	}
 }
+
+func TestCanonicalWorkflowDoesNotReferenceBlockedRadiusBulkTools(t *testing.T) {
+	r, err := workflow.LoadDir("../../workflows")
+	if err != nil {
+		t.Fatalf("LoadDir: %v", err)
+	}
+	def, ok := r.ForIntent("COMPLAINT")
+	if !ok {
+		t.Fatal("workflow COMPLAINT tidak ditemukan")
+	}
+	for _, step := range def.Steps {
+		if step.Tool == "radius.get_session" || step.Tool == "radius.get_user" {
+			t.Errorf("workflow must not reference blocked Radius bulk tool %q", step.Tool)
+		}
+	}
+}

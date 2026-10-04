@@ -2,7 +2,6 @@ package radius
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -39,60 +38,24 @@ func TestPing(t *testing.T) {
 	}
 }
 
-// TestGetSession: parse /api/sessions + filter username.
-func TestGetSession(t *testing.T) {
+// TestSessionAndUserToolsAreBlockedBeforeAnyBulkRequest proves that upstream
+// only offers unbounded list endpoints, so adapter dispatch cannot fetch them.
+func TestSessionAndUserToolsAreBlockedBeforeAnyBulkRequest(t *testing.T) {
+	requests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/sessions" {
-			t.Errorf("path = %q, mau /api/sessions", r.URL.Path)
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	a := newTestAdapter(srv)
+	for _, name := range []string{"radius.get_session", "radius.get_user"} {
+		if _, err := a.Invoke(context.Background(), name, map[string]any{"identity": "pelanggan01"}); err == nil {
+			t.Errorf("%s must be blocked", name)
 		}
-		w.Write([]byte(`[
-			{"radacctid":1,"username":"pelanggan01","nasipaddress":"192.168.1.1","framedipaddress":"10.10.10.50","acctsessiontime":12600,"acctinputoctets":104857600,"acctoutputoctets":524288000,"profile":"paket-10mbps"},
-			{"radacctid":2,"username":"pelanggan02","nasipaddress":"192.168.1.1","framedipaddress":"10.10.10.51","acctsessiontime":60,"acctinputoctets":100,"acctoutputoctets":200,"profile":"paket-20mbps"}
-		]`))
-	}))
-	defer srv.Close()
-
-	a := newTestAdapter(srv)
-	out, err := a.Invoke(context.Background(), "radius.get_session", map[string]any{"identity": "pelanggan01"})
-	if err != nil {
-		t.Fatalf("Invoke error: %v", err)
 	}
-	if !strings.Contains(out.Text, "pelanggan01") {
-		t.Errorf("Text = %q, mau memuat pelanggan01", out.Text)
-	}
-	if strings.Contains(out.Text, "pelanggan02") {
-		t.Errorf("Text = %q, tidak boleh memuat pelanggan02", out.Text)
-	}
-	// traffic diubah ke humanBytes.
-	if !strings.Contains(out.Text, "MB") {
-		t.Errorf("Text = %q, mau memuat ukuran MB", out.Text)
-	}
-}
-
-// TestGetUser: password tidak bocor ke teks.
-func TestGetUser(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"username":"pelanggan01","password":"rahasia123","profile":"paket-10mbps","nas_ip":"192.168.1.1"}]`))
-	}))
-	defer srv.Close()
-
-	a := newTestAdapter(srv)
-	out, err := a.Invoke(context.Background(), "radius.get_user", map[string]any{"identity": "pelanggan01"})
-	if err != nil {
-		t.Fatalf("Invoke error: %v", err)
-	}
-	if strings.Contains(out.Text, "rahasia123") {
-		t.Errorf("password bocor di teks: %q", out.Text)
-	}
-	raw, err := json.Marshal(out.Data)
-	if err != nil {
-		t.Fatalf("marshal data output: %v", err)
-	}
-	if strings.Contains(string(raw), "rahasia123") {
-		t.Errorf("password bocor di data output: %q", string(raw))
-	}
-	if !strings.Contains(out.Text, "Tersimpan") {
-		t.Errorf("Text = %q, mau menandai password 'Tersimpan'", out.Text)
+	if requests != 0 {
+		t.Fatalf("blocked tools made %d upstream requests; must not download bulk data", requests)
 	}
 }
 
@@ -120,7 +83,7 @@ func TestToolNames(t *testing.T) {
 		t.Errorf("Domain = %q, mau radius", a.Domain())
 	}
 	names := a.ToolNames()
-	want := []string{"radius.get_session", "radius.get_user", "radius.get_system_stats"}
+	want := []string{"radius.get_system_stats"}
 	if len(names) != len(want) {
 		t.Fatalf("ToolNames = %v, mau %v", names, want)
 	}

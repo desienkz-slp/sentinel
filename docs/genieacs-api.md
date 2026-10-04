@@ -61,6 +61,21 @@ Base URL: `http(s)://<host>:7557`
 
 4. **Port** NBI default 7557 (bisa beda per deployment — cek config/config.json).
 
+## Kontrak aman adapter NOC Sentinel
+
+`genieacs.get_device_state` hanya menerima `device_id`/serial GenieACS yang
+tepat. Adapter menjalankan satu query server-side `_id` dengan `limit=1` dan
+projection tetap untuk `_lastInform`, vendor, model, serta RX power. Bila NBI
+mengembalikan lebih dari satu device, adapter menolak respons sebagai tidak
+terbatas. Output dibatasi ke state terproyeksi dan tidak menyertakan raw device
+ID atau field CPE lain.
+
+`genieacs.get_devices` sengaja tidak tersedia. GenieACS NBI tidak menyediakan
+kontrak paginasi dan agregasi yang dapat dipaksakan adapter tanpa menampilkan
+raw device IDs; daftar bulk harus tetap ditolak.
+
+Health check hanya membaca `_lastInform` dan mengembalikan hitungan agregat.
+
 ## Deteksi online/offline (untuk get_device_state)
 
 Device dianggap **offline** bila `_lastInform` lebih lama dari ambang batas

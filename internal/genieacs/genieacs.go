@@ -53,12 +53,9 @@ func (a *Adapter) Name() string { return "GenieACS (TR-069)" }
 // Configured memenuhi tool.Adapter.
 func (a *Adapter) Configured() bool { return a.http != nil && a.http.Configured() }
 
-// ToolNames memenuhi tool.Adapter — hanya tool read-only.
+// ToolNames memenuhi tool.Adapter — hanya lookup satu perangkat yang dibatasi.
 func (a *Adapter) ToolNames() []string {
-	return []string{
-		"genieacs.get_device_state",
-		"genieacs.get_devices",
-	}
+	return []string{"genieacs.get_device_state"}
 }
 
 // Health memenuhi tool.Adapter: probe GET /devices (pastikan NBI menjawab).
@@ -79,16 +76,15 @@ type PingResult struct {
 }
 
 // Ping memverifikasi koneksi terhadap NBI. Menghitung total device + yang online
-// (inform < 7 hari, ambang wajar untuk TR-069). Pakai projection supaya respons
-// kecil (hanya _id + _lastInform), karena /devices tanpa projection bisa
-// puluhan MB untuk ratusan device.
+// (inform < 7 hari, ambang wajar untuk TR-069). Projection hanya meminta
+// _lastInform agar lookup agregat tidak menarik raw device IDs atau detail CPE.
 func (a *Adapter) Ping(ctx context.Context) (PingResult, error) {
 	if !a.Configured() {
 		return PingResult{}, fmt.Errorf("genieacs belum dikonfigurasi (isi host NBI)")
 	}
 	start := time.Now()
 	var devices []map[string]any
-	if err := a.http.GetJSON(ctx, "/devices/?projection=_id,_lastInform", &devices); err != nil {
+	if err := a.http.GetJSON(ctx, "/devices/?projection=_lastInform", &devices); err != nil {
 		return PingResult{}, err
 	}
 	online := 0
@@ -108,124 +104,67 @@ func (a *Adapter) Ping(ctx context.Context) (PingResult, error) {
 
 // Invoke memenuhi tool.Adapter.
 func (a *Adapter) Invoke(ctx context.Context, name string, args map[string]any) (tool.Output, error) {
-	switch name {
-	case "genieacs.get_device_state":
-		return a.getDeviceState(ctx, args)
-	case "genieacs.get_devices":
-		return a.getDevices(ctx, args)
-	default:
-		return tool.Output{}, fmt.Errorf("tool genieacs tidak dikenal: %s", name)
+	if name != "genieacs.get_device_state" {
+		return tool.Output{}, fmt.Errorf("tool genieacs tidak dikenal atau dinonaktifkan: %s", name)
 	}
+	return a.getDeviceState(ctx, args)
 }
 
-// getDeviceState membaca status satu device (online/offline + info dasar).
-//
-// Resolusi identitas device dicoba dalam urutan berikut (sesuai kebutuhan
-// operasional NetLayer — pelanggan bisa dikenal lewat username PPPoE ATAU nama
-// WiFi/SSID, bukan hanya serial _id):
-//   1. _id / serial number (device_id / _id / serial / identity)
-//   2. username PPPoE  (field TR-069 WANPPPConnection.1.Username)
-//   3. nama WiFi/SSID  (field TR-069 LANDevice.1.WLANConfiguration.1.SSID)
-// Bila salah satu cocok, kembalikan device; bila tidak ada, laporkan jujur
-// "tidak ditemukan" (UNKNOWN — jangan ditebak).
+const deviceStateProjection = "_lastInform,InternetGatewayDevice.DeviceInfo.Manufacturer,InternetGatewayDevice.DeviceInfo.ModelName,VirtualParameters.RXPower"
+
+// getDeviceState reads exactly one device by its exact GenieACS device ID. The
+// NBI response is bounded by limit=1 and a fixed projection; output is reduced
+// again so that neither raw IDs nor arbitrary device fields can escape.
 func (a *Adapter) getDeviceState(ctx context.Context, args map[string]any) (tool.Output, error) {
-	deviceID := firstString(args, "device_id", "_id", "serial", "identity")
+	deviceID := firstString(args, "device_id")
 	if deviceID == "" {
-		return tool.Output{}, fmt.Errorf("genieacs.get_device_state butuh device_id (serial / username PPPoE / nama WiFi)")
+		return tool.Output{}, fmt.Errorf("genieacs.get_device_state butuh device_id")
 	}
 
-	// Kandidat query berurutan: _id persis, username PPPoE, lalu SSID.
-	candidates := []struct {
-		label string
-		query string
-	}{
-		{"_id", `{"_id":` + jsonString(deviceID) + `}`},
-		{"username", `{"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username":` + jsonString(deviceID) + `}`},
-		{"ssid", `{"InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID":` + jsonString(deviceID) + `}`},
+	query := `{"_id":` + jsonString(deviceID) + `}`
+	values := url.Values{
+		"limit":      []string{"1"},
+		"projection": []string{deviceStateProjection},
+		"query":      []string{query},
 	}
-
-	var lastErr error
-	for _, c := range candidates {
-		var devices []map[string]any
-		if err := a.http.GetJSON(ctx, "/devices/?query="+url.QueryEscape(c.query), &devices); err != nil {
-			lastErr = err
-			continue
-		}
-		if len(devices) == 0 {
-			continue
-		}
-		d := devices[0]
-		state := deviceState(d)
-		// Bila ditemukan lewat username/SSID (bukan _id), beri tahu sumbernya
-		// supaya operator tahu identitas pelanggan ter-resolve lewat jalur mana.
-		if c.label != "_id" {
-			state = fmt.Sprintf("[ditemukan lewat %s %q] %s", c.label, deviceID, state)
-		}
-		return tool.Output{Data: d, Text: state}, nil
-	}
-
-	if lastErr != nil {
-		// Ada respons bermasalah dari NBI — laporkan error, bukan "tidak ditemukan".
-		return tool.Output{}, lastErr
-	}
-	return tool.Output{Text: fmt.Sprintf("Device %q tidak ditemukan di GenieACS (dicoba: _id, username PPPoE, nama WiFi).", deviceID)}, nil
-}
-
-// getDevices membaca daftar device (opsional filter online/offline). Pakai
-// projection supaya respons kecil (tanpa projection bisa puluhan MB).
-func (a *Adapter) getDevices(ctx context.Context, args map[string]any) (tool.Output, error) {
 	var devices []map[string]any
-	if err := a.http.GetJSON(ctx, "/devices/?projection=_id,_lastInform", &devices); err != nil {
+	if err := a.http.GetJSON(ctx, "/devices/?"+values.Encode(), &devices); err != nil {
 		return tool.Output{}, err
 	}
-
-	filter := firstString(args, "status", "filter") // "online" | "offline" | ""
-	cutoff := time.Now().Add(-7 * 24 * time.Hour)
-
-	var b strings.Builder
-	count := 0
-	for _, d := range devices {
-		online := isOnline(d, cutoff)
-		if filter == "online" && !online {
-			continue
-		}
-		if filter == "offline" && online {
-			continue
-		}
-		count++
-		id := str(d["_id"])
-		fmt.Fprintf(&b, "- %s: %s", id, onoff(online))
-		if li := str(d["_lastInform"]); li != "" {
-			fmt.Fprintf(&b, ", inform=%s", li)
-		}
-		b.WriteString("\n")
+	if len(devices) == 0 {
+		return tool.Output{Data: map[string]any{"state": "UNKNOWN"}, Text: "Device tidak ditemukan di GenieACS."}, nil
 	}
-	if count == 0 {
-		return tool.Output{Text: "Tidak ada device (atau filter tidak cocok)."}, nil
+	if len(devices) != 1 {
+		return tool.Output{}, fmt.Errorf("respons GenieACS memuat lebih dari satu device untuk lookup tunggal")
 	}
-	return tool.Output{Data: devices, Text: strings.TrimSpace(b.String())}, nil
+
+	d := devices[0]
+	state := safeDeviceState(d)
+	return tool.Output{Data: state, Text: deviceStateText(state)}, nil
 }
 
-// deviceState merangkum satu device ke teks.
-func deviceState(d map[string]any) string {
-	id := str(d["_id"])
-	online := isOnline(d, time.Now().Add(-7*24*time.Hour))
+func safeDeviceState(d map[string]any) map[string]any {
+	return map[string]any{
+		"state":        onoff(isOnline(d, time.Now().Add(-7*24*time.Hour))),
+		"vendor":       vendor(d),
+		"model":        model(d),
+		"rx_power_dbm": rxPower(d),
+		"last_inform":  str(d["_lastInform"]),
+	}
+}
+
+func deviceStateText(state map[string]any) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s: %s", id, onoff(online))
-	if man := vendor(d); man != "" {
-		fmt.Fprintf(&b, ", vendor=%s", man)
-	}
-	if model := model(d); model != "" {
-		fmt.Fprintf(&b, ", model=%s", model)
-	}
-	if rx := rxPower(d); rx != "" {
-		fmt.Fprintf(&b, ", rx=%s dBm", rx)
-	}
-	if li := str(d["_lastInform"]); li != "" {
-		fmt.Fprintf(&b, ", last-inform=%s", li)
-	}
-	if tags := str(d["_tags"]); tags != "" {
-		fmt.Fprintf(&b, ", tags=%s", tags)
+	fmt.Fprintf(&b, "state=%s", str(state["state"]))
+	for _, field := range []struct{ label, key string }{
+		{"vendor", "vendor"}, {"model", "model"}, {"rx", "rx_power_dbm"}, {"last-inform", "last_inform"},
+	} {
+		if value := str(state[field.key]); value != "" {
+			fmt.Fprintf(&b, ", %s=%s", field.label, value)
+			if field.key == "rx_power_dbm" {
+				b.WriteString(" dBm")
+			}
+		}
 	}
 	return b.String()
 }

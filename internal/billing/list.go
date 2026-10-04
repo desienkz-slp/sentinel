@@ -9,17 +9,12 @@ import (
 	"ainoc/internal/tool"
 )
 
-// ToolList = daftar/ringkasan pelanggan (GET /api/noc/v1/customers dengan
-// filter status/is_isolated/search). Read-only.
+// ToolList exposes aggregate counts only. It never returns customer records.
 const ToolList = "billing.list_customers"
-
-// listMaxRows membatasi baris yang ditampilkan agar balasan WA ringkas;
-// totalnya tetap dilaporkan penuh dari meta API.
-const listMaxRows = 15
 
 func (a *Adapter) total(ctx context.Context, query string) (int, error) {
 	var out customersResponse
-	if err := a.http.GetJSON(ctx, "/customers?per_page=1"+query, &out); err != nil {
+	if err := a.http.GetJSON(ctx, "/customers?per_page=1&page=1"+query, &out); err != nil {
 		return 0, err
 	}
 	if out.Status != "success" {
@@ -28,75 +23,44 @@ func (a *Adapter) total(ctx context.Context, query string) (int, error) {
 	return out.Meta.Total, nil
 }
 
-// listCustomers: tanpa filter -> ringkasan jumlah (total/aktif/nonaktif/isolir).
-// filter = "aktif" | "nonaktif" | "isolir" | "cari" (butuh search) -> daftar
-// bernomor, maksimal listMaxRows baris + total sebenarnya.
+// listCustomers requests one explicit server page solely to read pagination
+// metadata. Customer rows are deliberately discarded before they reach Output.
 func (a *Adapter) listCustomers(ctx context.Context, args map[string]any) (tool.Output, error) {
 	filter := strings.ToLower(firstString(args, "filter"))
 	search := firstString(args, "search", "identity")
 
-	var q string
-	var label string
+	var q, label string
 	switch filter {
 	case "", "ringkasan", "semua":
 		if search == "" {
 			return a.summary(ctx)
 		}
-		q, label = "&search="+url.QueryEscape(search), "pencarian "+search
+		q, label = "&search="+url.QueryEscape(search), "Hasil pencarian"
 	case "aktif", "active":
-		q, label = "&status=active", "pelanggan aktif"
+		q, label = "&status=active", "Pelanggan aktif"
 	case "nonaktif", "inactive":
-		q, label = "&status=inactive", "pelanggan nonaktif"
+		q, label = "&status=inactive", "Pelanggan nonaktif"
 	case "isolir", "isolated":
-		q, label = "&is_isolated=1", "pelanggan terisolir"
+		q, label = "&is_isolated=1", "Pelanggan terisolir"
 	case "cari", "search":
 		if search == "" {
 			return tool.Output{}, fmt.Errorf("filter cari butuh kata kunci (nama/username/nomor)")
 		}
-		q, label = "&search="+url.QueryEscape(search), "pencarian "+search
+		q, label = "&search="+url.QueryEscape(search), "Hasil pencarian"
 	default:
 		return tool.Output{}, fmt.Errorf("filter %q tidak dikenal (aktif|nonaktif|isolir|cari)", filter)
 	}
 
-	var out customersResponse
-	path := fmt.Sprintf("/customers?per_page=%d%s", listMaxRows, q)
-	if err := a.http.GetJSON(ctx, path, &out); err != nil {
+	n, err := a.total(ctx, q)
+	if err != nil {
 		return tool.Output{}, err
 	}
-	if out.Status != "success" {
-		return tool.Output{}, fmt.Errorf("respons billing tidak success: %s", out.Status)
-	}
-	if len(out.Data) == 0 {
-		return tool.Output{Text: fmt.Sprintf("Tidak ada data untuk %s.", label)}, nil
-	}
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s: %d pelanggan", strings.ToUpper(label[:1])+label[1:], out.Meta.Total)
-	if out.Meta.Total > len(out.Data) {
-		fmt.Fprintf(&b, " (menampilkan %d)", len(out.Data))
-	}
-	b.WriteString("\n")
-	for i, c := range out.Data {
-		fmt.Fprintf(&b, "%d. %s (%s) — %s", i+1, c.Name, c.Username, c.Status)
-		if c.IsIsolated {
-			b.WriteString(", ISOLIR")
-		}
-		if c.Package.Name != "" {
-			fmt.Fprintf(&b, ", %s", c.Package.Name)
-		}
-		b.WriteString("\n")
-	}
-	if out.Meta.Total > len(out.Data) {
-		b.WriteString("Sebutkan username untuk detail, atau persempit pencarian.")
-	}
-	return tool.Output{Data: out.Data, Text: strings.TrimSpace(b.String())}, nil
+	data := map[string]int{"count": n}
+	return tool.Output{Data: data, Text: fmt.Sprintf("%s: %d pelanggan.", label, n)}, nil
 }
 
 func (a *Adapter) summary(ctx context.Context) (tool.Output, error) {
-	type item struct {
-		label string
-		q     string
-	}
+	type item struct{ label, q string }
 	items := []item{
 		{"Total pelanggan", ""},
 		{"Aktif", "&status=active"},
@@ -116,7 +80,6 @@ func (a *Adapter) summary(ctx context.Context) (tool.Output, error) {
 	for i, it := range items {
 		fmt.Fprintf(&b, "- %s: %d\n", it.label, vals[i])
 	}
-	b.WriteString("Ketik: daftar pelanggan isolir / aktif / nonaktif, atau cari <nama>.")
 	data := map[string]int{"total": vals[0], "aktif": vals[1], "nonaktif": vals[2], "isolir": vals[3]}
 	return tool.Output{Data: data, Text: strings.TrimSpace(b.String())}, nil
 }

@@ -194,104 +194,82 @@ func (a *Adapter) Invoke(ctx context.Context, name string, args map[string]any) 
 	}
 }
 
-// getPPPoEStatus membaca sesi PPPoE aktif dari /ppp/active/print lalu
-// mencocokkan username (name) dengan identitas yang dicari.
+// getPPPoEStatus reads at most one PPPoE session. The RouterOS query is
+// server-side bounded by the exact requested identity; bulk-session reads and
+// prefix matching are deliberately forbidden.
 func (a *Adapter) getPPPoEStatus(ctx context.Context, args map[string]any) (tool.Output, error) {
-	identity := firstString(args, "identity", "username", "name")
+	identity := firstString(args, "identity")
 	if identity == "" {
-		return tool.Output{}, fmt.Errorf("mikrotik.get_pppoe_status butuh identity (username PPPoE / nomor pelanggan)")
+		return tool.Output{}, fmt.Errorf("mikrotik.get_pppoe_status butuh identity (username PPPoE tepat)")
 	}
 
-	rows, err := a.query(ctx, "/ppp/active/print", nil)
+	rows, err := a.query(ctx, "/ppp/active/print", map[string]string{"?name": identity})
 	if err != nil {
 		return tool.Output{}, err
 	}
-
-	var match []map[string]string
-	for _, s := range rows {
-		name := s["name"]
-		if name == identity || strings.Contains(name, identity) {
-			match = append(match, s)
-		}
+	if len(rows) == 0 {
+		return tool.Output{Text: fmt.Sprintf("PPPoE %q TIDAK aktif (tidak ada sesi di /ppp/active).", identity)}, nil
+	}
+	if len(rows) != 1 || rows[0]["name"] != identity {
+		return tool.Output{Text: fmt.Sprintf("PPPoE %q tidak dapat di-resolve secara unik.", identity)}, nil
 	}
 
-	if len(match) == 0 {
-		return tool.Output{
-			Text: fmt.Sprintf("PPPoE %q TIDAK aktif (tidak ada sesi di /ppp/active).", identity),
-		}, nil
-	}
-
+	s := rows[0]
 	var b strings.Builder
-	fmt.Fprintf(&b, "Sesi PPPoE aktif untuk %q: %d\n", identity, len(match))
-	for _, s := range match {
-		fmt.Fprintf(&b, "- %s: service=%s", s["name"], orDash(s["service"]))
-		if s["caller-id"] != "" {
-			fmt.Fprintf(&b, ", caller-id=%s", s["caller-id"])
-		}
-		if s["address"] != "" {
-			fmt.Fprintf(&b, ", ip=%s", s["address"])
-		}
-		if s["uptime"] != "" {
-			fmt.Fprintf(&b, ", uptime=%s", s["uptime"])
-		}
-		b.WriteString("\n")
+	fmt.Fprintf(&b, "Sesi PPPoE aktif untuk %q: service=%s", identity, orDash(s["service"]))
+	if s["caller-id"] != "" {
+		fmt.Fprintf(&b, ", caller-id=%s", s["caller-id"])
 	}
-
-	return tool.Output{
-		Data: match,
-		Text: strings.TrimSpace(b.String()),
-	}, nil
+	if s["address"] != "" {
+		fmt.Fprintf(&b, ", ip=%s", s["address"])
+	}
+	if s["uptime"] != "" {
+		fmt.Fprintf(&b, ", uptime=%s", s["uptime"])
+	}
+	return tool.Output{Data: []map[string]string{s}, Text: b.String()}, nil
 }
 
-// getInterfaceStats membaca statistik kumulatif tiap interface (rx/tx byte,
-// drop, error). Field terkonfirmasi: rx-byte, tx-byte, rx-drop, rx-error.
+// getInterfaceStats reads cumulative counters for one exact interface only.
+// Field terkonfirmasi: rx-byte, tx-byte, rx-drop, rx-error.
 func (a *Adapter) getInterfaceStats(ctx context.Context, args map[string]any) (tool.Output, error) {
-	rows, err := a.query(ctx, "/interface/print", nil)
+	iface := firstString(args, "interface")
+	if iface == "" {
+		return tool.Output{}, fmt.Errorf("mikrotik.get_interface_stats butuh interface (nama interface tepat)")
+	}
+	rows, err := a.query(ctx, "/interface/print", map[string]string{"?name": iface})
 	if err != nil {
 		return tool.Output{}, err
 	}
-	filter := firstString(args, "interface", "name")
+	if len(rows) == 0 {
+		return tool.Output{Text: fmt.Sprintf("Interface %q tidak ditemukan atau tidak aktif.", iface)}, nil
+	}
+	if len(rows) != 1 || rows[0]["name"] != iface {
+		return tool.Output{Text: fmt.Sprintf("Interface %q tidak dapat di-resolve secara unik.", iface)}, nil
+	}
+	s := rows[0]
 	var b strings.Builder
-	count := 0
-	for _, s := range rows {
-		if s["type"] == "" {
-			continue // bukan interface (biasanya VLAN/slave tanpa tipe)
-		}
-		if s["disabled"] == "true" || s["running"] == "false" {
-			continue // interface mati/nonaktif
-		}
-		if filter != "" && s["name"] != filter {
-			continue
-		}
-		// Lewati interface yang benar-benar nol (tanpa traffic).
-		if s["rx-byte"] == "0" && s["tx-byte"] == "0" && filter == "" {
-			continue
-		}
-		count++
-		fmt.Fprintf(&b, "%s: rx=%s (%s), tx=%s (%s)",
-			s["name"], s["rx-byte"], humanBytes(parseUint(s["rx-byte"])),
-			s["tx-byte"], humanBytes(parseUint(s["tx-byte"])))
-		if s["rx-drop"] != "" && s["rx-drop"] != "0" {
-			fmt.Fprintf(&b, ", rx-drop=%s", s["rx-drop"])
-		}
-		if s["rx-error"] != "" && s["rx-error"] != "0" {
-			fmt.Fprintf(&b, ", rx-error=%s", s["rx-error"])
-		}
-		if s["comment"] != "" {
-			fmt.Fprintf(&b, " [%s]", s["comment"])
-		}
-		b.WriteString("\n")
+	if s["disabled"] == "true" || s["running"] == "false" {
+		return tool.Output{Text: fmt.Sprintf("Interface %q tidak aktif.", iface)}, nil
 	}
-	if count == 0 {
-		return tool.Output{Text: "Tidak ada interface (atau filter tidak cocok)."}, nil
+	fmt.Fprintf(&b, "%s: rx=%s (%s), tx=%s (%s)",
+		s["name"], s["rx-byte"], humanBytes(parseUint(s["rx-byte"])),
+		s["tx-byte"], humanBytes(parseUint(s["tx-byte"])))
+	if s["rx-drop"] != "" && s["rx-drop"] != "0" {
+		fmt.Fprintf(&b, ", rx-drop=%s", s["rx-drop"])
 	}
-	return tool.Output{Data: rows, Text: strings.TrimSpace(b.String())}, nil
+	if s["rx-error"] != "" && s["rx-error"] != "0" {
+		fmt.Fprintf(&b, ", rx-error=%s", s["rx-error"])
+	}
+	if s["comment"] != "" {
+		fmt.Fprintf(&b, " [%s]", s["comment"])
+	}
+	return tool.Output{Data: []map[string]string{s}, Text: b.String()}, nil
 }
 
 // getInterfaceLive membaca live bps via /interface/monitor-traffic once.
 // Field terkonfirmasi: rx-bits-per-second, tx-bits-per-second, drops.
 func (a *Adapter) getInterfaceLive(ctx context.Context, args map[string]any) (tool.Output, error) {
-	iface := firstString(args, "interface", "name")
+	iface := firstString(args, "interface")
 	if iface == "" {
 		return tool.Output{}, fmt.Errorf("mikrotik.get_interface_live butuh interface (nama interface)")
 	}
@@ -305,6 +283,9 @@ func (a *Adapter) getInterfaceLive(ctx context.Context, args map[string]any) (to
 	if len(rows) == 0 {
 		return tool.Output{Text: fmt.Sprintf("Tidak ada data traffic untuk %q.", iface)}, nil
 	}
+	if len(rows) != 1 || rows[0]["name"] != iface {
+		return tool.Output{Text: fmt.Sprintf("Interface %q tidak dapat di-resolve secara unik.", iface)}, nil
+	}
 	s := rows[0]
 	rx := parseUint(s["rx-bits-per-second"])
 	tx := parseUint(s["tx-bits-per-second"])
@@ -316,7 +297,7 @@ func (a *Adapter) getInterfaceLive(ctx context.Context, args map[string]any) (to
 	if s["rx-errors-per-second"] != "" && s["rx-errors-per-second"] != "0" {
 		text += fmt.Sprintf(", rx-errors/s=%s", s["rx-errors-per-second"])
 	}
-	return tool.Output{Data: rows, Text: text}, nil
+	return tool.Output{Data: []map[string]string{s}, Text: text}, nil
 }
 
 // getCustomerTraffic reads one PPPoE customer's live interface traffic. It never

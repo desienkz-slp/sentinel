@@ -1,89 +1,42 @@
-# MikroTik / RouterOS — Referensi API & API-SSL
+# MikroTik / RouterOS Native Binary API
 
-> Acuan implementasi MikrotikAdapter di NOC Sentinel.
-> Sumber: dokumentasi resmi MikroTik (help.mikrotik.com / manual.mikrotik.com).
+NOC Sentinel uses the RouterOS **native binary API only**. It does not use RouterOS REST or the `www` / `www-ssl` services.
 
-## Ringkasan: ada DUA "API" yang berbeda
+## Transport and login
 
-| | **API (classic / binary)** | **REST API** |
-|---|---|---|
-| Muncul sejak | RouterOS v3 (semua versi, termasuk v6) | RouterOS **v7.1+** |
-| Transport | TCP mentah, protokol biner proprietary | HTTP/HTTPS (JSON) |
-| Port default | **8728** (plaintext) / **8729** (TLS) | 80/443 (service `www` / `www-ssl`) |
-| Auth | Kalimat `/login` (sentence) | **HTTP Basic Auth** (`user:password`) |
-| Bentuk | "sentence": word ber-prefix panjang, ditutup null byte | URL resource + HTTP method |
-| Contoh | `/ip/address/print` | `GET /rest/ip/address` |
+- API: TCP port **8728** (plaintext).
+- API-SSL: TCP port **8729** (TLS); a custom port may be configured.
+- Commands are RouterOS binary API sentences: length-prefixed words terminated by `0x00`.
+- RouterOS 6.43+ login: `/login =name=<user> =password=<pass>`.
+- Older RouterOS login: challenge-response MD5.
 
-**Keputusan NOC Sentinel:** pakai **REST API (v7+) via HTTPS**, karena adapter
-kita berbasis HTTP (retry/backoff/health) dan single-binary. API biner 8728/8729
-butuh implementasi protokol biner sendiri — tidak dipakai dulu.
+The adapter is read-only. It has no RouterOS write commands and does not configure router services.
 
-## API vs API-SSL (protokol biner yang sama, transport beda)
+## Bounded read contract
 
-- **API (port 8728) — plaintext.** Tanpa enkripsi. Username+password dikirim
-  teks polos di jaringan, bisa di-sniff. Hanya aman di LAN/VPN terpercaya.
-- **API-SSL (port 8729) — TLS.** Lapisan TLS membungkus protokol yang sama.
-  Dua mode:
-  1. **Dengan sertifikat** (di-set di `/ip service` → `certificate`) → client
-     bisa verifikasi identitas router via TLS normal (disarankan).
-  2. **Tanpa sertifikat** → client pakai *anonymous Diffie-Hellman cipher*
-     (terenkripsi, tapi **tanpa autentikasi server** → rentan MITM).
+Every customer or interface lookup is deny-by-default and bounded at the RouterOS query layer. A missing identity/interface is rejected before network I/O. Returned rows are checked again before output; a missing or non-unique response emits a bounded status and never a list.
 
-> **Catatan penting:** API-SSL tetap mengirim password plaintext di level
-> protokolnya. Yang melindungi adalah *terowongan TLS*-nya, bukan protokol API.
-> Untuk produksi: pakai sertifikat, bukan mode anonymous DH.
+| Tool | Required argument | Native RouterOS command | Bound | Output rule |
+|---|---|---|---|---|
+| `mikrotik.get_pppoe_status` | `identity` | `/ppp/active/print ?name=<identity>` | exact one PPPoE identity | at most one session; no prefix matching or session list |
+| `mikrotik.get_interface_stats` | `interface` | `/interface/print ?name=<interface>` | exact one interface | at most one counter record; no interface list |
+| `mikrotik.get_interface_live` | `interface` | `/interface/monitor-traffic =interface=<interface> =once=` | exact one interface | at most one live sample |
+| `mikrotik.get_customer_traffic` | `identity` | `/ppp/active/print ?name=<identity>`, then `/interface/monitor-traffic =interface=<resolved-interface> =once=` | exact one PPPoE identity and resolved interface | at most one live sample |
 
-## Metode login (dua era)
+## PPPoE customer traffic
 
-- **Pra-6.43**: challenge-response MD5 (`=ret=` challenge → client balas
-  `=response=00<md5>`) — password tidak dikirim polos.
-- **6.43+**: plaintext login (`/login =name=admin =password=...` → `!done`).
-  Password polos, jadi **wajib SSL** di jaringan tidak terpercaya.
+Customer traffic is obtained only by resolving the exact active PPPoE session and sampling its resolved PPPoE interface once. RouterOS queue paths are not read or used:
 
-## REST API (yang kita pakai)
+- no `/queue/*` command;
+- no simple-queue traffic source;
+- no queue-derived customer list.
 
-- Enable: `/ip service enable www` (HTTP, v7.9+) atau `/ip service enable www-ssl`
-  (HTTPS). Base path: `http(s)://<router>/rest`.
-- Auth: HTTP Basic Auth (user+password user router; default `admin` tanpa pass).
-- **Semua nilai JSON dikode sebagai string** (angka & boolean pun string).
-- Method: `GET`=print, `PATCH`=set, `PUT`=add, `DELETE`=remove, `POST`=perintah
-  konsol arbitrer.
-- Sertifikat default MikroTik = **self-signed** → client perlu `curl -k`
-  (di adapter kita: `InsecureTLS`).
+Ambiguous, missing, or mismatched sessions/interfaces are returned as `UNKNOWN` or a bounded no-data status. They never fall back to bulk reads.
 
-### Endpoint yang dipakai NOC Sentinel (read-only)
+## Registry and capability manifest
 
-| Endpoint | Data | Dipakai untuk |
-|---|---|---|
-| `GET /rest/system/resource` | version, board-name, uptime, cpu-load | Health/ping |
-| `GET /rest/ppp/active` | name, service, caller-id, address, uptime | `mikrotik.get_pppoe_status` |
+The release-controlled registry requires `identity` for PPPoE status and `interface` for both interface tools. The read-only capability manifest sets `max_rows: 1` for each bounded MikroTik capability. A tool absent from that manifest is blocked even if a local registry declaration is enabled.
 
-Contoh respons `ppp/active`:
-```json
-[
-  {"name":"628123456789@netlayer","service":"pppoe","caller-id":"AA:BB","address":"10.0.0.5","uptime":"1h2m"}
-]
-```
+## Security note
 
-## Catatan keamanan resmi (kutipan)
-
-> "We do not advise enabling HTTP access (www service). The main risk is that
-> authentication credentials can be read with passive eavesdropping."
-
-Untuk produksi: REST via **HTTPS (`www-ssl`) + sertifikat**, bukan HTTP `www`.
-HTTP `www` hanya untuk tes di jaringan yang dijamin aman.
-
-## Kaitannya dengan konfigurasi di dashboard
-
-Konfigurasi MikroTik di `⚙ Pengaturan` memakai field: `host`, `port`,
-`username`, `password`, `tls` (HTTPS/HTTP). Base URL dibangun otomatis:
-`http(s)://host[:port]/rest`. Env yang menang: `NOC_MIKROTIK_HOST/PORT/USER/PASS/TLS`.
-
-## API biner 8728/8729 (referensi, TIDAK dipakai dulu)
-
-- Login sentence: `["/login", "=name=admin", "=password=..."]` → `!done`.
-- Daftar library Go: `github.com/cloudwatt/terraform-provider-routeros` (tidak
-  relevan), `github.com/ddelnano/mikrotik` (client REST), atau implementasi
-  protokol biner sendiri (lihat blog "Implementing MikroTik's Binary API
-  Protocol").
-- Hanya perlu bila target router masih RouterOS v6 (tanpa REST).
+Plain API transmits modern RouterOS credentials in the clear; use API-SSL or a trusted private network. For API-SSL, deploy a verified router certificate where possible. The adapter itself does not enable services, change credentials, or issue write operations.

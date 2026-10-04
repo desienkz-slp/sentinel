@@ -16,7 +16,7 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
-    description: Ambil data akun/status pelanggan dari sistem billing.
+    description: Ambil projection status diagnostik satu pelanggan; identity wajib, satu halaman server, tanpa PII.
     parameters:
       type: object
       properties:
@@ -35,7 +35,7 @@ tools:
     timeout_seconds: 10
     retry: safe_get
     verification: response_contract
-    description: Riwayat tagihan bulanan + tunggakan satu pelanggan (token Bearer, read-only).
+    description: "BLOCKED: upstream history belum memiliki pagination/projection server-side yang aman."
     parameters:
       type: object
       properties:
@@ -54,7 +54,7 @@ tools:
     timeout_seconds: 15
     retry: safe_get
     verification: response_contract
-    description: Ringkasan/daftar pelanggan billing (aktif, nonaktif, isolir, cari) - read-only.
+    description: Ringkasan count pelanggan saja; satu halaman server untuk metadata, tanpa record pelanggan.
     parameters:
       type: object
       properties:
@@ -66,43 +66,6 @@ tools:
           description: Kata kunci nama/username/nomor (untuk filter cari).
       required: []
 
-  - name: radius.get_session
-    domain: radius
-    version: 1.0.0
-    enabled: false
-    permission: READ
-    risk: LOW
-    source_of_truth: radius
-    timeout_seconds: 8
-    retry: safe_get
-    verification: response_contract
-    description: Ambil status sesi aktif PPP dari Radius UI (ip, durasi, traffic).
-    parameters:
-      type: object
-      properties:
-        identity:
-          type: string
-          description: Username PPP (opsional; kosong = semua sesi aktif).
-      required: []
-
-  - name: radius.get_user
-    domain: radius
-    version: 1.0.0
-    enabled: false
-    permission: READ
-    risk: LOW
-    source_of_truth: radius
-    timeout_seconds: 8
-    retry: safe_get
-    verification: response_contract
-    description: Ambil data user PPP (profil, NAS, status) dari Radius UI.
-    parameters:
-      type: object
-      properties:
-        identity:
-          type: string
-          description: Username PPP (opsional; kosong = semua user).
-      required: []
 
   - name: radius.get_system_stats
     domain: radius
@@ -130,13 +93,14 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
-    description: Ambil status sesi PPPoE (aktif/putus) dari router MikroTik.
+    scope: single_customer
+    description: Ambil status tepat satu sesi PPPoE (aktif/putus) dari router MikroTik; identity wajib dan exact.
     parameters:
       type: object
       properties:
         identity:
           type: string
-          description: Username PPPoE atau nomor pelanggan ternormalisasi.
+          description: Username PPPoE tepat; wajib untuk filter RouterOS ?name exact.
       required: [identity]
 
   - name: mikrotik.get_interface_stats
@@ -149,14 +113,15 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
-    description: Statistik kumulatif interface (rx/tx byte, drop, error).
+    scope: single_interface
+    description: Statistik kumulatif tepat satu interface (rx/tx byte, drop, error); interface wajib dan exact.
     parameters:
       type: object
       properties:
         interface:
           type: string
-          description: Nama interface (opsional; kosong = semua).
-      required: []
+          description: Nama interface tepat; wajib untuk filter RouterOS ?name exact.
+      required: [interface]
 
   - name: mikrotik.get_interface_live
     domain: mikrotik
@@ -168,7 +133,8 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
-    description: Traffic live (bits per second) satu interface.
+    scope: single_interface
+    description: Traffic live (bits per second) tepat satu interface.
     parameters:
       type: object
       properties:
@@ -206,36 +172,14 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
-    description: Ambil status perangkat ONT/CPE (online/offline, sinyal) dari GenieACS.
+    description: Lookup status satu ONT/CPE dengan device ID tepat; respons diproyeksikan dan tanpa raw device ID.
     parameters:
       type: object
       properties:
         device_id:
           type: string
-          description: Serial number atau ID perangkat CPE/ONT.
-        identity:
-          type: string
-          description: Nomor pelanggan ternormalisasi (alternatif bila device_id tidak ada).
-      required: []
-
-  - name: genieacs.get_devices
-    domain: genieacs
-    version: 1.0.0
-    enabled: false
-    permission: READ
-    risk: LOW
-    source_of_truth: genieacs
-    timeout_seconds: 8
-    retry: safe_get
-    verification: response_contract
-    description: Daftar semua device di GenieACS (opsional filter online/offline).
-    parameters:
-      type: object
-      properties:
-        status:
-          type: string
-          description: 'online / offline (opsional; kosong = semua).'
-      required: []
+          description: Device ID/serial GenieACS tepat untuk satu ONT/CPE.
+      required: [device_id]
 
   - name: mikrotik.disconnect_pppoe
     domain: mikrotik

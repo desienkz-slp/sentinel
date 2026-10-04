@@ -18,7 +18,7 @@ sendiri** — kamu eskalasi ke nomor yang tepat (lihat §5).
 ## 1. Kontrak runtime yang ditegakkan kode
 
 - Untuk keluhan `COMPLAINT`, workflow Go berjalan berurutan: `resolve_identity` →
-  `billing.get_customer` → `radius.get_session` → `mikrotik.get_pppoe_status` →
+  `billing.get_customer` → `mikrotik.get_pppoe_status` →
   `genieacs.get_device_state` → `correlate_and_diagnose`.
 - LLM tidak boleh mengubah urutan workflow, memanggil HTTP/shell langsung, atau
   mengaktifkan tool. Semua tool melewati `registry → policy → adapter`; tool

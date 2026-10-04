@@ -3,6 +3,19 @@ version: 1.0.0
 # an operator enables its registry declaration locally. This is a static
 # contract only; it does not add, configure, or probe any external endpoint.
 capabilities:
+  - tool: billing.get_customer
+    domain: billing
+    transport: http_get_customers_search_explicit_page
+    operation: read
+    required_bounded_argument: identity
+    sensitivity: none
+    max_rows: 1
+    max_bytes: 8192
+    schema_notes: >-
+      GET /customers uses required search identity with per_page=1 and page=1.
+      Ambiguous results fail closed; adapter emits only a local diagnostic-state
+      projection, never customer identifiers, contact, address, coordinate, or raw row.
+
   - tool: radius.get_system_stats
     domain: radius
     transport: http_get_fixed_aggregate
@@ -14,6 +27,32 @@ capabilities:
     schema_notes: >-
       Fixed GET /api/system/stats. Aggregate CPU, memory, user-count, and DB
       size only; no customer, credential, session, or list payload.
+
+  - tool: mikrotik.get_pppoe_status
+    domain: mikrotik
+    transport: routeros_sentence_pppoe_active_exact
+    operation: read
+    required_bounded_argument: identity
+    sensitivity: none
+    max_rows: 1
+    max_bytes: 8192
+    schema_notes: >-
+      RouterOS filters /ppp/active/print server-side with exact ?name=<identity>.
+      Exactly one matching active session may be emitted; missing or ambiguous
+      responses are bounded status results. No session-list output is allowed.
+
+  - tool: mikrotik.get_interface_stats
+    domain: mikrotik
+    transport: routeros_sentence_interface_exact
+    operation: read
+    required_bounded_argument: interface
+    sensitivity: none
+    max_rows: 1
+    max_bytes: 8192
+    schema_notes: >-
+      RouterOS filters /interface/print server-side with exact ?name=<interface>.
+      Exactly one matching interface counter record may be emitted; no interface
+      list output is allowed.
 
   - tool: mikrotik.get_interface_live
     domain: mikrotik
@@ -40,3 +79,16 @@ capabilities:
       Exactly one resolved PPPoE interface is sampled by one
       /interface/monitor-traffic once sentence; ambiguity or missing data is UNKNOWN.
       No queue read or customer-list output is allowed.
+
+  - tool: genieacs.get_device_state
+    domain: genieacs
+    transport: http_get_devices_exact_id_projected_limit_one
+    operation: read
+    required_bounded_argument: device_id
+    sensitivity: none
+    max_rows: 1
+    max_bytes: 8192
+    schema_notes: >-
+      Exact server-side _id query with limit=1 and a fixed state projection.
+      The adapter emits only state, vendor, model, RX power, and last inform;
+      raw device IDs and bulk device lists are forbidden.
