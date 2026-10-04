@@ -106,6 +106,22 @@ func TestEvaluateUplinkFlapsDoesNotCoalesceDifferentInterfaces(t *testing.T) {
 	}
 }
 
+func TestCanonicalizeUplinkObservationsMakesEvaluatorReorderTolerant(t *testing.T) {
+	at := time.Date(2026, time.October, 4, 10, 0, 0, 0, time.UTC)
+	sorted := []UplinkObservation{
+		{EventID: "event-1", UplinkID: "core-a:xe-0/0/1", State: UplinkUp, ObservedAt: at},
+		{EventID: "event-2", UplinkID: "core-a:xe-0/0/1", State: UplinkDown, ObservedAt: at.Add(time.Minute)},
+		{EventID: "event-3", UplinkID: "core-a:xe-0/0/1", State: UplinkUp, ObservedAt: at.Add(2 * time.Minute)},
+		{EventID: "event-4", UplinkID: "core-a:xe-0/0/1", State: UplinkDown, ObservedAt: at.Add(3 * time.Minute)},
+	}
+	outOfOrder := []UplinkObservation{sorted[3], sorted[1], sorted[0], sorted[2]}
+	want := EvaluateUplinkFlaps(UplinkFlapInput{Observations: sorted})
+	got := EvaluateUplinkFlaps(UplinkFlapInput{Observations: outOfOrder})
+	if len(got) != len(want) || len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("out-of-order findings = %+v, sorted findings = %+v", got, want)
+	}
+}
+
 func TestEvaluateUplinkFlapsSuppressesFindingDuringCooldown(t *testing.T) {
 	at := time.Date(2026, time.October, 4, 10, 0, 0, 0, time.UTC)
 	findings := EvaluateUplinkFlaps(UplinkFlapInput{

@@ -1,6 +1,9 @@
 package incident
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 const (
 	uplinkFlapWindow   = 15 * time.Minute
@@ -37,6 +40,22 @@ type UplinkFlapInput struct {
 	PriorFindings []UplinkFlapFinding
 }
 
+// CanonicalizeUplinkObservations returns a copy ordered by uplink, observation
+// time, then event identity. This prevents arrival order from affecting findings.
+func CanonicalizeUplinkObservations(observations []UplinkObservation) []UplinkObservation {
+	ordered := append([]UplinkObservation(nil), observations...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].UplinkID != ordered[j].UplinkID {
+			return ordered[i].UplinkID < ordered[j].UplinkID
+		}
+		if !ordered[i].ObservedAt.Equal(ordered[j].ObservedAt) {
+			return ordered[i].ObservedAt.Before(ordered[j].ObservedAt)
+		}
+		return ordered[i].EventID < ordered[j].EventID
+	})
+	return ordered
+}
+
 // EvaluateUplinkFlaps evaluates immutable uplink evidence without I/O or state mutation.
 func EvaluateUplinkFlaps(input UplinkFlapInput) []UplinkFlapFinding {
 	type sequence struct {
@@ -54,7 +73,7 @@ func EvaluateUplinkFlaps(input UplinkFlapInput) []UplinkFlapFinding {
 		}
 	}
 	var findings []UplinkFlapFinding
-	for _, observation := range input.Observations {
+	for _, observation := range CanonicalizeUplinkObservations(input.Observations) {
 		if observation.EventID != "" {
 			if _, seen := seenEvents[observation.EventID]; seen {
 				continue
