@@ -81,12 +81,37 @@ func (e *Engine) upsertRule(r rule) {
 	e.rules = append(e.rules, r)
 }
 
-// WriteOverlay menulis aturan overlay (bentuk publik) ke path overlay secara
-// atomik. Ini cara UI mengubah rules: ia mengambil Rules() saat ini, mengubah
-// yang diinginkan, lalu memanggil WriteOverlay dengan SELURUH daftar rule yang
-// berbeda dari baseline.
+// WriteOverlay writes the edited rule list atomically. Rules() excludes deleted
+// rules, so retain existing tombstones absent from the submitted list. An
+// explicit rule with the same ID can still replace a tombstone.
 func WriteOverlay(path string, rules []Rule) error {
-	doc := overlayDoc{Version: "1.0.0", Rules: rules}
+	previous, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var old overlayDoc
+	if err == nil {
+		if err := yaml.Unmarshal(previous, &old); err != nil {
+			return err // Never discard unknown tombstones from a broken overlay.
+		}
+	}
+	submitted := make(map[string]bool, len(rules))
+	for _, r := range rules {
+		submitted[strings.ToLower(strings.TrimSpace(r.ID))] = true
+	}
+	merged := append([]Rule(nil), rules...)
+	// Only the final entry for an ID determines its effective deletion state.
+	last := make(map[string]int, len(old.Rules))
+	for i, r := range old.Rules {
+		last[strings.ToLower(strings.TrimSpace(r.ID))] = i
+	}
+	for i, r := range old.Rules {
+		id := strings.ToLower(strings.TrimSpace(r.ID))
+		if id != "" && last[id] == i && !submitted[id] && (r.Decision == "" || strings.EqualFold(r.Decision, "REMOVE")) {
+			merged = append(merged, Rule{ID: strings.TrimSpace(r.ID), Decision: "REMOVE"})
+		}
+	}
+	doc := overlayDoc{Version: "1.0.0", Rules: merged}
 	b, err := yaml.Marshal(doc)
 	if err != nil {
 		return err

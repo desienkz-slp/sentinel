@@ -1,0 +1,15 @@
+{
+  "name": "noc-sentinel-ui-regression",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:unit && playwright test",
+    "test:unit": "node --test settings-b-ping.test.cjs",
+    "test:summary": "node support/summarize.js",
+    "test:contracts": "playwright test contracts.spec.js",
+    "test:audit": "playwright test --grep @audit",
+    "test:audit:strict": "node support/audit-strict.js",
+    "report": "playwright show-report"
+  },
+  "devDependencies": { "@playwright/test": "1.61.1" }
+}

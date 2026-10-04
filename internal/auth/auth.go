@@ -31,12 +31,12 @@ const DefaultSuperPass = "628268Matamu"
 
 // Store memegang pengguna (username -> hash) + secret sesi + salt.
 type Store struct {
-	mu       sync.RWMutex
-	salt     string
-	users    map[string]string // username -> hex(HMAC-SHA256(pass, salt))
+	mu            sync.RWMutex
+	salt          string
+	users         map[string]string // username -> hex(HMAC-SHA256(pass, salt))
 	sessionSecret string
-	ttl      time.Duration
-	sessions map[string]time.Time // token -> expiry (validasi cepat)
+	ttl           time.Duration
+	sessions      map[string]time.Time // token -> expiry (validasi cepat)
 }
 
 // New membuat store. salt kosong -> dibuat acak. users boleh nil.
@@ -143,12 +143,19 @@ func (s *Store) IssueSession(username string) string {
 	return token
 }
 
-// sign membuat token HMAC(username + timestamp) untuk integritas.
+// sign includes a random nonce so rapid logins cannot reuse a revoked token.
 func (s *Store) sign(username string) string {
 	ts := time.Now().Unix()
 	mac := hmac.New(sha256.New, []byte(s.sessionSecret))
-	fmt.Fprintf(mac, "%s.%d", username, ts)
+	fmt.Fprintf(mac, "%s.%d.%s", username, ts, randomHex(32))
 	return fmt.Sprintf("%d.%s", ts, hex.EncodeToString(mac.Sum(nil)))
+}
+
+// RevokeSession invalidates one session without logging out other clients.
+func (s *Store) RevokeSession(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.sessions, token)
 }
 
 // ValidateSession memverifikasi token sesi masih valid.

@@ -6,87 +6,74 @@
 <title>Pengaturan — NOC Sentinel</title>
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png">
-<style>
-  :root{
-    --bg:#0b0f14; --panel:#121922; --panel2:#0f151d; --line:#1f2a37;
-    --txt:#dbe4ee; --dim:#8296ab; --acc:#22d3ee; --ok:#22c55e; --warn:#f59e0b;
-    --bad:#ef4444; --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
-  header{display:flex;align-items:center;gap:14px;padding:12px 22px;border-bottom:1px solid var(--line);
-    background:linear-gradient(180deg,#111a24,#0d141c);position:sticky;top:0;z-index:10;flex-wrap:wrap}
-  .header-inner{display:flex;align-items:center;gap:14px;max-width:1100px;margin:0 auto;width:100%;flex-wrap:wrap}
-  .brand{display:flex;flex-direction:column;line-height:1.15}
-  .brand-logo{width:38px;height:38px;flex:0 0 auto;display:block}
-  .logo{font-weight:700;letter-spacing:.5px;font-size:17px}
-  .logo span{color:var(--acc)}
-  .tagline{font:11px/1 var(--mono);color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-top:3px}
-  .pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;
-    border-left:1px solid var(--line);padding-left:14px;margin-left:6px}
-  @media(max-width:720px){
-    header{padding:10px 14px;gap:10px}
-    .header-inner{gap:10px}
-    .brand .tagline{display:none}
-    .pill{padding:5px 8px}
-    .actions{border-left:none;padding-left:0;margin-left:0}
-  }
-  .gear{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 auto;
-    color:var(--dim);text-decoration:none;font-size:17px;border:1px solid var(--line);border-radius:8px;
-    background:var(--panel2);transition:color .15s,border-color .15s}
-  .gear:hover{color:var(--txt);border-color:#33465c}
-  .gear.on{color:var(--acc);border-color:#27536b;background:#12303c}
-  .brand-link{display:inline-flex;flex:0 0 auto;text-decoration:none}
-  .brand-link img{display:block}
-  .nav a{color:var(--dim);text-decoration:none;font-size:13px;padding:7px 12px;border:1px solid var(--line);
-    border-radius:8px;background:var(--panel2)}
-  .nav a:hover{color:var(--txt);border-color:#33465c}
-  .nav a.on{color:var(--acc);border-color:#27536b}
-  .pill{font:12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line);border-radius:99px;color:var(--dim);
-    display:inline-flex;align-items:center;gap:6px;background:var(--panel2)}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
-  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
-  .dot.off{background:var(--bad)}
-  .ep-tag{font:10px/1 var(--mono);font-weight:700;padding:2px 6px;border-radius:5px}
-  .ep-tag.a{background:#38bdf8;color:#06202e}   /* light blue = Endpoint A */
-  .ep-tag.b{background:#ef4444;color:#fff}       /* red = Endpoint B */
-  .spacer{flex:1}
-  main{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 20px 40px;max-width:1100px;margin:0 auto}
-  main > section{min-width:0}
-  /* Monitor VERTIKAL / laptop kecil: tumpuk jadi satu kolom supaya form tidak sempit. */
-  @media(max-width:1100px){main{grid-template-columns:1fr}}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
-  .card h2{margin:0 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:600}
-  .card .sub{font-size:12px;color:var(--dim);margin-bottom:12px}
-  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
-  input,select,button{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);
-    border-radius:8px;padding:9px 11px;width:100%}
-  button{cursor:pointer;background:#16323d;border-color:#1e4a58;color:#c9f5ff;font-weight:600}
-  button:hover{background:#1b3d4a}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  button.ghost{background:transparent;border-color:var(--line);color:var(--dim);font-weight:500}
-  button.ghost:hover{color:var(--txt);border-color:#33465c}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  @media(max-width:640px){.row{grid-template-columns:1fr}}
-  .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-  .btns button{width:auto;flex:0 0 auto;padding:9px 16px}
-  .hint{font-size:12px;color:var(--dim);margin-top:8px}
-  .hint.ok{color:var(--ok)} .hint.bad{color:var(--bad)}
-  .status{font:12px/1.8 var(--mono);color:var(--dim);margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
-  .status b{color:var(--txt)}
-</style>
 <link rel="stylesheet" href="/noc-ui.css">
+<style>
+/* Settings-only layout: shared dashboard/login styles are intentionally untouched. */
+body.settings-page { --accent-cyan:#22d3ee; --status-purple:#a78bfa; --status-ok:#34d399; --status-bad:#f87171; --text-secondary:#a8b6c9; background-color:#0a0d14; }
+.settings-page .header-inner { max-width:1440px; }
+.settings-page main { display:block; max-width:1440px; margin:auto; padding:32px 24px 64px; }
+.settings-page .page-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:24px; }
+.settings-page .eyebrow { color:var(--accent-cyan); font:11px var(--font-mono); letter-spacing:.14em; text-transform:uppercase; margin-bottom:8px; }
+.settings-page h1 { font-size:clamp(24px,3vw,36px); letter-spacing:-.04em; line-height:1.2; margin:0 0 10px; }
+.settings-page .page-heading p { color:var(--text-secondary); max-width:680px; }
+.settings-page .workspace { display:block; min-width:0; }
+.settings-page .settings-nav { display:flex; overflow-x:auto; gap:4px; padding:8px; margin-bottom:24px; border:1px solid var(--border-default); border-radius:14px; background:rgba(15,22,34,.92); }
+.settings-page .settings-nav a { display:flex; white-space:nowrap; gap:12px; align-items:center; padding:12px; color:var(--text-secondary); border-radius:8px; text-decoration:none; border:1px solid transparent; }
+.settings-page .settings-nav a:hover,.settings-page .settings-nav a[aria-current] { color:var(--accent-cyan); background:rgba(34,211,238,.08); border-color:rgba(34,211,238,.2); }
+.settings-page .settings-nav small { font:10px var(--font-mono); opacity:.75; }
+.settings-page .nav-note { padding:14px 12px 0; font-size:12px; color:var(--text-secondary); border-top:1px solid var(--border-default); margin-top:12px; }
+.settings-page .settings-content { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; min-width:0; }
+.settings-page .card { min-width:0; padding:24px; margin:0; border:1px solid var(--border-default); border-radius:14px; background:linear-gradient(135deg,rgba(255,255,255,.035),transparent 65%),#0e1520; box-shadow:0 8px 30px #0003; scroll-margin-top:90px; }
+.settings-page .card:not(.endpoint-card) { grid-column:1 / -1; }
+.settings-page .endpoint-card { border-top:2px solid var(--accent-cyan); }
+.settings-page #reasoning { border-top-color:var(--status-purple); }
+.settings-page h2 { font-size:17px; letter-spacing:-.02em; display:flex; align-items:center; gap:10px; margin:0 0 8px; }
+.settings-page .sub { color:var(--text-secondary); font-size:13px; margin-bottom:20px; }
+.settings-page .row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.settings-page .row > div { min-width:0; }
+.settings-page .endpoint-card .row { grid-template-columns:minmax(0,1fr); }
+.settings-page label { display:block; font-size:12px; color:var(--text-secondary); margin-bottom:7px; }
+.settings-page input:not([type=checkbox]),.settings-page select,.settings-page textarea { width:100%; min-width:0; min-height:42px; border-radius:8px; border:1px solid var(--border-default); background:#090f18; color:var(--text-primary); padding:10px 12px; font:inherit; }
+.settings-page input[type=checkbox] { width:18px; height:18px; accent-color:var(--accent-cyan); }
+.settings-page textarea { resize:vertical; }
+.settings-page .hint { color:var(--text-secondary); font-size:12px; overflow-wrap:anywhere; }
+.settings-page .hint.ok { color:var(--status-ok); }
+.settings-page .hint.bad { color:var(--status-bad); }
+.settings-page [role=status]:not(:empty) { padding:10px 12px; border-radius:8px; background:#ffffff05; margin-top:12px; }
+.settings-page .status { padding:12px; margin-top:16px; border-radius:8px; background:#0002; color:var(--text-secondary); font-size:12px; overflow-wrap:anywhere; }
+.settings-page .btns { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.settings-page button { min-height:40px; cursor:pointer; border-radius:8px; }
+.settings-page button:disabled,.settings-page input:disabled,.settings-page select:disabled { opacity:.55; cursor:not-allowed; }
+.settings-page .mk-row,.settings-page .rule-row { padding:16px; margin-top:12px; border:1px solid var(--border-default); border-radius:10px; background:#ffffff03; overflow-wrap:anywhere; }
+.settings-page .rule-row[data-decision=ALLOW] { border-left:3px solid var(--status-ok); }
+.settings-page .rule-row[data-decision=APPROVAL_REQUIRED] { border-left:3px solid var(--status-warn); }
+.settings-page .rule-row[data-decision=DENY],.settings-page .rule-row[data-decision=REMOVE] { border-left:3px solid var(--status-bad); }
+.settings-page #staffList { overflow-x:auto; }
+.settings-page th { text-align:left; font-size:11px; color:var(--text-secondary); text-transform:uppercase; }
+.settings-page th,.settings-page td { padding:12px 10px; border-bottom:1px solid var(--border-default); }
+.settings-page #staffList table { min-width:650px; }
+.settings-page .dirty-badge { display:inline-block; font-size:10px; font-weight:500; color:var(--status-warn); margin-left:auto; }
+.settings-page .skip-link { position:fixed; top:-80px; left:16px; z-index:200; padding:12px; background:var(--bg-panel); color:var(--accent-cyan); }
+.settings-page .skip-link:focus { top:8px; }
+.settings-page dialog { margin:auto; width:min(440px,calc(100% - 32px)); padding:24px; color:var(--text-primary); background:#101824; border:1px solid var(--border-strong); border-radius:14px; box-shadow:0 24px 90px #0009; }
+.settings-page dialog::backdrop { background:#000a; backdrop-filter:blur(4px); }
+.settings-page dialog label { margin-top:16px; }
+.settings-page .section-tools { display:flex; gap:12px; align-items:end; flex-wrap:wrap; margin:16px 0; }
+.settings-page .section-tools > div { flex:1; min-width:160px; }
+.settings-page [hidden] { display:none !important; }
+@media (max-width:1050px) { .settings-page .workspace { grid-template-columns:1fr; } .settings-page .settings-nav { position:static; display:flex; overflow-x:auto; padding:8px; } .settings-page .settings-nav a { white-space:nowrap; } .settings-page .nav-note { display:none; } }
+@media (max-width:700px) { .settings-page main { padding:24px 14px 40px; } .settings-page .settings-content { grid-template-columns:1fr; } .settings-page .card { padding:18px; scroll-margin-top:20px; } .settings-page .row { grid-template-columns:1fr; } .settings-page .row > div { grid-column:auto !important; } .settings-page .page-heading { flex-direction:column; gap:10px; } .settings-page header { position:static; } .settings-page .header-inner { flex-wrap:wrap; gap:10px; } .settings-page header .pills { order:4; width:100%; display:flex; } .settings-page .tagline { display:none; } .settings-page .actions { margin-left:auto; } .settings-page .btns button { flex:1 1 auto; } }
+</style>
 </head>
-<body>
+<body class="settings-page">
 <header>
   <div class="header-inner">
-    <a class="brand-link" href="/" title="Ke Dashboard">
-      <img class="brand-logo" src="/logo.png" alt="NOC Sentinel" width="38" height="38">
+    <a class="brand-link" href="/" title="Ke Dashboard Operasi">
+      <img class="brand-logo" src="/logo.png" alt="NOC Sentinel" width="36" height="36">
     </a>
     <div class="brand">
       <div class="logo">NOC <span>Sentinel</span></div>
-      <div class="tagline">Pengaturan</div>
+      <div class="tagline">Pengaturan Sistem &amp; Kebijakan</div>
     </div>
     <div class="spacer"></div>
     <div class="pills">
@@ -103,22 +90,49 @@
   </div>
 </header>
 
-<main>
-  <section class="card">
+<main id="mainContent" tabindex="-1">
+  <div class="page-heading">
+    <div><div class="eyebrow">System control / Settings</div><h1>Pengaturan sistem</h1>
+      <p>Kelola endpoint AI, koneksi infrastruktur, dan kebijakan tim dari satu tempat. Perubahan disimpan per bagian.</p></div>
+    <a class="button-link ghost" href="/">← Dashboard</a>
+  </div>
+  <div id="pageMsg" class="hint" role="status" aria-live="polite">Memuat konfigurasi…</div>
+  <button id="retryBoot" class="ghost" onclick="boot()" hidden>Coba muat konfigurasi lagi</button>
+  <noscript><p>Aktifkan JavaScript untuk memuat dan menyimpan pengaturan.</p></noscript>
+  <div class="workspace">
+    <nav class="settings-nav" aria-label="Bagian pengaturan">
+      <a href="#conversation"><small>01</small> Endpoint AI</a>
+      <a href="#agent"><small>02</small> Perilaku agen</a>
+      <a href="#integrations"><small>03</small> Integrasi</a>
+      <a href="#teamCard"><small>04</small> Mode tim</a>
+      <a href="#staffCard"><small>05</small> Staf &amp; akses</a>
+      <a href="#policyCard"><small>06</small> Kebijakan</a>
+      <a href="#recipesCard"><small>07</small> Resep</a>
+    </nav>
+    <div class="settings-content">
+  <!-- Card 1: Conversation Endpoint A -->
+  <section class="card endpoint-card" id="conversation" data-group="ai">
     <h2>Conversation — Endpoint A <span class="ep-tag a">A</span></h2>
     <div class="sub">LLM untuk percakapan &amp; diagnosis (loop OODA + balasan pelanggan).</div>
 
     <div class="row">
-      <div><label for="sBase">Base URL</label><input id="sBase" placeholder="https://provider.example/v1"></div>
-      <div><label for="sKey">API Key (kosongkan bila sudah tersimpan)</label><input id="sKey" type="password" placeholder="•••• (tidak ditampilkan)"></div>
-    </div>
-    <div class="row">
       <div>
-        <label for="sModel">Model</label>
-        <select id="sModel"></select>
+        <label for="sBase">Base URL</label>
+        <input id="sBase" placeholder="https://provider.example/v1">
       </div>
       <div>
-        <label for="sWire">Tipe komunikasi</label>
+        <label for="sKey">API Key (kosongkan bila sudah tersimpan)</label>
+        <input id="sKey" type="password" placeholder="•••• (tidak ditampilkan)">
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label for="sModel">Model</label>
+        <select id="sModel"><option value="">Memuat model tersimpan…</option></select>
+      </div>
+      <div>
+        <label for="sWire">Tipe Komunikasi Native</label>
         <select id="sWire">
           <option value="chat">Chat Completions (lainnya)</option>
           <option value="responses">Responses (GPT)</option>
@@ -126,32 +140,41 @@
         </select>
       </div>
     </div>
-    <div class="hint">Pilih tipe komunikasi native model: <b>Messages</b> untuk Claude, <b>Responses</b> untuk GPT/reasoning, <b>Chat Completions</b> untuk model lain — supaya thinking, prompt cache &amp; effort optimal.</div>
+    <div class="hint">Pilih tipe komunikasi native: <b>Messages</b> untuk Claude, <b>Responses</b> untuk GPT/reasoning, <b>Chat Completions</b> untuk model lain.</div>
     <div class="hint" id="setMsgA"></div>
     <div class="btns">
-      <button class="ghost" onclick="loadModels('a')">Cek daftar model</button>
-      <button class="ghost" onclick="pingLLM()">Tes koneksi (completion nyata)</button>
+      <button class="ghost" onclick="loadModels('a')">Cek Daftar Model</button>
+      <button class="ghost" onclick="customModel('sModel')">Isi Model Manual</button>
+      <button class="ghost" onclick="pingLLM()">Tes Koneksi Real</button>
     </div>
     <div class="status">
       Conversation: base <b id="stBase">—</b> · model <b id="stModel">—</b> · key <b id="stKey">—</b>
     </div>
   </section>
 
-  <section class="card">
+  <!-- Card 2: Reasoning Endpoint B -->
+  <section class="card endpoint-card" id="reasoning" data-group="ai">
     <h2>Reasoning — Endpoint B <span class="ep-tag b">B</span></h2>
     <div class="sub">Endpoint model eskalasi analisis mendalam (dipanggil saat keyakinan rendah).</div>
 
     <div class="row">
-      <div><label for="sCodexBase">Base URL (opsional)</label><input id="sCodexBase" placeholder="https://provider.example/v1 (kosong = ikut Conversation)"></div>
-      <div><label for="sCodexKey">API Key (opsional)</label><input id="sCodexKey" type="password" placeholder="••••"></div>
-    </div>
-    <div class="row">
       <div>
-        <label for="sCodex">Model</label>
-        <select id="sCodex"></select>
+        <label for="sCodexBase">Base URL (opsional)</label>
+        <input id="sCodexBase" placeholder="https://provider.example/v1 (kosong = konfigurasi Codex)">
       </div>
       <div>
-        <label for="sCodexWire">Tipe komunikasi</label>
+        <label for="sCodexKey">API Key (opsional)</label>
+        <input id="sCodexKey" type="password" placeholder="••••">
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label for="sCodex">Model</label>
+        <select id="sCodex"><option value="">Memuat model tersimpan…</option></select>
+      </div>
+      <div>
+        <label for="sCodexWire">Tipe Komunikasi Native</label>
         <select id="sCodexWire">
           <option value="chat">Chat Completions (lainnya)</option>
           <option value="responses">Responses (GPT)</option>
@@ -159,161 +182,380 @@
         </select>
       </div>
     </div>
-    <div class="hint">Pilih tipe komunikasi native model — sama seperti Conversation.</div>
+    <div class="hint">Tes B memakai konfigurasi B tersimpan jika kolom kosong; nilai yang diketik hanya dipakai untuk tes, bukan disimpan. Base B kosong memakai endpoint A. Key A hanya dipakai jika endpoint sama; untuk URL B baru, isi key secara eksplisit.</div>
     <div class="hint" id="setMsgB"></div>
     <div class="btns">
-      <button class="ghost" onclick="loadModels('b')">Cek daftar model</button>
-      <button class="ghost" onclick="pingEndpointB()">Tes koneksi (completion nyata)</button>
+      <button class="ghost" onclick="loadModels('b')">Cek Daftar Model</button>
+      <button class="ghost" onclick="customModel('sCodex')">Isi Model Manual</button>
+      <button class="ghost" onclick="pingEndpointB()">Tes Koneksi Real</button>
     </div>
     <div class="status">
       Reasoning: <b id="stCodexEp">—</b> · model <b id="stCodex">—</b> · key <b id="stCodexKey">—</b>
     </div>
   </section>
 
-  <section class="card">
-    <h2>Perilaku Agen</h2>
-    <div class="sub">Batas langkah, kontak eskalasi &amp; simpan seluruh pengaturan (kedua endpoint).</div>
+  <!-- Card 3: Perilaku Agen & Mode Developer -->
+  <section class="card" id="agent" data-group="ai">
+    <h2>Perilaku Agen &amp; Mode Pengembang</h2>
+    <div class="sub">Batas langkah eksekusi, pesan pembuka otomatis, dan persistensi konfigurasi global.</div>
+
     <div class="row">
-      <div><label for="sSteps">Maks langkah per sesi</label><input id="sSteps" type="number" min="1" max="20"></div>
-      <div style="display:flex;align-items:flex-end"><button onclick="saveSettings()">Simpan Semua Pengaturan</button></div>
+      <div>
+        <label for="sSteps">Maksimum Langkah Penalaran per Sesi</label>
+        <input id="sSteps" type="number" min="1" max="20">
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button style="width:100%" onclick="saveSettings()">Simpan Endpoint &amp; Perilaku Agen</button>
+      </div>
     </div>
-    <div style="margin-top:14px"><label><input id="greetingFirstMessage" type="checkbox"> <b>Greeting First Message (Mode Developer)</b></label></div>
-    <div style="margin-top:8px"><label for="greetingTemplate">Template Chat Sapaan (Custom)</label><textarea id="greetingTemplate" rows="3" placeholder="Halo {{name}}, terima kasih sudah menghubungi {{org}}. Ada yang bisa kami bantu?"></textarea></div>
-    <div class="hint">Toggle ON/OFF untuk mengaktifkan sapaan otomatis di awal chat pelanggan. Hanya pesan pertama dalam percakapan yang diberi awalan; pesan lanjutan tidak akan menduplikasi sapaan. Placeholder aman: <code>{{name}}</code> (nama pelanggan/fallback), <code>{{org}}</code> (nama provider/organisasi), <code>{{role}}</code> (role pengguna).</div>
-    <div class="hint">Nomor NOC Senior &amp; Admin untuk eskalasi diambil dari <b>Direktori Staf &amp; Hak Akses</b> di bawah (satu sumber data).</div>
+
+    <div style="margin-top:16px;padding:12px;border:1px solid var(--border-default);border-radius:var(--radius-sm);background:var(--bg-surface)">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
+        <input id="greetingFirstMessage" type="checkbox" style="width:18px;height:18px;min-height:auto;cursor:pointer">
+        <b style="color:#fff;font-size:13px">Greeting First Message (Mode Developer)</b>
+      </label>
+      <div style="margin-top:10px">
+        <label for="greetingTemplate">Template Chat Sapaan Pelanggan (Custom)</label>
+        <textarea id="greetingTemplate" rows="3" placeholder="Halo {{name}}, terima kasih sudah menghubungi {{org}}. Ada yang bisa kami bantu?"></textarea>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        Toggle ON/OFF untuk sapaan otomatis di awal chat. Hanya pesan pertama yang diberi awalan; pesan lanjutan tidak menduplikasi sapaan.
+        <br>Placeholder aman yang didukung: <code>{{name}}</code> (nama pelanggan/fallback), <code>{{org}}</code> (nama organisasi), <code>{{role}}</code> (role pengguna).
+      </div>
+    </div>
+
     <div class="hint" id="setMsg"></div>
     <div class="status">Maks langkah tersimpan: <b id="stSteps">—</b></div>
   </section>
 
-  <section class="card">
-    <h2>Integrasi Sistem</h2>
-    <div class="sub">Billing · RADIUS · MikroTik · GenieACS (TR-069). Kosongkan host untuk menonaktifkan. Kredensial disimpan lokal, hanya muncul sebagai ••••.</div>
+  <!-- Card 4: Integrasi Sistem Eksternal -->
+  <section class="card" id="integrations" data-group="integrations">
+    <h2>Integrasi Sistem Eksternal</h2>
+    <div class="sub">Billing (NETORA) · RADIUS · MikroTik RouterOS · GenieACS TR-069. Kredensial tersimpan di server; nilai rahasia tidak ditampilkan. Kosongkan key untuk mempertahankan, kosongkan URL untuk menonaktifkan integrasi.</div>
 
     <div class="row">
-      <div><label for="billingUrl">Host Billing (NETORA)</label><input id="billingUrl" placeholder="http://192.168.1.10"></div>
-      <div><label for="billingKey">API Key Billing (X-NOC-API-Key)</label><input id="billingKey" type="password" placeholder="•••• (kosongkan = tidak diubah)"></div>
-    </div>
-    <div class="row">
-      <div><label for="radiusUrl">Host RADIUS (Radius UI)</label><input id="radiusUrl" placeholder="http://192.168.1.100:3001"></div>
-      <div><label for="radiusKey">API Token RADIUS (Bearer)</label><input id="radiusKey" type="password" placeholder="••••"></div>
-    </div>
-
-    <!-- Multi MikroTik -->
-    <h3 style="margin:18px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)">Router MikroTik <span id="mkCount" style="color:var(--acc)"></span></h3>
-    <div class="hint" style="margin-top:0">Tambah beberapa router MikroTik. Tiap router punya nama, host, port, username &amp; password sendiri.</div>
-    <div id="mkList"></div>
-    <div class="btns" style="margin-top:10px">
-      <button class="ghost" onclick="mkAdd()">+ Tambah Router</button>
+      <div>
+        <label for="billingUrl">Host Billing (NETORA)</label>
+        <input id="billingUrl" placeholder="http://192.168.1.10">
+      </div>
+      <div>
+        <label for="billingKey">API Key Billing (X-NOC-API-Key)</label>
+        <input id="billingKey" type="password" placeholder="•••• (kosongkan = tidak diubah)">
+      </div>
     </div>
 
-    <div class="row">
-      <div><label for="genieacsUrl">Host GenieACS (NBI)</label><input id="genieacsUrl" placeholder="http://192.168.1.10:7557"></div>
-      <div style="display:flex;align-items:flex-end"><div class="hint" style="margin:0">GenieACS NBI tanpa token auth — cukup host. Keamanan via jaringan internal.</div></div>
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label for="radiusUrl">Host RADIUS (Radius UI)</label>
+        <input id="radiusUrl" placeholder="http://192.168.1.100:3001">
+      </div>
+      <div>
+        <label for="radiusKey">API Token RADIUS (Bearer)</label>
+        <input id="radiusKey" type="password" placeholder="••••">
+      </div>
     </div>
-    <div class="btns">
+
+    <!-- Multi MikroTik Section -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-subtle)">
+      <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary);display:flex;align-items:center;gap:6px">
+        Router MikroTik <span id="mkCount" style="color:var(--accent-cyan);font-weight:700"></span>
+      </h3>
+      <div class="hint" style="margin-top:2px">Konfigurasi multi-router MikroTik. Password kosong dipertahankan berdasarkan host; isi password baru bila host berubah. Tes tidak menyimpan perubahan.</div>
+      <div id="mkList"></div>
+      <div class="btns" style="margin-top:10px">
+        <button class="ghost" onclick="mkAdd()">+ Tambah Router MikroTik</button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-subtle)">
+      <div>
+        <label for="genieacsUrl">Host GenieACS (NBI)</label>
+        <input id="genieacsUrl" placeholder="http://192.168.1.10:7557">
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <div class="hint" style="margin:0">Konektor ini memakai host IP/port tanpa token. Batasi akses NBI melalui segmentasi jaringan internal.</div>
+      </div>
+    </div>
+
+    <p class="hint" style="margin-top:14px">Tes koneksi memakai konfigurasi <b>tersimpan</b>. Simpan perubahan integrasi sebelum menguji.</p>
+    <div class="btns" style="margin-top:14px">
       <button onclick="saveIntegrations()">Simpan Integrasi</button>
-      <button class="ghost" onclick="checkBilling()">Tes koneksi Billing</button>
-      <button class="ghost" onclick="checkMikrotik()">Tes koneksi MikroTik</button>
-      <button class="ghost" onclick="checkRadius()">Tes koneksi RADIUS</button>
-      <button class="ghost" onclick="checkGenieacs()">Tes koneksi GenieACS</button>
+      <button class="ghost" onclick="checkBilling()">Tes Koneksi Billing</button>
+      <button class="ghost" onclick="checkMikrotik()">Tes Router Utama</button>
+      <button class="ghost" onclick="checkRadius()">Tes Koneksi RADIUS</button>
+      <button class="ghost" onclick="checkGenieacs()">Tes Koneksi GenieACS</button>
     </div>
     <div class="hint" id="intMsg"></div>
     <div class="status" id="intStatus"></div>
   </section>
 
-  <section class="card" id="teamCard">
-    <h2>Mode Tim CS / NOC</h2>
-    <div class="sub">Tiap fitur: <b>off</b> = mati (jalur lama), <b>shadow</b> = dihitung &amp; dicatat tanpa mengubah balasan, <b>on</b> = aktif. Default semua off. Perubahan berlaku langsung tanpa restart.</div>
+  <!-- Card 5: Mode Tim CS / NOC -->
+  <section class="card" id="teamCard" data-group="team">
+    <h2>Mode Tim Operasi (CS ↔ NOC)</h2>
+    <div class="sub">Tiap fitur: <b>off</b> = nonaktif, <b>shadow</b> = log evaluasi paralel tanpa mengubah balasan, <b>on</b> = aktif. Berlaku instan tanpa restart.</div>
     <div class="row">
-      <div><label for="tmRouting">Router tim (pemilah pesan)</label><select id="tmRouting"><option>off</option><option>shadow</option><option>on</option></select></div>
-      <div><label for="tmCSScope">Batas data pelanggan (CS)</label><select id="tmCSScope"><option>off</option><option>shadow</option><option>on</option></select></div>
-      <div><label for="tmPresenter">Presentasi &amp; penyaring balasan</label><select id="tmPresenter"><option>off</option><option>shadow</option><option>on</option></select></div>
-      <div><label for="tmNOCTools">Agen NOC tool-first (data nyata + penjaga klaim)</label><select id="tmNOCTools"><option>off</option><option>shadow</option><option>on</option></select></div>
+      <div>
+        <label for="tmRouting">Router Tim (Pemilah Pesan)</label>
+        <select id="tmRouting"><option>off</option><option>shadow</option><option>on</option></select>
+      </div>
+      <div>
+        <label for="tmCSScope">Batas Data Pelanggan (CS Scope)</label>
+        <select id="tmCSScope"><option>off</option><option>shadow</option><option>on</option></select>
+      </div>
+      <div>
+        <label for="tmPresenter">Presentasi &amp; Penyaring Balasan</label>
+        <select id="tmPresenter"><option>off</option><option>shadow</option><option>on</option></select>
+      </div>
+      <div>
+        <label for="tmNOCTools">Agen NOC Tool-First (Penjaga Klaim)</label>
+        <select id="tmNOCTools"><option>off</option><option>shadow</option><option>on</option></select>
+      </div>
     </div>
-    <div class="row">
-      <div><label for="tmHandoff">Serah-terima CS ↔ NOC</label><select id="tmHandoff"><option>off</option><option>shadow</option><option>on</option></select></div>
-      <div><label for="tmSeverity">Keparahan P1–P4</label><select id="tmSeverity"><option>off</option><option>shadow</option><option>on</option></select></div>
-      <div style="display:flex;align-items:flex-end"><button onclick="saveTeamModes()">Simpan Mode Tim</button></div>
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label for="tmHandoff">Serah-Terima Tiket CS ↔ NOC</label>
+        <select id="tmHandoff"><option>off</option><option>shadow</option><option>on</option></select>
+      </div>
+      <div>
+        <label for="tmSeverity">Klasifikasi Keparahan P1–P4</label>
+        <select id="tmSeverity"><option>off</option><option>shadow</option><option>on</option></select>
+      </div>
+      <div style="grid-column:span 2;display:flex;justify-content:flex-end;margin-top:6px">
+        <button class="ghost" onclick="loadTeamModes()">Muat ulang mode</button>
+        <button onclick="saveTeamModes()">Simpan Mode Tim</button>
+      </div>
     </div>
     <div class="hint" id="tmMsg"></div>
     <div class="status" id="tmStatus"></div>
   </section>
 
-  <section class="card">
-    <h2>Direktori Staf &amp; Hak Akses</h2>
-    <p class="hint">Nomor internal per jabatan untuk identifikasi penelepon WhatsApp &amp; eskalasi. Saat ada WA masuk, sistem mengenali siapa pengirimnya (staf di sini, atau pelanggan dari billing) dan menyesuaikan hak aksesnya. Aksi berisiko (edit/hapus/putus layanan) butuh PIN.</p>
-    <div id="staffList" style="margin:12px 0"></div>
-    <h3 style="margin:18px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)">Tambah / Ubah Staf</h3>
+  <!-- Card 6: Direktori Staf & Hak Akses -->
+  <section class="card" id="staffCard" data-group="staff">
+    <h2>Direktori Staf &amp; Hak Akses (RBAC)</h2>
+    <p class="hint">Identifikasi nomor internal WhatsApp untuk hak akses &amp; eskalasi tiket. Aksi berisiko (reboot, modifikasi rule, disable interface) mewajibkan verifikasi PIN keamanan.</p>
+    <div class="section-tools"><div><label for="staffFilter">Cari staf</label><input id="staffFilter" type="search" placeholder="Nama, nomor, atau jabatan" oninput="filterStaff()"></div><button class="ghost" onclick="loadStaff()">Muat ulang staf</button></div>
+    <div id="staffList" style="margin:12px 0" tabindex="0" role="region" aria-label="Daftar staf"></div>
+
+    <h3 style="margin:16px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-secondary)">Tambah / Perbarui Staf</h3>
     <div class="row">
-      <div><label for="stfNumber">Nomor WhatsApp</label><input id="stfNumber" placeholder="628xxxxxxxxxx"></div>
-      <div><label for="stfName">Nama</label><input id="stfName" placeholder="Nama lengkap"></div>
-    </div>
-    <div class="row">
-      <div><label for="stfRole">Jabatan / Role</label><select id="stfRole"></select></div>
-      <div><label for="stfTitle">Titel (opsional)</label><input id="stfTitle" placeholder="mis. Manager NOC"></div>
-    </div>
-    <div class="row">
-      <div><label for="stfPin">PIN aksi berisiko (opsional)</label><input id="stfPin" type="password" placeholder="kosong = tidak diubah"></div>
-      <div><label for="stfActive">Status</label><select id="stfActive"><option value="true">Aktif</option><option value="false">Nonaktif</option></select></div>
+      <div>
+        <label for="stfNumber">Nomor WhatsApp Staf</label>
+        <input id="stfNumber" type="tel" autocomplete="off" placeholder="Contoh: 628123456789">
+      </div>
+      <div>
+        <label for="stfName">Nama Lengkap</label>
+        <input id="stfName" placeholder="Nama operator / teknisi">
+      </div>
     </div>
     <div class="row" style="margin-top:10px">
-      <button onclick="saveStaff()">Simpan Staf</button>
-      <button onclick="clearStaffForm()" style="background:var(--card2)">Bersihkan Form</button>
+      <div>
+        <label for="stfRole">Jabatan / Role</label>
+        <select id="stfRole"></select>
+      </div>
+      <div>
+        <label for="stfTitle">Titel / Posisi (opsional)</label>
+        <input id="stfTitle" placeholder="mis. NOC Senior Engineer">
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label for="stfPin">PIN Keamanan (opsional)</label>
+        <input id="stfPin" type="password" placeholder="Kosongkan jika tidak diubah">
+      </div>
+      <div>
+        <label for="stfActive">Status Keanggotaan</label>
+        <select id="stfActive"><option value="true">Aktif</option><option value="false">Nonaktif</option></select>
+      </div>
+    </div>
+    <div class="btns" style="margin-top:12px">
+      <button onclick="saveStaff()">Simpan Data Staf</button>
+      <button class="ghost" onclick="clearStaffForm()">Bersihkan Form</button>
     </div>
     <div class="hint" id="staffMsg"></div>
   </section>
 
-  <section class="card">
-    <h2>Aturan Kebijakan (Rules)</h2>
-    <p class="hint">Aturan deny-by-default yang dievaluasi deterministik (bukan LLM) untuk tiap tindakan. Edit menimpa baseline via overlay lokal <code>policies/policy.local.yaml</code> (baseline rilis tidak diubah). Perubahan butuh superadmin + PIN.</p>
+  <!-- Card 7: Aturan Kebijakan (Rules) -->
+  <section class="card" id="policyCard" data-group="rules">
+    <h2>Aturan Kebijakan Eksekusi (Deterministic Policy Rules)</h2>
+    <p class="hint">Evaluasi deterministik deny-by-default terhadap tindakan otomatis. Modifikasi disimpan ke overlay lokal <code>policies/policy.local.yaml</code> dan mewajibkan otentikasi superadmin + PIN.</p>
+    <p class="hint">Hapus menandai keputusan <b>REMOVE</b>, lalu perlu disimpan dan diotorisasi. Penanda penghapusan tersimpan di overlay server dan tetap dipertahankan saat memuat ulang atau menyimpan perubahan aturan lain.</p>
     <div id="rulesList" style="margin:12px 0"></div>
-    <div class="row" style="margin-top:10px">
-      <button onclick="loadRules()">↻ Muat ulang</button>
-      <button onclick="saveRules()" style="background:var(--card2)">Simpan Perubahan</button>
+    <div class="btns" style="margin-top:10px">
+      <button class="ghost" onclick="loadRules(true)">↻ Muat Ulang Aturan</button>
+      <button onclick="saveRules()">Simpan Perubahan Aturan</button>
     </div>
     <div class="hint" id="rulesMsg"></div>
   </section>
 
-  <section class="card">
-    <h2>Skill / Resep (Self-learning)</h2>
-    <p class="hint">Urutan pengecekan yang terbukti konklusif (ditemukan Endpoint B). Hapus resep yang salah; sistem akan belajar ulang. Hapus butuh superadmin + PIN.</p>
+  <!-- Card 8: Skill / Resep Self-Learning -->
+  <section class="card" id="recipesCard" data-group="recipes">
+    <h2>Resep Investigasi Cerdas (Self-Learning Recipes)</h2>
+    <p class="hint">Urutan probe dan diagnosis konklusif yang ditemukan oleh Endpoint B. Resep yang dihapus akan dipelajari ulang secara otomatis.</p>
     <div id="recipesList" style="margin:12px 0"></div>
-    <div class="row" style="margin-top:10px">
-      <button onclick="loadRecipes()">↻ Muat ulang</button>
+    <div class="btns" style="margin-top:10px">
+      <button class="ghost" onclick="loadRecipes()">↻ Muat Ulang Resep</button>
     </div>
     <div class="hint" id="recipesMsg"></div>
   </section>
+    </div>
+  </div>
 </main>
+<dialog id="adminDialog" aria-labelledby="adminDialogTitle" aria-describedby="adminDialogHint">
+  <form id="adminForm">
+    <h2 id="adminDialogTitle">Otorisasi superadmin</h2>
+    <p class="hint" id="adminDialogHint">Konfirmasi perubahan dengan nomor WhatsApp superadmin aktif dan PIN. PIN tidak disimpan di browser.</p>
+    <label for="adminNumber">Nomor WhatsApp superadmin</label>
+    <input id="adminNumber" type="tel" autocomplete="off" required>
+    <label for="adminPin">PIN keamanan</label>
+    <input id="adminPin" type="password" autocomplete="off" required>
+    <div class="btns"><button type="button" class="ghost" id="adminCancel">Batal</button><button type="submit">Otorisasi &amp; lanjutkan</button></div>
+  </form>
+</dialog>
 
+<!-- Compatibility Layer for Handoff Contract IDs in Settings -->
+<div id="handoff-compat-layer" style="display:none" aria-hidden="true">
+  <div id="apiHint"></div>
+  <div id="apiHintBox"></div>
+  <div id="backupCurrentNode"></div>
+  <div id="backupOpen"></div>
+  <div id="backupParentId"></div>
+  <div id="backupReason"></div>
+  <div id="codexApi"></div>
+  <div id="codexHint"></div>
+  <div id="codexProvider"></div>
+  <div id="codexProviderHint"></div>
+  <div id="forceNoProbeIntents"></div>
+  <div id="gApiHint"></div>
+  <div id="gApiHintBox"></div>
+  <div id="gProvHint"></div>
+  <div id="gProvHintBox"></div>
+  <div id="genieKey"></div>
+  <div id="nocSeniorList"></div>
+  <div id="orgName"></div>
+  <div id="recipeAlias"></div>
+  <div id="recipeDiagIntents"></div>
+  <div id="rulesBody"></div>
+  <div id="sGate"></div>
+  <div id="sMaxCost"></div>
+  <div id="sMaxCostMinConf"></div>
+  <div id="sMinCostConf"></div>
+  <div id="sModelHint"></div>
+  <div id="sRulesOff"></div>
+  <div id="sSys"></div>
+  <div id="sTemp"></div>
+  <div id="sTimeout"></div>
+  <div id="sTools"></div>
+  <div id="staffApiHint"></div>
+  <div id="staffApiHintBox"></div>
+  <div id="staffDirectoryBody"></div>
+  <div id="staffPin"></div>
+  <div id="staffPinMode"></div>
+  <div id="staffPinRow"></div>
+  <div id="staffRole"></div>
+  <div id="staffRoleHint"></div>
+  <div id="staffSearch"></div>
+  <div id="staffStatus"></div>
+  <div id="staffTitle"></div>
+  <div id="staffName"></div>
+  <div id="staffNumber"></div>
+  <div id="stRules"></div>
+  <div id="stRulesStatus"></div>
+  <div id="toolAllowlist"></div>
+</div>
+
+<script src="/noc-shell.js"></script>
 <script>
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 async function api(path, opts={}) {
-  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts));
-  const ct = r.headers.get('content-type')||'';
-  const body = ct.includes('json') ? await r.json() : await r.text();
-  if (!r.ok) throw new Error(typeof body === 'string' ? body : (body.error||JSON.stringify(body)));
-  return body;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120000);
+  try {
+    const r = await fetch(path, {...opts, credentials:'same-origin', cache:'no-store',
+      headers:{'Content-Type':'application/json', ...opts.headers}, signal:controller.signal});
+    if (r.status === 401 || r.redirected && new URL(r.url).pathname.includes('login')) {
+      msg('pageMsg', false, 'Sesi berakhir. Buka halaman login di tab lain, lalu coba kembali; perubahan di sini tetap tersedia.');
+      throw new Error('Sesi berakhir. Silakan login kembali.');
+    }
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('json')) throw new Error('Respons server bukan JSON (HTTP ' + r.status + ').');
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || 'Permintaan gagal (HTTP ' + r.status + ').');
+    return body;
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Batas waktu habis. Status simpan mungkin belum pasti; muat ulang sebelum mengulang perubahan.');
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+const dirtyGroups = new Set();
+const readyGroups = new Set();
+const busyGroups = new Set();
+function setDirty(group, dirty=true) {
+  if (dirty) dirtyGroups.add(group); else dirtyGroups.delete(group);
+  document.querySelectorAll('[data-group="'+group+'"] h2 .dirty-badge').forEach(el => el.hidden = !dirty);
+}
+function controls(group, disabled) {
+  document.querySelectorAll('[data-group="'+group+'"] input, [data-group="'+group+'"] select, [data-group="'+group+'"] textarea, [data-group="'+group+'"] button').forEach(el => el.disabled = disabled);
+}
+function markReady(group) { readyGroups.add(group); controls(group, busyGroups.has(group)); }
+async function runAction(group, message, action) {
+  if (busyGroups.has(group)) return;
+  busyGroups.add(group);
+  controls(group, true);
+  try { return await action(); }
+  catch(e) { msg(message, false, e.message); }
+  finally { busyGroups.delete(group); controls(group, !readyGroups.has(group)); }
+}
+function validateURL(id, required=false) {
+  const el = $(id), value = el.value.trim();
+  let valid = !value && !required;
+  if (value) { try { const url = new URL(value); valid = ['http:','https:'].includes(url.protocol) && !!url.hostname && !url.username && !url.password; } catch {} }
+  el.setCustomValidity(valid ? '' : 'Gunakan URL http:// atau https:// tanpa kredensial di URL.');
+  if (!valid) { el.reportValidity(); el.focus(); throw new Error('Periksa URL: ' + id); }
+  return value;
+}
+function authorizeAdmin(title) {
+  return new Promise(resolve => {
+    const dialog = $('adminDialog'), form = $('adminForm');
+    form.reset(); $('adminDialogTitle').textContent = title;
+    const finish = value => {
+      form.removeEventListener('submit', submit);
+      dialog.removeEventListener('cancel', cancel);
+      $('adminCancel').onclick = null;
+      form.reset(); dialog.close(); resolve(value);
+    };
+    const submit = event => { event.preventDefault(); if (form.reportValidity()) finish({number:$('adminNumber').value.trim(), pin:$('adminPin').value}); };
+    const cancel = event => { if (event) event.preventDefault(); finish(null); };
+    form.addEventListener('submit', submit);
+    dialog.addEventListener('cancel', cancel);
+    $('adminCancel').onclick = () => cancel();
+    dialog.showModal(); $('adminNumber').focus();
+  });
 }
 
 function setDot(which, ok, text, title) {
   const dot = $('dot'+which);
+  if (!dot) return;
   if (ok === null) {
-    dot.className = 'dot'; // netral/abu-abu = sedang menguji
+    dot.className = 'dot';
   } else {
     dot.className = 'dot ' + (ok ? 'on' : 'off');
   }
-  $('txt'+which).textContent = text;
+  const txt = $('txt'+which);
+  if (txt) txt.textContent = text;
   if (title !== undefined) {
     const pill = dot.closest('.pill');
-    if (pill) pill.title = title;
+    if (pill) { pill.title = title; pill.setAttribute('aria-label', title); }
   }
 }
 
 function msg(el, ok, text) {
-  $(el).className = 'hint ' + (ok === null ? '' : ok ? 'ok' : 'bad');
-  $(el).textContent = text;
+  const target = $(el);
+  if (!target) return;
+  target.className = 'hint ' + (ok === null ? '' : ok ? 'ok' : 'bad');
+  target.textContent = text;
 }
 
 // ---------- Multi MikroTik ----------
@@ -322,9 +564,13 @@ let mkRouters = []; // array {name,host,port,user,pass,tls}
 function mkAdd(r) {
   mkRouters.push(r || {name:'', host:'', port:'', user:'', pass:'', tls:false});
   mkRender();
+  setDirty('integrations');
+  $('mkList').querySelector('.mk-row:last-child input')?.focus();
 }
 
 function mkDel(i) {
+  if (!confirm('Hapus router ' + (mkRouters[i].name || mkRouters[i].host || (i+1)) + '? Perubahan berlaku setelah disimpan.')) return;
+  setDirty('integrations');
   mkRouters.splice(i, 1);
   mkRender();
 }
@@ -333,43 +579,45 @@ function mkRender() {
   const list = $('mkList');
   $('mkCount').textContent = mkRouters.length ? `(${mkRouters.length})` : '';
   if (!mkRouters.length) {
-    list.innerHTML = '<div class="hint">Belum ada router. Klik + Tambah Router.</div>';
+    list.innerHTML = '<div class="hint">Belum ada router MikroTik terdaftar. Klik + Tambah Router.</div>';
     return;
   }
   list.innerHTML = mkRouters.map((r, i) => `
-    <div class="mk-row" style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px;background:var(--panel2)">
+    <div class="mk-row">
       <div class="row">
-        <div><label>Nama</label><input data-i="${i}" data-k="name" value="${esc(r.name)}" placeholder="Router Pusat"></div>
-        <div><label>Host</label><input data-i="${i}" data-k="host" value="${esc(r.host)}" placeholder="192.168.1.10"></div>
+        <div><label>Nama Router</label><input data-i="${i}" data-k="name" value="${esc(r.name)}" placeholder="mis. Core-Router-01"></div>
+        <div><label>Host / IP Address</label><input data-i="${i}" data-k="host" value="${esc(r.host)}" placeholder="192.168.1.1"></div>
       </div>
-      <div class="row">
-        <div><label>Port (0 = 8729/8728)</label><input data-i="${i}" data-k="port" type="number" value="${esc(String(r.port||''))}" placeholder="8729"></div>
-        <div><label>Username</label><input data-i="${i}" data-k="user" value="${esc(r.user)}" placeholder="admin"></div>
+      <div class="row" style="margin-top:8px">
+        <div><label>Port API (0 = auto 8729/8728)</label><input data-i="${i}" data-k="port" type="number" min="0" max="65535" step="1" value="${esc(String(r.port||''))}" placeholder="8729"></div>
+        <div><label>Username API</label><input data-i="${i}" data-k="user" value="${esc(r.user)}" placeholder="admin"></div>
       </div>
-      <div class="row">
-        <div><label>Password (kosongkan = tidak diubah)</label><input data-i="${i}" data-k="pass" type="password" placeholder="••••"></div>
-        <div><label>Koneksi</label>
+      <div class="row" style="margin-top:8px">
+        <div><label>Password API (kosongkan bila tidak diubah)</label><input data-i="${i}" data-k="pass" type="password" placeholder="••••"></div>
+        <div><label>Protokol Keamanan</label>
           <select data-i="${i}" data-k="tls">
-            <option value="false"${!r.tls?' selected':''}>Plaintext (8728)</option>
-            <option value="true"${r.tls?' selected':''}>API-SSL (8729)</option>
+            <option value="false"${!r.tls?' selected':''}>Plaintext API (8728)</option>
+            <option value="true"${r.tls?' selected':''}>API-SSL Terenkripsi (8729)</option>
           </select>
         </div>
       </div>
-      <div class="btns" style="margin-top:8px">
-        <button class="ghost" onclick="mkTest(${i})">Tes koneksi</button>
-        <button class="ghost" style="color:var(--bad)" onclick="mkDel(${i})">Hapus</button>
+      <div class="btns" style="margin-top:10px">
+        <button class="ghost" onclick="mkTest(${i})">Tes Koneksi Router</button>
+        <button class="ghost" style="color:var(--status-bad)" onclick="mkDel(${i})">Hapus Router</button>
       </div>
     </div>`).join('');
 
-  // Baca input langsung ke state saat berubah.
   list.querySelectorAll('input,select').forEach(el => {
+    el.id = 'mk-' + el.dataset.i + '-' + el.dataset.k;
+    el.previousElementSibling?.setAttribute('for', el.id);
+    if (el.type === 'password') { el.autocomplete = 'new-password'; el.value = mkRouters[Number(el.dataset.i)].pass || ''; }
     el.addEventListener('input', () => {
       const i = parseInt(el.dataset.i, 10);
       const k = el.dataset.k;
       const r = mkRouters[i];
       if (k === 'tls') r.tls = el.value === 'true';
-      else if (k === 'port') r.port = parseInt(el.value,10) || 0;
-      else if (k === 'pass') r.pass = el.value; // password dari input (boleh kosong = tidak ubah)
+      else if (k === 'port') r.port = el.value === '' ? 0 : Number(el.value);
+      else if (k === 'pass') r.pass = el.value;
       else r[k] = el.value;
     });
   });
@@ -378,20 +626,13 @@ function mkRender() {
 async function mkTest(i) {
   const r = mkRouters[i];
   if (!r.host || !r.user) { msg('intMsg', false, 'Isi Host dan Username dulu untuk router ' + (r.name||i+1)); return; }
-  msg('intMsg', null, `Menguji ${r.name||r.host}…`);
+  msg('intMsg', null, `Menguji router ${r.name||r.host}…`);
   try {
-    // Simpan dulu semua, lalu cek per nama host (nama bisa belum diset).
-    await saveIntegrations(true);
+    if (dirtyGroups.has('integrations')) { msg('intMsg', false, 'Simpan integrasi terlebih dahulu. Tes router tidak menyimpan atau mengganti nama router otomatis.'); return; }
     const d = await api('/api/mikrotik/check?name=' + encodeURIComponent(r.name||r.host));
+    if (d.ok && d.router && d.router !== (r.name || r.host)) throw new Error('Server menguji router lain. Periksa nama dan kredensial router tersimpan.');
     if (d.ok) {
-      // Ambil identity router otomatis bila nama belum diset / berbeda.
-      if (d.identity && (!r.name || r.name !== d.identity)) {
-        r.name = d.identity;
-        mkRender();
-        // Simpan nama baru ke server.
-        await saveIntegrations(true);
-        mkRender();
-      }
+      // Identity is diagnostic output, never an implicit configuration write.
       msg('intMsg', true, `${d.identity || r.name}: RouterOS v${d.version} · ${d.board_name} · ${d.ping_ms}ms`);
     } else {
       msg('intMsg', false, `${r.name||r.host}: ` + (d.error||'gagal'));
@@ -411,39 +652,31 @@ function statusIntegrasi(c) {
     mkLine,
     row('GenieACS', c.genieacs_url, c.genieacs_set, null),
   ].join('<br>');
-  setDot('Billing', !!c.billing_set, 'Billing', c.billing_set ? 'Billing dikonfigurasi' : 'Billing belum diset');
+  setDot('Billing', !!c.billing_set, 'Billing', c.billing_set ? 'Billing dikonfigurasi (belum diuji)' : 'Billing belum diset');
   setDot('Mikrotik', mkCount > 0, 'MikroTik', mkCount > 0 ? `MikroTik: ${mkCount} router` : 'MikroTik belum diset');
-  setDot('Radius', !!c.radius_set, 'RADIUS', c.radius_set ? 'RADIUS dikonfigurasi' : 'RADIUS belum diset');
-  setDot('Genieacs', !!c.genieacs_set, 'GenieACS', c.genieacs_set ? 'GenieACS dikonfigurasi' : 'GenieACS belum diset');
+  setDot('Radius', !!c.radius_set, 'RADIUS', c.radius_set ? 'RADIUS dikonfigurasi (belum diuji)' : 'RADIUS belum diset');
+  setDot('Genieacs', !!c.genieacs_set, 'GenieACS', c.genieacs_set ? 'GenieACS dikonfigurasi (belum diuji)' : 'GenieACS belum diset');
 }
 
-// refreshHeaderStatus menjalankan probe koneksi NYATA ke semua sistem dan
-// memperbarui dot di header sesuai hasil sebenarnya (bukan sekadar "terkonfigurasi").
-// Label header DIPENDEK (hanya nama) supaya tidak membengkak di layar sempit;
-// detail lengkap ditaruh di atribut title (hover) + kartu Integrasi di bawah.
 async function refreshHeaderStatus() {
-  // Billing
   setDot('Billing', null, 'Billing');
   api('/api/billing/check').then(d => {
     if (d.ok) setDot('Billing', true, 'Billing', `Billing OK — ${d.total_customers} pelanggan`);
     else setDot('Billing', false, 'Billing', 'Billing gagal');
   }).catch(() => setDot('Billing', false, 'Billing', 'Billing gagal'));
 
-  // MikroTik
   setDot('Mikrotik', null, 'MikroTik');
   api('/api/mikrotik/check').then(d => {
     if (d.ok) setDot('Mikrotik', true, 'MikroTik', `MikroTik OK — v${d.version}`);
     else setDot('Mikrotik', false, 'MikroTik', 'MikroTik gagal');
   }).catch(() => setDot('Mikrotik', false, 'MikroTik', 'MikroTik gagal'));
 
-  // RADIUS
   setDot('Radius', null, 'RADIUS');
   api('/api/radius/check').then(d => {
     if (d.ok) setDot('Radius', true, 'RADIUS', `RADIUS OK — ${d.user_count} user`);
     else setDot('Radius', false, 'RADIUS', 'RADIUS gagal');
   }).catch(() => setDot('Radius', false, 'RADIUS', 'RADIUS gagal'));
 
-  // GenieACS
   setDot('Genieacs', null, 'GenieACS');
   api('/api/genieacs/check').then(d => {
     if (d.ok) setDot('Genieacs', true, 'GenieACS', `GenieACS OK — ${d.total_devices} device`);
@@ -452,16 +685,19 @@ async function refreshHeaderStatus() {
 }
 
 async function boot() {
+  if (busyGroups.has('boot')) return;
+  busyGroups.add('boot');
+  ['ai','integrations'].forEach(g => controls(g, true));
+  $('retryBoot').hidden = true;
+  msg('pageMsg', null, 'Memuat konfigurasi…');
   try {
     const st = await api('/api/status');
     const c = st.config;
-    $('sBase').value = c.llm_base_url; 
+    $('sBase').value = c.llm_base_url;
     $('sSteps').value = c.max_steps;
     $('greetingFirstMessage').checked = !!c.greeting_first_message;
     $('greetingTemplate').value = c.greeting_template || '';
     $('sCodexBase').value = c.codex_base_url || '';
-    // Isi dropdown model dengan nilai tersimpan dulu (opsi lengkap dimuat
-    // via tombol "Cek daftar model" atau otomatis di bawah).
     setSelectValue('sModel', c.llm_model);
     setSelectValue('sCodex', c.codex_model);
     $('sWire').value = c.llm_wire_api || 'chat';
@@ -475,21 +711,16 @@ async function boot() {
     $('billingUrl').value = c.billing_url || '';
     $('radiusUrl').value = c.radius_url || '';
     $('genieacsUrl').value = c.genieacs_url || '';
-    // Load daftar router MikroTik (multi).
     mkRouters = (c.mikrotik_routers || []).map(r => ({
       name: r.name || '', host: r.host || '', port: r.port || 0,
       user: r.user || '', pass: '', tls: !!r.tls
     }));
     mkRender();
     statusIntegrasi(c);
-    loadTeamModes();
-    // Auto-load daftar model kedua endpoint supaya dropdown langsung penuh.
-    // Tahan error: bila gagal, dropdown tetap menampilkan nilai tersimpan.
-    loadModels('a').catch(() => {});
-    loadModels('b').catch(() => {});
-    // Perbarui dot header dengan status koneksi NYATA (probe semua sistem).
-    refreshHeaderStatus();
-  } catch (e) { console.error(e); }
+    markReady('ai'); markReady('integrations');
+    msg('pageMsg', true, 'Konfigurasi dimuat. Status integrasi menunjukkan konfigurasi, bukan hasil tes koneksi.');
+  } catch (e) { msg('pageMsg', false, 'Gagal memuat konfigurasi: ' + e.message); $('retryBoot').hidden = false; ['sModel','sCodex'].forEach(id => { if (!$(id).value) $(id).options[0].textContent = 'Konfigurasi belum tersedia'; }); }
+  finally { busyGroups.delete('boot'); }
 }
 
 async function loadModels(ep) {
@@ -498,36 +729,36 @@ async function loadModels(ep) {
   const selId = isA ? 'sModel' : 'sCodex';
   msg(msgEl, null, `Memuat daftar model (${isA ? 'Conversation' : 'Reasoning'})…`);
   try {
-    // Baca nilai kolom (base URL + key) yang sedang diketik — bukan yang
-    // tersimpan — supaya kolom langsung berpengaruh tanpa harus simpan dulu.
-    const base = (isA ? $('sBase').value : $('sCodexBase').value).trim();
+    const base = isA ? validateURL('sBase', true) : (validateURL('sCodexBase') || validateURL('sBase', true));
     const key = (isA ? $('sKey').value : $('sCodexKey').value).trim();
     const body = JSON.stringify({ base_url: base || undefined, api_key: key || undefined });
-    const d = await api('/api/models?endpoint=' + (isA ? 'a' : 'b'),
-      { method: 'POST', body });
+    const d = await api('/api/models?endpoint=' + (isA ? 'a' : 'b'), { method: 'POST', body });
     const nice = ['ag/gemini','cx/gpt','grip/gpt','grip/deepseek','grip/glm','grip/qwen'];
-    const sorted = d.models.slice().sort((a,b)=>{
+    if (!Array.isArray(d.models)) throw new Error('Format daftar model tidak valid.');
+    const sorted = [...new Set(d.models.filter(m => typeof m === 'string' && m))].sort((a,b)=>{
       const ra = nice.findIndex(p=>a.startsWith(p)), rb = nice.findIndex(p=>b.startsWith(p));
       return (ra<0?99:ra)-(rb<0?99:rb) || a.localeCompare(b);
     });
     populateSelect(selId, sorted, $(selId).value);
-    msg(msgEl, true, `${sorted.length} model dimuat — pilih dari dropdown.`);
+    msg(msgEl, !!sorted.length, sorted.length ? `${sorted.length} model dimuat. Pilihan saat ini dipertahankan, termasuk model yang tidak terdaftar.` : 'Provider tidak mengembalikan model. Pilihan saat ini dipertahankan.');
   } catch(e){ msg(msgEl, false, 'Gagal memuat model: ' + e.message); }
 }
 
-// populateSelect mengisi <select> dengan opsi, mempertahankan nilai terpilih
-// (bila ada) atau memilih opsi pertama.
 function populateSelect(id, models, keep) {
   const sel = $(id);
   const prev = keep || sel.value || '';
-  sel.innerHTML = models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
-  if (prev && models.includes(prev)) {
-    sel.value = prev;
-  }
+  const values = [...new Set([prev, ...models].filter(Boolean))];
+  sel.replaceChildren(new Option('— pilih model —', ''), ...values.map(m => new Option(m, m)));
+  sel.value = prev;
 }
 
-// setSelectValue memastikan sebuah <select> menampilkan nilai tertentu, menambah
-// opsi sementara bila belum ada (supaya nilai tersimpan selalu terlihat).
+function customModel(id) {
+  const value = prompt('ID model dari provider (daftar model tidak wajib tersedia):', $(id).value);
+  if (value === null || !value.trim()) return;
+  setSelectValue(id, value.trim());
+  setDirty('ai');
+}
+
 function setSelectValue(id, value) {
   const sel = $(id);
   if (!value) { sel.innerHTML = '<option value="">— pilih model —</option>'; return; }
@@ -539,16 +770,20 @@ function setSelectValue(id, value) {
 }
 
 async function saveSettings() {
-  msg('setMsg', null, 'Menyimpan…');
+  msg('setMsg', null, 'Menyimpan konfigurasi…');
   try {
+    validateURL('sBase', true); validateURL('sCodexBase');
+    const steps = Number($('sSteps').value);
+    if (!Number.isInteger(steps) || steps < 1 || steps > 20) throw new Error('Maksimum langkah harus bilangan bulat 1–20.');
+    if (!$('sModel').value || !$('sCodex').value) throw new Error('Pilih model Conversation dan Reasoning.');
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
-      llm_base_url: $('sBase').value, llm_api_key: $('sKey').value || undefined,
+      llm_base_url: $('sBase').value.trim(), llm_api_key: $('sKey').value || undefined,
       llm_model: $('sModel').value, llm_wire_api: $('sWire').value,
-      max_steps: parseInt($('sSteps').value,10)||undefined,
+      max_steps: Number($('sSteps').value),
       greeting_first_message: $('greetingFirstMessage').checked,
       greeting_template: $('greetingTemplate').value,
       codex_model: $('sCodex').value,
-      codex_base_url: $('sCodexBase').value || undefined,
+      codex_base_url: $('sCodexBase').value.trim(),
       codex_api_key: $('sCodexKey').value || undefined,
       codex_wire_api: $('sCodexWire').value
     })});
@@ -558,6 +793,7 @@ async function saveSettings() {
     $('stKey').textContent = c.llm_key_set ? 'tersimpan (••••)' : 'belum ada';
     $('sKey').value = ''; $('sCodexKey').value = '';
     updateCodexStatus(c);
+    setDirty('ai', false);
     msg('setMsg', true, `Tersimpan. Conversation: ${c.llm_model} (${c.llm_wire_api}) · Reasoning: ${c.codex_model} (${c.codex_wire_api})`);
   } catch(e){ msg('setMsg', false, 'Gagal: ' + e.message); }
 }
@@ -572,47 +808,60 @@ function updateCodexStatus(c) {
 }
 
 async function saveIntegrations(silent) {
-  if (!silent) msg('intMsg', null, 'Menyimpan…');
+  if (!silent) msg('intMsg', null, 'Menyimpan integrasi…');
   try {
-    // Bangun daftar router: password kosong = jangan ubah (kirim undefined per router).
+    ['billingUrl','radiusUrl','genieacsUrl'].forEach(id => validateURL(id));
+    const names = new Set();
+    for (const r of mkRouters) {
+      const name = r.name.trim() || r.host.trim();
+      if (!r.host.trim() || !r.user.trim()) throw new Error('Host dan username wajib untuk setiap router.');
+      if (!Number.isInteger(Number(r.port)) || Number(r.port) < 0 || Number(r.port) > 65535) throw new Error('Port router harus bilangan bulat 0–65535.');
+      if (names.has(name)) throw new Error('Nama efektif router harus unik (nama atau host bila nama kosong).');
+      names.add(name);
+    }
     const routers = mkRouters.map(r => ({
-      name: r.name, host: r.host, port: r.port || 0, user: r.user,
+      name: r.name.trim(), host: r.host.trim(), port: Number(r.port) || 0, user: r.user.trim(),
       pass: r.pass || '', tls: !!r.tls
     }));
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
-      billing_url: $('billingUrl').value || undefined,
+      billing_url: $('billingUrl').value.trim(),
       billing_token: $('billingKey').value || undefined,
-      radius_url: $('radiusUrl').value || undefined,
+      radius_url: $('radiusUrl').value.trim(),
       radius_token: $('radiusKey').value || undefined,
       mikrotik_routers: routers,
-      genieacs_url: $('genieacsUrl').value || undefined
+      genieacs_url: $('genieacsUrl').value.trim(),
+      // Clear legacy fallback as well when removing the final router.
+      ...(routers.length ? {} : {mikrotik_host:'', mikrotik_user:'', mikrotik_pass:'', mikrotik_port:0, mikrotik_tls:false})
     })});
     statusIntegrasi(d.config);
-    if (!silent) msg('intMsg', true, 'Tersimpan.');
+    if (!silent) msg('intMsg', true, 'Integrasi tersimpan.');
     $('billingKey').value = ''; $('radiusKey').value = '';
-    // Kosongkan field password di UI (nilai sudah tersimpan server-side).
-    mkRouters.forEach(r => { r.pass = ''; });
+    mkRouters = (d.config.mikrotik_routers || []).map(r => ({...r, pass:''}));
+    setDirty('integrations', false);
     mkRender();
     return d;
-  } catch(e){ if (!silent) msg('intMsg', false, 'Gagal: ' + e.message); throw e; }
+  } catch(e){ msg('intMsg', false, 'Gagal: ' + e.message); return null; }
 }
 
-// ---------- Mode Tim CS/NOC ----------
+// ---------- Mode Tim CS / NOC ----------
 const TM_FIELDS = {routing:'tmRouting', cs_scope:'tmCSScope', presenter:'tmPresenter', handoff:'tmHandoff', severity:'tmSeverity', noc_toolfirst:'tmNOCTools'};
 
 async function loadTeamModes() {
+  if (dirtyGroups.has('team') && !confirm('Buang perubahan mode tim yang belum disimpan?')) return;
   try {
     const d = await api('/api/team/metrics');
     for (const [k, id] of Object.entries(TM_FIELDS)) $(id).value = (d.flags && d.flags[k]) || 'off';
+    markReady('team');
+    setDirty('team', false);
     const m = d.metrics || {};
     const pct = m.total ? Math.round((m.code_share || 0) * 100) : 0;
-    $('tmStatus').innerHTML = `Pesan tercatat: <b>${m.total || 0}</b> · ditangani kode: <b>${pct}%</b>` +
-      ` · selisih shadow: <b>${m.shadow_mismatches || 0}</b>`;
+    $('tmStatus').innerHTML = `Pesan tercatat: <b>${esc(m.total || 0)}</b> · ditangani kode: <b>${pct}%</b>` +
+      ` · selisih shadow: <b>${esc(m.shadow_mismatches || 0)}</b>`;
   } catch (e) { msg('tmMsg', false, 'Gagal memuat mode tim: ' + e.message); }
 }
 
 async function saveTeamModes() {
-  msg('tmMsg', null, 'Menyimpan…');
+  msg('tmMsg', null, 'Menyimpan mode tim…');
   const body = {
     team_routing: $('tmRouting').value, team_cs_scope: $('tmCSScope').value,
     team_presenter: $('tmPresenter').value, team_handoff: $('tmHandoff').value,
@@ -621,6 +870,7 @@ async function saveTeamModes() {
   };
   try {
     await api('/api/config', {method:'POST', body: JSON.stringify(body)});
+    setDirty('team', false);
     msg('tmMsg', true, 'Mode tim tersimpan.');
     await loadTeamModes();
   } catch (e) { msg('tmMsg', false, 'Gagal: ' + e.message); }
@@ -628,7 +878,7 @@ async function saveTeamModes() {
 
 async function checkBilling() {
   msg('intMsg', null, 'Menguji koneksi Billing…');
-  setDot('Billing', false, 'menguji…');
+  setDot('Billing', null, 'Billing: menguji…');
   try {
     const d = await api('/api/billing/check');
     if (d.ok) {
@@ -643,7 +893,7 @@ async function checkBilling() {
 
 async function checkMikrotik() {
   msg('intMsg', null, 'Menguji koneksi MikroTik…');
-  setDot('Mikrotik', false, 'menguji…');
+  setDot('Mikrotik', null, 'MikroTik: menguji…');
   try {
     const d = await api('/api/mikrotik/check');
     if (d.ok) {
@@ -658,7 +908,7 @@ async function checkMikrotik() {
 
 async function checkRadius() {
   msg('intMsg', null, 'Menguji koneksi RADIUS…');
-  setDot('Radius', false, 'menguji…');
+  setDot('Radius', null, 'RADIUS: menguji…');
   try {
     const d = await api('/api/radius/check');
     if (d.ok) {
@@ -673,7 +923,7 @@ async function checkRadius() {
 
 async function checkGenieacs() {
   msg('intMsg', null, 'Menguji koneksi GenieACS…');
-  setDot('Genieacs', false, 'menguji…');
+  setDot('Genieacs', null, 'GenieACS: menguji…');
   try {
     const d = await api('/api/genieacs/check');
     if (d.ok) {
@@ -687,82 +937,98 @@ async function checkGenieacs() {
 }
 
 async function pingLLM() {
-  msg('setMsg', null, 'Menguji LLM…');
+  msg('setMsgA', null, 'Menguji LLM…');
   try {
-    // Uji nilai kolom yang sedang diketik (bukan yang tersimpan), supaya
-    // tombol tes langsung memakai base URL + key + model yang baru diisi.
     const d = await api('/api/llm/ping', {method:'POST', body: JSON.stringify({
-      base_url: $('sBase').value.trim() || undefined,
+      base_url: validateURL('sBase', true),
       api_key: $('sKey').value.trim() || undefined,
       model: $('sModel').value || undefined,
       wire_api: $('sWire').value || undefined
     })});
-    msg('setMsg', true, `LLM menjawab dalam ${d.latency_ms}ms (model: ${d.model}).`);
-  } catch(e) { msg('setMsg', false, 'LLM gagal: ' + e.message.slice(0,120)); }
+    if (!d.ok) throw new Error(d.error || 'Tes gagal.');
+    msg('setMsgA', true, `LLM menjawab dalam ${d.latency_ms}ms (model: ${d.model}).`);
+  } catch(e) { msg('setMsgA', false, 'LLM gagal: ' + e.message.slice(0,120)); }
 }
 
 async function pingEndpointB() {
-  msg('setMsg', null, 'Menguji endpoint B…');
+  msg('setMsgB', null, 'Menguji endpoint B…');
   try {
-    // Uji endpoint B (Reasoning) langsung — nilai dari kolom, bukan Codex CLI.
-    const d = await api('/api/llm/ping', {method:'POST', body: JSON.stringify({
-      base_url: $('sCodexBase').value.trim() || undefined,
-      api_key: $('sCodexKey').value.trim() || undefined,
-      model: $('sCodex').value || undefined,
-      wire_api: $('sCodexWire').value || undefined
-    })});
-    msg('setMsg', true, `Endpoint B menjawab dalam ${d.latency_ms}ms (model: ${d.model}).`);
-  } catch(e) { msg('setMsg', false, 'Endpoint B gagal: ' + e.message.slice(0,120)); }
+    const base = validateURL('sCodexBase');
+    const key = $('sCodexKey').value.trim();
+    const model = $('sCodex').value;
+    const d = await api('/api/llm/ping', {method:'POST', body: JSON.stringify({endpoint:'b', base_url:base || undefined, api_key:key || undefined, model:model || undefined, wire_api:$('sCodexWire').value})});
+    if (!d.ok) throw new Error(d.error || 'Tes gagal.');
+    msg('setMsgB', true, `Endpoint B menjawab dalam ${d.latency_ms}ms (model: ${d.model}).`);
+  } catch(e) { msg('setMsgB', false, 'Endpoint B gagal: ' + e.message); }
 }
 
 // ---------- Direktori Staf ----------
 let _staffRoles = [];
 let _staffList = [];
 let _rolePerms = {};
+
 document.addEventListener('click', ev => {
+  const recipe = ev.target.closest('button[data-recipe]');
+  if (recipe) {
+    const r = recipeRows[Number(recipe.dataset.recipe)];
+    if (r) delRecipe(r.signature, (r.tools || []).join('|'));
+    return;
+  }
   const b = ev.target.closest('button[data-act]');
   if (!b) return;
   const num = b.dataset.number;
   if (b.dataset.act === 'edit') editStaff(_staffList.find(x => x.number === num));
   else if (b.dataset.act === 'del') delStaff(num);
 });
+
 async function loadStaff() {
   try {
     const d = await api('/api/staff');
     _staffRoles = d.roles || [];
     const sel = $('stfRole');
     if (sel && !sel.dataset.filled) {
-      sel.innerHTML = _staffRoles.map(r => `<option value="${r.value}">${esc(r.label)}</option>`).join('');
+      sel.innerHTML = _staffRoles.map(r => `<option value="${esc(r.value)}">${esc(r.label)}</option>`).join('');
       sel.dataset.filled = '1';
     }
     const list = d.staff || [];
     _staffList = list;
+    markReady('staff');
     _rolePerms = d.role_perms || {};
     if (!list.length) {
-      $('staffList').innerHTML = '<div class="hint">Belum ada staf. Tambahkan nomor internal di bawah.</div>';
+      $('staffList').innerHTML = '<div class="hint" style="padding:14px;text-align:center">Belum ada staf terdaftar. Tambahkan staf di bawah.</div>';
       return;
     }
-    $('staffList').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
-      <tr style="text-align:left;color:var(--dim)"><th>Nama</th><th>Nomor</th><th>Jabatan</th><th>PIN</th><th>Status</th><th></th></tr>
-      ${list.map(s => `<tr style="border-top:1px solid var(--border)">
-        <td>${esc(s.name||'—')}${s.title?` <span style="color:var(--dim)">(${esc(s.title)})</span>`:''}</td>
-        <td>${esc(s.number)}</td>
-        <td>${esc(roleLabel(s.role))}</td>
-        <td>${s.pin_set===false?'<span style="color:var(--dim)">—</span>':'🔒'}</td>
-        <td>${s.active?'<span style="color:var(--ok,#3fb950)">Aktif</span>':'<span style="color:var(--dim)">Nonaktif</span>'}</td>
-        <td style="text-align:right">
-          <button type="button" data-act="edit" data-number="${esc(s.number)}" style="padding:2px 8px;width:auto">Edit</button>
-          <button type="button" data-act="del" data-number="${esc(s.number)}" style="padding:2px 8px;width:auto;background:#da3633">Hapus</button>
-        </td></tr>`).join('')}
+    $('staffList').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead>
+        <tr><th>Nama</th><th>Nomor WA</th><th>Jabatan</th><th>PIN</th><th>Status</th><th style="text-align:right">Aksi</th></tr>
+      </thead>
+      <tbody>
+        ${list.map(s => `<tr>
+          <td><b>${esc(s.name||'—')}</b>${s.title?` <span style="color:var(--text-secondary);font-size:11px">(${esc(s.title)})</span>`:''}</td>
+          <td style="font-family:var(--font-mono)">${esc(s.number)}</td>
+          <td><span class="pill" style="min-height:24px;padding:2px 8px;font-size:11px">${esc(roleLabel(s.role))}</span></td>
+          <td style="font-family:var(--font-mono)">${s.pin_set===false?'<span style="color:var(--text-tertiary)">—</span>':'<span style="color:var(--status-ok)">🔒 Terpasang</span>'}</td>
+          <td>${s.active?'<span style="color:var(--status-ok)">● Aktif</span>':'<span style="color:var(--text-tertiary)">○ Nonaktif</span>'}</td>
+          <td style="text-align:right">
+            <button type="button" data-act="edit" data-number="${esc(s.number)}" class="ghost" style="padding:3px 8px;font-size:11px;min-height:26px">Edit</button>
+            <button type="button" data-act="del" data-number="${esc(s.number)}" class="ghost" style="padding:3px 8px;font-size:11px;min-height:26px;color:var(--status-bad)" title="Hapus staf">Hapus</button>
+          </td></tr>`).join('')}
+      </tbody>
     </table>
-    <div class="hint" style="margin-top:10px"><b>Hak akses per jabatan:</b><br>${
-      Object.keys(_rolePerms).map(r => esc(roleLabel(r))+': '+_rolePerms[r].map(esc).join(', ')).join('<br>')
-    }</div>`;
+    <div class="hint" style="margin-top:10px;padding:10px;background:var(--bg-surface);border-radius:var(--radius-sm)">
+      <b>Hak Akses per Jabatan:</b><br>${
+        Object.keys(_rolePerms).map(r => esc(roleLabel(r))+': <span style="color:var(--text-secondary)">'+_rolePerms[r].map(esc).join(', ')+'</span>').join('<br>')
+      }
+    </div>`;
+    filterStaff();
   } catch(e) { $('staffList').innerHTML = '<div class="hint bad">Gagal memuat staf: '+esc(e.message)+'</div>'; }
 }
+
 function roleLabel(v){ const r=_staffRoles.find(x=>x.value===v); return r?r.label:v; }
+
 function editStaff(s){
   if (!s) return;
+  if (dirtyGroups.has('staff') && !confirm('Buang perubahan form staf saat ini?')) return;
   $('stfNumber').value = s.number||'';
   $('stfName').value = s.name||'';
   $('stfRole').value = s.role||'';
@@ -770,12 +1036,17 @@ function editStaff(s){
   $('stfActive').value = String(!!s.active);
   $('stfPin').value = '';
   msg('staffMsg', null, 'Mengubah '+(s.name||s.number)+'. Kosongkan PIN bila tidak ingin mengganti.');
-  $('stfNumber').scrollIntoView({behavior:'smooth'});
+  $('stfNumber').scrollIntoView({behavior:'smooth', block:'center'});
+  $('stfName').focus();
 }
-function clearStaffForm(){
+
+function clearStaffForm(force=false){
+  if (!force && dirtyGroups.has('staff') && !confirm('Bersihkan perubahan form staf?')) return;
   ['stfNumber','stfName','stfTitle','stfPin'].forEach(id=>$(id).value='');
-  $('stfActive').value='true'; msg('staffMsg', null, '');
+  $('stfActive').value='true'; $('stfRole').selectedIndex = 0;
+  setDirty('staff', false); msg('staffMsg', null, '');
 }
+
 async function saveStaff(){
   const number = $('stfNumber').value.trim();
   const name = $('stfName').value.trim();
@@ -790,54 +1061,74 @@ async function saveStaff(){
   if (pin) payload.pin = pin;
   try {
     await api('/api/staff', {method:'POST', body: JSON.stringify(payload)});
-    msg('staffMsg', true, 'Staf tersimpan.');
-    clearStaffForm();
-    loadStaff();
+    clearStaffForm(true);
+    msg('staffMsg', true, 'Staf berhasil disimpan.');
+    await loadStaff();
   } catch(e){ msg('staffMsg', false, 'Gagal: '+e.message); }
 }
+
 async function delStaff(number){
   if (!confirm('Hapus staf '+number+'?')) return;
   try {
     await api('/api/staff?nomor='+encodeURIComponent(number), {method:'DELETE'});
     msg('staffMsg', true, 'Staf dihapus.');
-    loadStaff();
+    await loadStaff();
   } catch(e){ msg('staffMsg', false, 'Gagal: '+e.message); }
 }
 
 // ---------- Aturan Kebijakan (Rules) ----------
 let _rules = [];
-async function loadRules(){
+// Keep REMOVE tombstones across subsequent saves in this page session.
+const removedRules = new Map();
+
+async function loadRules(discard=false){
+  if (discard && dirtyGroups.has('rules') && !confirm('Buang perubahan aturan yang belum disimpan?')) return;
   try {
     const d = await api('/api/rules');
     _rules = d.rules || [];
+    for (const [id, rule] of removedRules) { if (!_rules.some(r => r.id === id)) _rules.push(rule); }
+    markReady('rules');
+    setDirty('rules', false);
+    renderRules();
+  } catch(e){ msg('rulesMsg', false, 'Gagal memuat aturan: '+e.message); }
+}
+
+function renderRules() {
     $('rulesList').innerHTML = _rules.map((r, i) => `
-      <div class="rule-row" style="display:grid;grid-template-columns:1fr 90px 110px 30px;gap:6px;align-items:center;margin-bottom:6px">
-        <div>
-          <div style="font-weight:600">${esc(r.id)}</div>
-          <div class="hint" style="margin:0">${esc(r.description||'')}</div>
+      <div class="rule-row" data-decision="${esc(r.decision || '')}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-weight:700;color:#fff">${esc(r.id)}</div>
+          <button class="ghost" style="color:var(--status-bad);padding:2px 8px;min-height:26px;font-size:11px" title="Hapus rule" onclick="delRule(${i})">🗑 Hapus</button>
         </div>
-        <input value="${esc(r.permission||'')}" placeholder="permission" data-r="${i}" data-f="permission" style="font-size:12px">
-        <select data-r="${i}" data-f="decision" style="font-size:12px">
-          ${['ALLOW','APPROVAL_REQUIRED','DENY','REMOVE'].map(o => `<option ${(r.decision||'').toUpperCase()===o?'selected':''}>${o}</option>`).join('')}
-        </select>
-        <button class="ghost" style="color:var(--bad);padding:2px" title="hapus rule" onclick="delRule(${i})">🗑</button>
-        <div style="grid-column:1/-1" class="hint">tool: <b>${esc(r.tool||'—')}</b> · scope: <b>${esc(r.scope||'—')}</b> · risk: <b>${esc(r.risk||'—')}</b>${r.requires&&r.requires.length?' · requires: <b>'+esc(r.requires.join(', '))+'</b>':''}</div>
+        <div class="hint" style="margin:0 0 8px">${esc(r.description||'')}</div>
+        <div class="row" style="gap:8px">
+          <div><input value="${esc(r.permission||'')}" placeholder="permission" data-r="${i}" data-f="permission" style="font-size:12px;min-height:34px"></div>
+          <div>
+            <select data-r="${i}" data-f="decision" style="font-size:12px;min-height:34px">
+              ${['','ALLOW','APPROVAL_REQUIRED','DENY','REMOVE'].map(o => `<option value="${o}" ${(r.decision||'').toUpperCase()===o?'selected':''}>${o || 'Kosong (hapus aturan)'}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="hint" style="margin-top:6px;font-family:var(--font-mono);font-size:11px">
+          tool: <b>${esc(r.tool||'—')}</b> · scope: <b>${esc(r.scope||'—')}</b> · risk: <b>${esc(r.risk||'—')}</b>${r.requires&&r.requires.length?' · requires: <b>'+esc(r.requires.join(', '))+'</b>':''}
+        </div>
       </div>`).join('');
-  } catch(e){ $('rulesList').innerHTML = '<div class="hint bad">Gagal: '+esc(e.message)+'</div>'; }
+  if (!_rules.length) $('rulesList').innerHTML = '<p class="hint">Belum ada aturan.</p>';
+  $('rulesList').querySelectorAll('input, select').forEach(el => {
+    el.setAttribute('aria-label', (el.dataset.f === 'permission' ? 'Permission: ' : 'Keputusan: ') + _rules[Number(el.dataset.r)].id);
+    el.addEventListener('input', () => { collectRules(); el.closest('.rule-row').dataset.decision = _rules[Number(el.dataset.r)].decision; });
+  });
 }
-function delRule(i){ _rules.splice(i,1); loadRulesLocal(); }
-function loadRulesLocal(){
-  $('rulesList').innerHTML = _rules.map((r, i) => `
-    <div class="rule-row" style="display:grid;grid-template-columns:1fr 90px 110px 30px;gap:6px;align-items:center;margin-bottom:6px">
-      <div style="font-weight:600">${esc(r.id)}</div>
-      <input value="${esc(r.permission||'')}" data-r="${i}" data-f="permission" style="font-size:12px">
-      <select data-r="${i}" data-f="decision" style="font-size:12px">
-        ${['ALLOW','APPROVAL_REQUIRED','DENY','REMOVE'].map(o => `<option ${(r.decision||'').toUpperCase()===o?'selected':''}>${o}</option>`).join('')}
-      </select>
-      <button class="ghost" style="color:var(--bad);padding:2px" onclick="delRule(${i})">🗑</button>
-    </div>`).join('');
+
+function delRule(i){
+  collectRules();
+  if (!confirm('Tandai aturan '+_rules[i].id+' untuk dihapus? Berlaku setelah simpan dan otorisasi.')) return;
+  _rules[i].decision = 'REMOVE';
+  setDirty('rules');
+  renderRules();
+  msg('rulesMsg', null, 'Aturan ditandai REMOVE. Pilih keputusan lain untuk membatalkan sebelum simpan.');
 }
-// Baca nilai input/select hasil edit user sebelum simpan.
+
 function collectRules(){
   const rows = document.querySelectorAll('#rulesList .rule-row');
   rows.forEach(row => {
@@ -850,41 +1141,47 @@ function collectRules(){
     });
   });
 }
+
 async function saveRules(){
   collectRules();
-  const number = prompt('Nomor WhatsApp superadmin (contoh 6281333678765):');
-  if (!number) return;
-  const pin = prompt('PIN superadmin:');
-  if (pin === null) return;
+  const auth = await authorizeAdmin('Simpan perubahan kebijakan');
+  if (!auth) return;
+  const {number, pin} = auth;
   try {
     const d = await api('/api/rules', {method:'POST', body: JSON.stringify({number, pin, rules: _rules})});
+    removedRules.clear();
+    _rules.filter(r => !r.decision || r.decision === 'REMOVE').forEach(r => removedRules.set(r.id, {...r}));
+    setDirty('rules', false);
     msg('rulesMsg', true, 'Aturan tersimpan ke overlay: ' + (d.overlay||''));
     await loadRules();
   } catch(e){ msg('rulesMsg', false, 'Gagal: '+e.message); }
 }
 
 // ---------- Skill / Resep ----------
+let recipeRows = [];
 async function loadRecipes(){
   try {
     const d = await api('/api/recipes');
     const list = d.resep || [];
-    if (!list.length) { $('recipesList').innerHTML = '<div class="hint">Belum ada resep tersimpan.</div>'; return; }
-    $('recipesList').innerHTML = list.map(r => `
-      <div class="rule-row" style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px">
+    recipeRows = list;
+    markReady('recipes');
+    if (!list.length) { $('recipesList').innerHTML = '<div class="hint" style="padding:14px;text-align:center">Belum ada resep investigasi tersimpan.</div>'; return; }
+    $('recipesList').innerHTML = list.map((r, i) => `
+      <div class="rule-row" style="display:flex;gap:8px;align-items:flex-start">
         <div style="flex:1">
-          <div style="font-weight:600">${esc(r.signature)}</div>
-          <div class="hint" style="margin:0">${esc((r.tools||[]).join(' → '))} · verdict: <b>${esc(r.verdict)}</b> · hits: ${r.hits}</div>
+          <div style="font-weight:700;color:#fff">${esc(r.signature)}</div>
+          <div class="hint" style="margin:4px 0 0">${esc((r.tools||[]).join(' → '))} · verdict: <b>${esc(r.verdict)}</b> · hits: ${esc(r.hits ?? 0)}</div>
         </div>
-        <button class="ghost" style="color:var(--bad);padding:2px" title="hapus resep" onclick="delRecipe(${JSON.stringify(esc(r.signature))}, ${JSON.stringify((r.tools||[]).join('|'))})">🗑</button>
+        <button class="ghost" style="color:var(--status-bad);padding:2px 8px;min-height:26px;font-size:11px" title="Hapus resep" aria-label="Hapus resep ${esc(r.signature)}" data-recipe="${i}">Hapus</button>
       </div>`).join('');
   } catch(e){ $('recipesList').innerHTML = '<div class="hint bad">Gagal: '+esc(e.message)+'</div>'; }
 }
+
 async function delRecipe(signature, tools){
   if (!confirm('Hapus resep untuk "'+signature+'"?')) return;
-  const number = prompt('Nomor WhatsApp superadmin:');
-  if (!number) return;
-  const pin = prompt('PIN superadmin:');
-  if (pin === null) return;
+  const auth = await authorizeAdmin('Hapus resep investigasi');
+  if (!auth) return;
+  const {number, pin} = auth;
   try {
     await api('/api/recipes', {method:'DELETE', body: JSON.stringify({number, pin, signature, tools})});
     msg('recipesMsg', true, 'Resep dihapus.');
@@ -892,16 +1189,73 @@ async function delRecipe(signature, tools){
   } catch(e){ msg('recipesMsg', false, 'Gagal: '+e.message); }
 }
 
+function filterStaff() {
+  const query = $('staffFilter').value.toLocaleLowerCase().trim();
+  let count = 0;
+  $('staffList').querySelectorAll('tbody tr').forEach(row => {
+    row.hidden = !row.textContent.toLocaleLowerCase().includes(query);
+    if (!row.hidden) count++;
+  });
+  let empty = $('staffFilterEmpty');
+  if (!empty) { empty = document.createElement('p'); empty.id = 'staffFilterEmpty'; empty.className = 'hint'; $('staffList').append(empty); }
+  empty.textContent = query && !count ? 'Tidak ada staf yang cocok dengan pencarian.' : '';
+}
+
+// Serialize operations per section and guard against saving unloaded defaults.
+for (const [group, message, names] of [
+  ['ai','setMsg',['saveSettings','loadModels','pingLLM','pingEndpointB']],
+  ['integrations','intMsg',['saveIntegrations','mkTest','checkBilling','checkMikrotik','checkRadius','checkGenieacs']],
+  ['team','tmMsg',['saveTeamModes']], ['staff','staffMsg',['saveStaff','delStaff']],
+  ['rules','rulesMsg',['saveRules']], ['recipes','recipesMsg',['delRecipe']]
+]) {
+  for (const name of names) {
+    const action = window[name];
+    window[name] = (...args) => {
+      if (!readyGroups.has(group)) { msg(message, false, 'Data belum dimuat. Muat ulang bagian ini sebelum mengubah konfigurasi.'); return Promise.resolve(); }
+      if (name.startsWith('check') && dirtyGroups.has('integrations')) { msg(message, false, 'Simpan perubahan integrasi sebelum menguji konfigurasi tersimpan.'); return Promise.resolve(); }
+      return runAction(group, message, () => action(...args));
+    };
+  }
+}
+
+for (const el of document.querySelectorAll('.card[data-group]')) {
+  const badge = document.createElement('span'); badge.className = 'dirty-badge'; badge.hidden = true; badge.textContent = 'Belum disimpan';
+  el.querySelector('h2').append(badge);
+}
+for (const id of ['setMsgA','setMsgB','setMsg','intMsg','tmMsg','staffMsg','rulesMsg','recipesMsg']) {
+  $(id).setAttribute('role','status'); $(id).setAttribute('aria-live','polite'); $(id).setAttribute('aria-atomic','true');
+}
+document.querySelectorAll('input[type=password]').forEach(el => el.autocomplete = 'new-password');
+document.addEventListener('input', e => {
+  const group = e.target.closest('[data-group]')?.dataset.group;
+  if (group && e.target.id !== 'staffFilter') setDirty(group);
+  if (e.target.setCustomValidity) e.target.setCustomValidity('');
+});
+window.addEventListener('beforeunload', e => { if (dirtyGroups.size) { e.preventDefault(); e.returnValue = ''; } });
+function highlightSection() {
+  document.querySelectorAll('.settings-nav a').forEach(a => {
+    if (a.hash === location.hash || !location.hash && a.hash === '#conversation') a.setAttribute('aria-current','location');
+    else a.removeAttribute('aria-current');
+  });
+}
+window.addEventListener('hashchange', highlightSection); highlightSection();
+['ai','integrations','team','staff','rules','recipes'].forEach(g => controls(g, true));
+// Read-only retries remain available even when an initial request fails.
+document.querySelectorAll('button[onclick^="loadStaff"],button[onclick^="loadRules"],button[onclick^="loadRecipes"],button[onclick^="loadTeamModes"]').forEach(b => b.disabled = false);
 boot();
+loadTeamModes();
 loadStaff();
 loadRules();
 loadRecipes();
 
-// Tombol logout.
+// Logout is explicit; a failed request must not claim the session was ended.
 document.getElementById('btnLogout').addEventListener('click', async (e) => {
   e.preventDefault();
-  try { await fetch('/api/auth/logout', {method:'POST'}); } catch {}
-  location.href = '/login.html';
+  if (dirtyGroups.size && !confirm('Keluar dan buang perubahan yang belum disimpan?')) return;
+  try {
+    await api('/api/auth/logout', {method:'POST'});
+    dirtyGroups.clear(); location.href = '/login.html';
+  } catch (error) { msg('pageMsg', false, 'Gagal keluar: ' + error.message); }
 });
 </script>
 </body>

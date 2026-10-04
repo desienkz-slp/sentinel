@@ -3,277 +3,301 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NOC Sentinel — AI NOC Console</title>
+<title>NOC Sentinel — Cockpit Operasi Jaringan</title>
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png">
-<style>
-  :root{
-    --bg:#0b0f14; --panel:#121922; --panel2:#0f151d; --line:#1f2a37;
-    --txt:#dbe4ee; --dim:#8296ab; --acc:#22d3ee; --ok:#22c55e; --warn:#f59e0b;
-    --bad:#ef4444; --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
-
-  /* ---------- Header / top bar ---------- */
-  header{display:flex;align-items:center;gap:14px;padding:12px 22px;border-bottom:1px solid var(--line);
-    background:linear-gradient(180deg,#111a24,#0d141c);position:sticky;top:0;z-index:50;flex-wrap:wrap}
-  .header-inner{display:flex;align-items:center;gap:14px;max-width:1800px;margin:0 auto;width:100%;flex-wrap:wrap}
-  .brand{display:flex;flex-direction:column;line-height:1.15}
-  .brand-logo{width:40px;height:40px;flex:0 0 auto;display:block}
-  .logo{font-weight:700;letter-spacing:.5px;font-size:18px}
-  .logo span{color:var(--acc)}
-  .tagline{font:11px/1 var(--mono);color:var(--dim);letter-spacing:.5px;text-transform:uppercase;margin-top:3px}
-  nav{display:flex;gap:6px;margin-left:8px}
-  nav a{color:var(--dim);text-decoration:none;font-size:13px;font-weight:600;padding:8px 14px;
-    border:1px solid transparent;border-radius:8px;letter-spacing:.3px}
-  nav a:hover{color:var(--txt);background:var(--panel2);border-color:var(--line)}
-  nav a.on{color:var(--acc);background:#12303c;border-color:#1e4a58}
-  .gear{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 auto;
-    color:var(--dim);text-decoration:none;font-size:17px;border:1px solid var(--line);border-radius:8px;
-    background:var(--panel2);transition:color .15s,border-color .15s}
-  .gear:hover{color:var(--txt);border-color:#33465c}
-  .gear.on{color:var(--acc);border-color:#27536b;background:#12303c}
-  .brand-link{display:inline-flex;flex:0 0 auto;text-decoration:none}
-  .brand-link img{display:block}
-  .spacer{flex:1}
-  .pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;
-    border-left:1px solid var(--line);padding-left:14px;margin-left:6px}
-  .pill{font:12px/1 var(--mono);padding:6px 10px;border:1px solid var(--line);border-radius:99px;color:var(--dim);
-    display:inline-flex;align-items:center;gap:6px;background:var(--panel2);white-space:nowrap}
-  /* Di layar portrait/sempit, biarkan header menyesuaikan tanpa melebar berlebihan. */
-  @media(max-width:720px){
-    header{padding:10px 14px;gap:10px}
-    .header-inner{gap:10px}
-    .brand .tagline{display:none}
-    .pill{padding:5px 8px}
-    .actions{border-left:none;padding-left:0;margin-left:0}
-  }
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:0 0 auto}
-  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
-  .dot.off{background:var(--bad)}
-  .ep-tag{font:10px/1 var(--mono);font-weight:700;padding:2px 6px;border-radius:5px;flex:0 0 auto}
-  .ep-tag.a{background:#38bdf8;color:#06202e}   /* light blue = Endpoint A */
-  .ep-tag.b{background:#ef4444;color:#fff}       /* red = Endpoint B */
-
-  /* ---------- Layout shell ---------- */
-  .shell{max-width:1800px;margin:0 auto;padding:16px 22px 48px}
-  .grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;align-items:start}
-  .grid > section, .grid > aside{min-width:0}
-  .bottom{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start}
-  .bottom > section{min-width:0}
-  /* Layar sempit / laptop kecil / monitor VERTIKAL (portrait) → tumpuk satu kolom
-     supaya kartu & tabel tidak terhimpit. */
-  @media(max-width:1440px){ .grid{grid-template-columns:1fr} .bottom{grid-template-columns:1fr} }
-  @media(min-width:1441px){
-    .grid{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
-  }
-
-  /* ---------- Cards ---------- */
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
-  .card:last-child{margin-bottom:0}
-  .card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);font-weight:700;
-    display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .card h2 .pill{margin-left:auto}
-  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px;font-weight:600;letter-spacing:.3px}
-  input,select,textarea,button{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);
-    border-radius:8px;padding:9px 11px;width:100%}
-  textarea{min-height:96px;resize:vertical;font-family:var(--mono);font-size:13px;line-height:1.5}
-  button{cursor:pointer;background:#16323d;border-color:#1e4a58;color:#c9f5ff;font-weight:600}
-  button:hover{background:#1b3d4a}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  button.ghost{background:transparent;border-color:var(--line);color:var(--dim);font-weight:500}
-  button.ghost:hover{color:var(--txt);border-color:#33465c}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  @media(max-width:640px){ .row{grid-template-columns:1fr} }
-  .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-  .btns button{width:auto;flex:0 0 auto;padding:9px 16px}
-
-  /* ---------- Diagnosis / steps ---------- */
-  #steps{list-style:none;margin:0;padding:0;max-height:560px;overflow:auto}
-  #steps li{border-left:2px solid var(--line);padding:8px 0 8px 12px;margin-left:4px}
-  #steps li.thought{border-color:var(--acc)}
-  #steps li.tool{border-color:var(--warn)}
-  #steps li.answer{border-color:var(--ok)}
-  #steps li.error{border-color:var(--bad)}
-  #steps li.escalate{border-color:#a855f7}
-  .tag{font:11px/1 var(--mono);text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
-  pre{margin:6px 0 0;font:12px/1.45 var(--mono);white-space:pre-wrap;word-break:break-word;color:#b9c8d8;
-    background:#0a0f15;border:1px solid #172230;border-radius:8px;padding:8px}
-  .verdict{border-radius:12px;padding:16px;border:1px solid var(--line);background:var(--panel2);margin-bottom:12px}
-  .verdict .v{font:700 22px/1.2 var(--mono)}
-  .v.SEHAT{color:var(--ok)} .v.DEGRADASI{color:var(--warn)} .v.GANGGUAN{color:var(--bad)}
-  .v.CHAT{color:var(--acc);font-size:16px;font-weight:600}
-  .meta{font:12px/1.6 var(--mono);color:var(--dim);margin-top:6px}
-  .answer{white-space:pre-wrap;font-size:13.5px;line-height:1.6}
-
-  /* ---------- Tables ---------- */
-  .table-wrap{overflow-x:auto}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
-
-  /* ---------- Misc ---------- */
-  .grid-tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-  .grid-tools button{width:auto;padding:6px 10px;font:12px var(--mono);background:var(--panel2);color:var(--dim);
-    border-color:var(--line);font-weight:500}
-  .grid-tools button:hover{color:var(--acc);border-color:#27536b}
-  .hidden{display:none}
-  .hint{font-size:12px;color:var(--dim);margin-top:8px}
-  details summary{cursor:pointer;color:var(--dim);font-size:12px;margin-top:12px}
-  #waGwLog{max-height:160px;overflow:auto}
-  #waQRBox img{display:block}
-
-  /* ---------- Modal / popup ---------- */
-  .modal-mask{position:fixed;inset:0;background:rgba(4,7,12,.72);backdrop-filter:blur(3px);
-    display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
-  .modal-mask.hidden{display:none}
-  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:100%;max-width:460px;
-    padding:20px;box-shadow:0 18px 60px rgba(0,0,0,.5)}
-  .modal h3{margin:0 0 4px;font-size:15px}
-  .modal .sub{font-size:12px;color:var(--dim);margin-bottom:14px}
-  .modal .add-row{display:flex;gap:8px}
-  .modal .add-row input{flex:1}
-  .modal .add-row button{width:auto;flex:0 0 auto;padding:9px 16px}
-  .bl-list{margin:14px 0 0;padding:0;list-style:none;max-height:280px;overflow:auto}
-  .bl-list li{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--line);
-    border-radius:9px;margin-bottom:8px;background:var(--panel2)}
-  .bl-list li .num{flex:1;font-family:var(--mono);font-size:13.5px}
-  .bl-list li button{width:auto;flex:0 0 auto;padding:5px 10px;font-size:12px}
-  .bl-list .empty{color:var(--dim);font-size:13px;padding:6px 2px}
-  .modal .m-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
-  .modal .m-foot button{width:auto;padding:9px 16px}
-</style>
 <link rel="stylesheet" href="/noc-ui.css">
 </head>
 <body>
 <header>
   <div class="header-inner">
-    <a class="brand-link" href="/" title="Ke Dashboard">
-      <img class="brand-logo" src="/logo.png" alt="NOC Sentinel" width="40" height="40">
+    <a class="brand-link" href="/" title="Dashboard Operasi">
+      <img class="brand-logo" src="/logo.png" alt="NOC Sentinel" width="36" height="36">
     </a>
     <div class="brand">
       <div class="logo">NOC <span>Sentinel</span></div>
-      <div class="tagline">AI Network Operations Console</div>
+      <div class="tagline">Enterprise Autonomous Operations Console</div>
     </div>
     <div class="spacer"></div>
     <div class="pills">
-      <div class="pill"><span class="dot" id="dotLLM"></span><span id="txtLLM">A</span></div>
-      <div class="pill"><span class="dot" id="dotCodex"></span><span id="txtCodex">B</span></div>
-      <div class="pill"><span class="dot" id="dotWA"></span><span id="txtWA">WA</span></div>
-      <div class="pill" id="pillModel">—</div>
-      <div class="pill" id="pillVersion" title="Versi aplikasi">v—</div>
-      <button class="pill" id="btnUpdate" style="display:none;cursor:pointer;border:none;background:#1f6feb;color:#fff;font-weight:600" title="Pasang versi terbaru">⬆ Update</button>
+      <div class="pill" title="Endpoint A (Conversation)"><span class="dot" id="dotLLM"></span><span id="txtLLM">A</span></div>
+      <div class="pill" title="Endpoint B (Reasoning)"><span class="dot" id="dotCodex"></span><span id="txtCodex">B</span></div>
+      <div class="pill" title="WhatsApp Gateway"><span class="dot" id="dotWA"></span><span id="txtWA">WA</span></div>
+      <div class="pill" id="pillModel" title="Model AI Aktif">—</div>
+      <div class="pill" id="pillVersion" title="Versi Sentinel">v—</div>
+      <button class="pill" id="btnUpdate" style="display:none;cursor:pointer;border:none;background:#2563eb;color:#fff;font-weight:600" title="Pasang rilis terbaru">⬆ Update</button>
     </div>
     <div class="actions">
-      <a class="gear" href="/settings.html" title="Pengaturan" aria-label="Pengaturan">⚙</a>
-      <a class="gear" id="btnLogout" href="#" title="Keluar" aria-label="Keluar">⏻</a>
+      <a class="gear on" href="/" title="Dashboard Operasi" aria-label="Dashboard">⌂</a>
+      <a class="gear" href="/settings.html" title="Pengaturan Sistem" aria-label="Pengaturan">⚙</a>
+      <a class="gear" id="btnLogout" href="#" title="Keluar dari Konsol" aria-label="Keluar">⏻</a>
     </div>
   </div>
 </header>
 
-<div class="shell cockpit-shell">
-  <section class="ops-kpis" aria-label="Ringkasan operasi">
-    <div class="kpi-card"><span class="kpi-label">Case aktif</span><strong id="kpiActive">—</strong><small>butuh perhatian</small></div>
-    <div class="kpi-card kpi-escalated"><span class="kpi-label">Eskalasi</span><strong id="kpiEscalated">—</strong><small id="kpiEscalationRate">rate —</small></div>
-    <div class="kpi-card kpi-resolved"><span class="kpi-label">Terverifikasi selesai</span><strong id="kpiResolved">—</strong><small>case engine</small></div>
-    <div class="kpi-card"><span class="kpi-label">Kesehatan dependensi</span><strong id="kpiHealth">Memuat</strong><small id="obsAlertTag">status layanan</small></div>
+<main class="cockpit-shell" id="mainContent">
+  <div class="page-heading"><div><span class="eyebrow">WORKSPACE / OVERVIEW</span><h1>Operations overview<span class="heading-dot">.</span></h1><p class="page-description">Pantau kasus. Temukan bukti. Kendalikan operasi.</p></div><div class="page-actions"><span id="lastRefresh" class="refresh-state" role="status">Menunggu sinkronisasi</span><button class="ghost" id="refreshDashboard" onclick="refreshDashboard()">↻ Refresh</button><button id="toggleDiagnosis" onclick="toggleDiagnosis()" aria-expanded="false" aria-controls="diagnosisPanel">✧ AI Diagnostics</button></div></div>
+  <div id="dashboardError" class="notice hidden" role="alert"></div>
+  <div id="alertBanner" class="alert-banner hidden" role="status"></div>
+  <!-- Operations KPI Tiles -->
+  <section class="ops-kpis" aria-label="Ringkasan Operasi">
+    <div class="kpi-card">
+      <span class="kpi-label">Case Aktif</span>
+      <strong id="kpiActive">—</strong>
+      <small>Sedang diproses case engine</small>
+    </div>
+    <div class="kpi-card kpi-escalated">
+      <span class="kpi-label">Eskalasi Staf</span>
+      <strong id="kpiEscalated">—</strong>
+      <small id="kpiEscalationRate">Rasio dari seluruh kasus</small>
+    </div>
+    <div class="kpi-card kpi-resolved">
+      <span class="kpi-label">Terverifikasi Selesai</span>
+      <strong id="kpiResolved">—</strong>
+      <small>Dengan bukti verifikasi lulus</small>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Alert Dependensi</span>
+      <strong id="kpiHealth">Memuat</strong>
+      <small id="obsAlertTag">status dependensi</small>
+    </div>
   </section>
 
+  <!-- High-Density Cockpit Grid (3-Zone Enterprise Layout) -->
   <div class="cockpit-grid">
+    <!-- Zone 1: Case Active Queue -->
     <section class="card case-queue" aria-labelledby="caseQueueTitle">
       <div class="pane-heading">
-        <div><span class="eyebrow">Monitor / Operate</span><h1 id="caseQueueTitle">Antrean case operasi</h1></div>
-        <span class="pill" id="caseCount">—</span>
+        <div>
+          <span class="eyebrow">Monitor &amp; Operate</span>
+          <h2 id="caseQueueTitle">Antrean kasus operasi</h2>
+        </div>
+        <span class="pill" id="caseCount">— case</span>
       </div>
-      <div class="hint" id="caseStat">Memuat lifecycle case…</div>
-      <div class="table-wrap case-scroll" id="caseTableWrap" tabindex="0" aria-label="Daftar case aktif yang dapat digulir">
+      <div class="case-toolbar"><div class="search-field"><label class="sr-only" for="caseSearch">Cari kasus</label><input type="search" id="caseSearch" placeholder="Cari ID kasus, identitas, atau status…" oninput="renderCases()"></div><label class="sr-only" for="caseFilter">Filter status kasus</label><select id="caseFilter" onchange="renderCases()"><option value="all">Semua status</option><option value="active">Diproses AI</option><option value="attention">Perlu perhatian</option><option value="resolved">Selesai</option></select></div>
+      <div class="hint" id="caseStat" role="status">Memuat lifecycle antrean…</div>
+
+      <div class="table-wrap case-scroll" id="caseTableWrap" tabindex="0" aria-label="Tabel antrean case yang dapat digulir">
         <table>
-          <thead><tr><th>Case</th><th>Status</th><th>Alur lifecycle</th><th>Handoff</th><th>Verifikasi</th></tr></thead>
-          <tbody id="caseRows"><tr><td colspan="5" style="color:var(--dim)">Belum ada case.</td></tr></tbody>
+          <thead>
+            <tr>
+              <th>Case ID</th>
+              <th>Status</th>
+              <th>Identitas / kanal</th>
+              <th>Eskalasi / Handoff</th>
+              <th>Update terakhir</th>
+            </tr>
+          </thead>
+          <tbody id="caseRows">
+            <tr><td colspan="5" style="color:var(--text-tertiary);text-align:center;padding:24px">Memuat kasus dari case engine…</td></tr>
+          </tbody>
         </table>
       </div>
-      <p class="queue-footnote">Urutan case dan lifecycle berasal dari tracker; tidak ada aksi baru yang dibuat oleh tampilan ini.</p>
+      <p class="queue-footnote">Data dari case engine · urutan terbaru · klik ID untuk melihat timeline dan bukti verifikasi.</p>
     </section>
 
-    <aside class="diagnosis-panel" aria-label="Diagnosis cepat">
+    <!-- Zone 2: Fast Diagnosis & AI Telemetry -->
+    <aside class="diagnosis-panel hidden" id="diagnosisPanel" aria-label="Panel Diagnosis Cepat">
       <div class="card diagnosis-card">
-        <div class="pane-heading"><div><span class="eyebrow">AI assistance</span><h2>Diagnosis cepat</h2></div><span class="live-dot">LIVE</span></div>
-        <label for="q">Pertanyaan operator</label>
-        <textarea id="q" placeholder="Contoh: pelanggan di Jl. Melati internet lambat sejak pagi"></textarea>
+        <div class="pane-heading">
+          <div>
+            <span class="eyebrow">AI Co-Pilot</span>
+            <h2>Diagnosis Cepat</h2>
+          </div>
+          <span class="ep-tag b" id="diagState">SIAP</span>
+        </div>
+
+        <label for="q">Keluhan / Pertanyaan Operator</label>
+        <textarea id="q" placeholder="Contoh: pelanggan di Jl. Melati internet lambat sejak pagi, lampu LOS berkedip"></textarea>
+
         <div class="row compact-inputs">
-          <input id="tgt" aria-label="Target opsional" placeholder="Target (opsional)">
-          <select id="mdl" aria-label="Model analisis"></select>
+          <div>
+            <label for="tgt" style="display:none">Target</label>
+            <input id="tgt" aria-label="Target opsional" placeholder="Target / ID Pelanggan / IP (opsional)">
+          </div>
+          <div>
+            <label for="mdl" style="display:none">Model</label>
+            <input id="mdl" aria-label="Model AI tersimpan" readonly placeholder="Memuat model tersimpan…" title="Diagnosis memakai model tersimpan. Ubah melalui Pengaturan.">
+          </div>
         </div>
+
         <div class="btns diagnosis-actions">
-          <button id="run" onclick="runDiag()">▶ Diagnosis</button>
-          <button class="ghost" onclick="loadModels()" title="Muat daftar model">Model</button>
-          <button class="ghost" onclick="document.getElementById('steps').innerHTML=''" title="Bersihkan jejak">Bersihkan</button>
+          <button id="run" onclick="runDiag()">▶ Eksekusi Diagnosis</button>
+          <a class="button-link ghost" href="/settings.html#conversation" title="Ubah model tersimpan di Pengaturan">Model ↗</a>
+          <button class="ghost" onclick="clearDiagnosis()" title="Bersihkan jejak langkah">Bersihkan</button>
         </div>
-        <div id="verdict" class="verdict"><div class="v" id="vText">—</div><div class="meta" id="vMeta">Siap untuk diagnosis.</div></div>
+
+        <div id="verdict" class="verdict">
+          <div class="v" id="vText">—</div>
+          <div class="meta" id="vMeta">Siap untuk menerima perintah diagnosis.</div>
+        </div>
         <div class="answer" id="answer"></div>
+
         <details class="trace-disclosure">
-          <summary>Jejak diagnosis &amp; probe manual</summary>
-          <div class="grid-tools" id="toolBtns"></div>
-          <div class="row"><input id="probeTarget" placeholder="target probe"><button class="ghost" onclick="runProbe()">Probe</button></div>
-          <ul id="steps"><li style="border-color:var(--line);color:var(--dim)">Menunggu permintaan…</li></ul>
+          <summary>Log eksekusi &amp; manual probe</summary>
+          <p class="hint" id="probeHint">Pilih tool untuk menjalankan probe sesuai kebijakan server.</p><div class="grid-tools" id="toolBtns"></div>
+          <div class="row" style="margin-top:8px">
+            <div><label for="probeTarget">Target probe</label><input id="probeTarget" placeholder="IP / Host"></div>
+            <div><label for="probeRun">Jalankan tool terpilih</label><button id="probeRun" class="ghost" style="width:100%" onclick="runProbe()">Probe</button></div>
+          </div>
+          <ul id="steps">
+            <li style="border-color:var(--border-default);color:var(--text-tertiary)">Menunggu eksekusi…</li>
+          </ul>
         </details>
       </div>
     </aside>
 
+    <!-- Zone 3: Posture, Observability & WA Admin Drawer -->
     <aside class="operations-side">
       <section class="card operational-context">
-        <h2>Postur operasi <span class="pill" id="bpMode">—</span></h2>
-        <div class="hint" id="bpStat">memuat…</div>
-        <div class="hint" id="obsStat">Memuat KPI, status dependensi, dan alert…</div>
+        <h2>Postur operasi <span class="pill" id="bpMode">—</span></h2><p class="section-caption">Kebijakan, workflow & observabilitas</p>
+        <div class="hint" id="bpStat">Memuat postur…</div>
+        <div class="hint" id="obsStat">Memuat status observabilitas dependensi…</div>
       </section>
-      <details class="card integration-drawer">
-        <summary>Administrasi integrasi WhatsApp <span id="waEmbedTag" class="pill">terpadu</span></summary>
+
+      <details class="card integration-drawer" id="adminDrawer">
+        <summary>Administrasi Integrasi WhatsApp <span id="waEmbedTag" class="pill">terpadu</span></summary>
         <div class="integration-content">
-          <div class="btns"><button id="btnWaStart" onclick="waCtl('start')">▶ Mulai</button><button class="ghost" onclick="waCtl('stop')">■ Hentikan</button><button class="ghost" onclick="waCtl('restart')">↻ Restart</button><button class="ghost" onclick="waGateway()">Cek proses</button></div>
-          <div class="hint" id="waGwOut">memeriksa proses…</div><pre id="waGwLog" class="hidden"></pre>
-          <label>Blokir nomor</label><div class="btns"><button onclick="openBlocklist()">🛑 Kelola daftar blokir</button><span class="pill" id="blCount">0 nomor diblokir</span></div>
-          <div class="row"><div><label for="sWAGroup">Pesan grup</label><select id="sWAGroup"><option value="false">Abaikan</option><option value="true">Proses juga</option></select></div><div><label for="sWAAsync">Pengiriman</label><select id="sWAAsync"><option value="false">Sinkron</option><option value="true">Async</option></select></div></div>
-          <div class="btns"><button onclick="saveWASettings()">Simpan WA</button><button class="ghost" onclick="waStatus()">Status sesi</button><button class="ghost" onclick="waQR()">QR pairing</button><button class="ghost" onclick="waSend()">Kirim tes</button><button class="ghost" onclick="waReconnect()">↻ Reconnect</button><button class="ghost" style="color:var(--bad)" onclick="waLogout()">Logout</button></div>
-          <div class="row"><input id="waTo" placeholder="nomor tujuan"><input id="waMsg" placeholder="pesan tes"></div><div class="hint" id="waMsgOut">Webhook masuk: <code>POST /api/wa/webhook</code></div><div id="waQRBox" class="hidden"></div>
+          <div class="btns">
+            <button id="btnWaStart" onclick="waCtl('start')">▶ Mulai</button>
+            <button class="ghost" onclick="waCtl('stop')">■ Hentikan</button>
+            <button class="ghost" onclick="waCtl('restart')">↻ Restart</button>
+            <button class="ghost" onclick="waGateway()">Cek Proses</button>
+          </div>
+          <div class="hint" id="waGwOut">Memeriksa proses daemon…</div>
+          <pre id="waGwLog" class="hidden"></pre>
+
+          <label style="margin-top:14px">Proteksi Nomor &amp; Daftar Blokir</label>
+          <div class="btns">
+            <button onclick="openBlocklist()">🛑 Kelola Daftar Blokir</button>
+            <span class="pill" id="blCount">Belum dimuat</span>
+          </div>
+
+          <div class="row" style="margin-top:10px">
+            <div>
+              <label for="sWAGroup">Pesan Grup</label>
+              <select id="sWAGroup">
+                <option value="false">Abaikan (Hanya DM)</option>
+                <option value="true">Proses Pesan Grup</option>
+              </select>
+            </div>
+            <div>
+              <label for="sWAAsync">Mode Pengiriman</label>
+              <select id="sWAAsync">
+                <option value="false">Sinkron (Tunggu Jawaban)</option>
+                <option value="true">Asinkron (Background)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="btns" style="margin-top:12px">
+            <button onclick="saveWASettings()">Simpan Pengaturan</button>
+            <button class="ghost" onclick="waStatus()">Status Sesi</button>
+            <button class="ghost" onclick="waQR()">QR Pairing</button>
+            <button class="ghost" onclick="waSend()">Kirim Uji Coba</button>
+            <button class="ghost" onclick="waReconnect()">↻ Reconnect</button>
+            <button class="ghost" style="color:var(--status-bad)" onclick="waLogout()">Logout Sesi</button>
+          </div>
+
+          <div class="row" style="margin-top:10px">
+            <div><label for="waTo">Nomor tujuan</label><input id="waTo" inputmode="tel" placeholder="628xxx"></div>
+            <div><label for="waMsg">Pesan uji coba</label><input id="waMsg" placeholder="Tulis pesan yang akan dikirim"></div>
+          </div>
+          <div class="hint" id="waMsgOut">Endpoint Webhook Masuk: <code>POST /api/wa/webhook</code></div>
+          <div id="waQRBox" class="hidden" style="margin-top:10px;text-align:center"></div>
         </div>
       </details>
     </aside>
   </div>
 
-  <div class="support-grid">
-    <section class="card"><h2>Standar konteks &amp; sesi <span class="pill" id="stdTag">v—</span></h2><div class="hint" id="sesiStat">memuat…</div><div class="btns"><button class="ghost" onclick="muatSesi()">↻ Muat ulang</button><button class="ghost" onclick="hapusCache()">🗑 Kosongkan cache</button></div><div class="table-wrap"><table><thead><tr><th>Nomor</th><th>Giliran</th><th>Intent</th><th>Target</th><th>Idle</th><th>Pesan terakhir</th></tr></thead><tbody id="sesiRows"><tr><td colspan="6" style="color:var(--dim)">Belum ada percakapan.</td></tr></tbody></table></div></section>
-    <section class="card"><h2>Riwayat insiden</h2><div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Target</th><th>Verdict</th><th>Engine</th><th>ms</th></tr></thead><tbody id="hist"><tr><td colspan="5" style="color:var(--dim)">Belum ada insiden.</td></tr></tbody></table></div></section>
-  </div>
-</div>
+  <!-- Bottom Support Grid: Sessions & Incident Audit Log -->
+  <div class="support-grid" id="historySection">
+    <section class="card">
+      <h2>Standar Konteks &amp; Sesi Aktif <span class="pill" id="stdTag">v—</span></h2>
+      <div class="hint" id="sesiStat">Memuat sesi…</div>
+      <div class="btns">
+        <button class="ghost" onclick="muatSesi()">↻ Muat Ulang Sesi</button>
+        <button class="ghost" onclick="hapusCache()">🗑 Kosongkan Cache Jawaban</button>
+      </div>
+      <div class="table-wrap" style="margin-top:10px">
+        <table>
+          <thead>
+            <tr>
+              <th>Nomor Pengirim</th>
+              <th>Turn</th>
+              <th>Intent Terdeteksi</th>
+              <th>Target</th>
+              <th>Idle</th>
+              <th>Pesan Terakhir</th>
+            </tr>
+          </thead>
+          <tbody id="sesiRows">
+            <tr><td colspan="6" style="color:var(--text-tertiary);text-align:center;padding:16px">Belum ada percakapan aktif.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-<!-- ============ Popup kelola daftar blokir ============ -->
+    <section class="card">
+      <h2>Riwayat Investigasi &amp; Insiden</h2>
+      <div class="table-wrap" style="margin-top:10px">
+        <table>
+          <thead>
+            <tr>
+              <th>Waktu</th>
+              <th>Target</th>
+              <th>Verdict</th>
+              <th>Engine</th>
+              <th>Latency</th>
+            </tr>
+          </thead>
+          <tbody id="hist">
+            <tr><td colspan="5" style="color:var(--text-tertiary);text-align:center;padding:16px">Belum ada riwayat insiden.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</main>
+
+<dialog id="caseDetail" class="case-detail" aria-labelledby="caseDetailTitle"><div class="pane-heading"><div><span class="eyebrow">CASE WORKSPACE</span><h2 id="caseDetailTitle">Detail kasus</h2></div><button class="ghost" onclick="closeCaseDetail()" aria-label="Tutup detail kasus">✕</button></div><div id="caseDetailBody"></div></dialog>
+
+<!-- ============ Popup Kelola Daftar Blokir ============ -->
 <div class="modal-mask hidden" id="blModal">
-  <div class="modal">
-    <h3>🛑 Daftar Blokir Nomor</h3>
-    <div class="sub">Nomor dalam daftar ini <b>tidak dibalas</b> oleh bot.</div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="blModalTitle">
+    <h3 id="blModalTitle">🛑 Daftar Nomor Diblokir</h3>
+    <div class="sub">Nomor dalam daftar ini <b>tidak akan dibalas</b> secara otomatis oleh bot maupun agen.</div>
     <div class="add-row">
-      <input id="blInput" placeholder="mis. 628123456789" inputmode="numeric">
-      <button onclick="addBlocked()">Tambah</button>
+      <input id="blInput" placeholder="Contoh: 628123456789" inputmode="numeric">
+      <button onclick="addBlocked()">Tambah Nomor</button>
     </div>
     <ul class="bl-list" id="blList"></ul>
     <div class="m-foot">
-      <button class="ghost" onclick="closeBlocklist()">Tutup</button>
+      <button class="ghost" onclick="closeBlocklist()">Tutup Dialog</button>
     </div>
   </div>
 </div>
 
+<script src="/noc-shell.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 let tools = [];
 let blList = []; // salinan daftar blokir nomor di klien
+let configLoaded = false;
+let caseData = [];
+let caseLoaded = false;
+let casesPending = false;
+let observationPending = false;
 
 async function api(path, opts={}) {
-  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts));
+  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}, signal: AbortSignal.timeout(90000)}, opts));
+  if (r.status === 401) { location.href = '/login.html'; throw new Error('Sesi berakhir. Silakan masuk kembali.'); }
   const ct = r.headers.get('content-type')||'';
   const body = ct.includes('json') ? await r.json() : await r.text();
-  if (!r.ok) throw new Error(typeof body === 'string' ? body : (body.error||JSON.stringify(body)));
+  if (!r.ok) {
+    const message = typeof body === 'string' ? (ct.includes('html') ? `HTTP ${r.status} · layanan tidak tersedia` : body.slice(0, 240)) : (body.error || `HTTP ${r.status}`);
+    throw new Error(message);
+  }
   return body;
 }
 
@@ -281,25 +305,27 @@ async function boot() {
   try {
     const st = await api('/api/status');
     const c = st.config;
+    if (!c) throw new Error('Konfigurasi belum tersedia');
+    configLoaded = true;
     window._model = c.llm_model;
-    $('pillModel').textContent = c.llm_model;
-    // Endpoint B = Reasoning (bukan Codex CLI). Label ringkas.
-    setDot('Codex', !!c.codex_key_set, c.codex_key_set ? 'B' : 'B·key?');
-    if (!c.llm_key_set) setDot('LLM', false, 'A·key?');
-    else setDot('LLM', true, 'A');
+    $('pillModel').textContent = c.llm_model || 'Model belum diset';
+    $('mdl').value = c.llm_model || '';
+    $('mdl').placeholder = 'Model belum dikonfigurasi';
+    // Endpoint B = Reasoning. Label ringkas.
+    setDot('Codex', null, c.codex_key_set ? 'B · dikonfigurasi' : 'B · key belum diset');
+    setDot('LLM', null, c.llm_key_set ? 'A · dikonfigurasi' : 'A · key belum diset');
     blList = (c.wa_blocklist||[]).slice();
     renderBlCount();
     $('sWAGroup').value = String(!!c.wa_group);
     $('sWAAsync').value = String(!!c.wa_async);
-  } catch (e) { console.error(e); }
-  tools = await api('/api/tools').catch(()=>[]);
-  $('toolBtns').innerHTML = tools.map(t => `<button title="${esc(t.description)}" onclick="pickTool('${t.name}')">${t.name}</button>`).join('');
-  await loadModels();
+  } catch (e) { $('dashboardError').textContent = 'Konfigurasi gagal dimuat: ' + e.message; $('dashboardError').classList.remove('hidden'); $('mdl').placeholder = 'Konfigurasi tidak tersedia'; }
+  await loadTools();
   waGateway();
   waStatus();
   muatSesi();
   refreshHistory();
   checkVersion();
+  setInterval(waStatus, 30000);
   setInterval(waGateway, 10000);
   setInterval(muatSesi, 15000);
   setInterval(checkVersion, 60*60*1000); // cek update tiap jam dari cache server
@@ -335,7 +361,6 @@ async function applyUpdate(version, notes) {
     const r = await api('/api/update/apply', { method: 'POST' });
     if (r.ok) {
       btn.textContent = '✅ Update dimulai, menunggu restart…';
-      // Poll /api/version sampai versi berubah (server restart).
       let tries = 0;
       const poll = setInterval(async () => {
         tries++;
@@ -379,9 +404,9 @@ async function muatSesi() {
       <td>${esc(c.intent||'—')}</td>
       <td>${esc(c.target||'—')}</td>
       <td>${c.idle_detik}s</td>
-      <td style="color:var(--dim)">${esc(c.terakhir||'—')}</td></tr>`).join('')
-      : '<tr><td colspan="6" style="color:var(--dim)">Belum ada percakapan.</td></tr>';
-  } catch(e) { $('sesiStat').textContent = 'Gagal memuat: ' + e.message; }
+      <td style="color:var(--text-secondary)">${esc(c.terakhir||'—')}</td></tr>`).join('')
+      : '<tr><td colspan="6" style="color:var(--text-tertiary);text-align:center;padding:16px">Belum ada percakapan.</td></tr>';
+  } catch(e) { $('sesiStat').textContent = 'Gagal memuat: ' + e.message; $('sesiRows').innerHTML = '<tr><td colspan="6" class="empty-state">Data sesi tidak tersedia.</td></tr>'; }
 }
 
 async function hapusCache() {
@@ -394,7 +419,6 @@ async function hapusCache() {
 }
 
 // ---------- WhatsApp ----------
-
 const WA_STATE_ID = {
   running:'✅ berjalan', starting:'⏳ memulai', installing:'📦 npm install (sekali, ±30 dtk)',
   stopped:'⛔ berhenti', unhealthy:'⚠️ tidak sehat', failed:'🔴 gagal', disabled:'— tidak ada folder wa-gateway'
@@ -418,10 +442,8 @@ async function waGateway() {
 
 async function waCtl(action) {
   const btn = $('btnWaStart');
-  // Sesi WhatsApp yang sudah tertaut jangan dimatikan tanpa peringatan.
   if (action === 'stop' || action === 'restart') {
-    const d = await waGateway();
-    if (d && d.credentials_linked) {
+    {
       const pesan = action === 'stop'
         ? 'Hentikan gateway? Sesi WhatsApp yang sudah tertaut akan terputus (QR tidak perlu discan ulang, sesi tersimpan).'
         : 'Restart gateway? Sesi WhatsApp akan terputus sebentar.';
@@ -440,6 +462,7 @@ async function waCtl(action) {
 }
 
 async function saveWASettings() {
+  if (!configLoaded) { setWAMsg('Konfigurasi belum dimuat. Refresh halaman sebelum menyimpan.'); return; }
   try {
     const d = await api('/api/config', {method:'POST', body: JSON.stringify({
       wa_blocklist: blList,
@@ -453,11 +476,7 @@ async function saveWASettings() {
 
 function setWAMsg(t) { $('waMsgOut').textContent = t; }
 
-// ---------- Daftar blokir nomor (popup) ----------
 function normalizeNumber(s) {
-  // Harus cocok dengan normalize() di backend (internal/wa/gateway.go):
-  // buang semua non-digit (dan awalan +). Leading 0 DIJAGA supaya tidak
-  // menimbulkan mismatch antara nomor yang disimpan dan identitas masuk.
   return String(s).trim().replace(/[^0-9]/g, '');
 }
 
@@ -473,11 +492,12 @@ function renderBlList() {
   }
   ul.innerHTML = blList.map((n, i) => `<li>
     <span class="num">${esc(n)}</span>
-    <button class="ghost" style="color:var(--bad)" onclick="removeBlocked(${i})">Hapus</button>
+    <button class="ghost" style="color:var(--status-bad)" onclick="removeBlocked(${i})">Hapus</button>
   </li>`).join('');
 }
 
 async function persistBl() {
+  if (!configLoaded) throw new Error('Konfigurasi belum dimuat');
   await api('/api/config', {method:'POST', body: JSON.stringify({
     wa_blocklist: blList,
     wa_group: $('sWAGroup').value === 'true',
@@ -486,6 +506,8 @@ async function persistBl() {
 }
 
 function openBlocklist() {
+  if (!configLoaded) { setWAMsg('Daftar blokir belum berhasil dimuat. Refresh halaman.'); return; }
+  window._blocklistTrigger = document.activeElement;
   renderBlList();
   $('blModal').classList.remove('hidden');
   $('blInput').value = '';
@@ -495,6 +517,7 @@ function openBlocklist() {
 function closeBlocklist() {
   $('blModal').classList.add('hidden');
   renderBlCount();
+  window._blocklistTrigger?.focus();
 }
 
 async function addBlocked() {
@@ -509,8 +532,9 @@ async function addBlocked() {
   $('blInput').focus();
   try {
     await persistBl();
+    renderBlCount();
     setWAMsg('Tersimpan. ' + n + ' diblokir (' + blList.length + ' nomor total)');
-  } catch(e) { setWAMsg('Gagal menyimpan: ' + e.message); }
+  } catch(e) { blList = blList.filter(value => value !== n); renderBlList(); renderBlCount(); alert('Gagal menyimpan blokir: ' + e.message); }
 }
 
 async function removeBlocked(i) {
@@ -519,8 +543,9 @@ async function removeBlocked(i) {
   renderBlList();
   try {
     await persistBl();
+    renderBlCount();
     setWAMsg('Tersimpan. ' + n + ' dihapus dari blokir (' + blList.length + ' nomor tersisa)');
-  } catch(e) { setWAMsg('Gagal menyimpan: ' + e.message); }
+  } catch(e) { blList.splice(i, 0, n); renderBlList(); renderBlCount(); alert('Gagal menyimpan blokir: ' + e.message); }
 }
 
 async function waStatus() {
@@ -534,7 +559,6 @@ async function waStatus() {
   } catch(e) { setDot('WA', false, 'WA: error'); setWAMsg('Gagal cek status: ' + e.message); }
 }
 
-// Reconnect: sambung ulang sesi WhatsApp tanpa menghapus kredensial.
 async function waReconnect() {
   setWAMsg('Reconnect…');
   try {
@@ -544,7 +568,6 @@ async function waReconnect() {
   await waStatus();
 }
 
-// Logout: putuskan + hapus sesi WhatsApp (perlu scan QR lagi).
 async function waLogout() {
   if (!confirm('Keluar dari WhatsApp?\n\nIni akan MENGHAPUS sesi tersambung. Untuk menyambung lagi perlu scan QR ulang.')) return;
   setWAMsg('Logout…');
@@ -563,15 +586,24 @@ async function waQR() {
     const d = await api('/api/wa/qr');
     const qr = d.qr || d.qr_code || d.qrcode || d.data_url || '';
     if (!qr) { box.innerHTML = '<span class="hint">QR belum tersedia (status: '+esc(d.status||'—')+'). Pastikan gateway berjalan dan belum login.</span>'; return; }
-    const src = qr.startsWith('data:') ? qr : (qr.length > 400 ? 'data:image/png;base64,'+qr : 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(qr));
-    box.innerHTML = `<div class="tag">Scan dengan WhatsApp → Perangkat Tertaut</div><img src="${src}" style="width:220px;height:220px;background:#fff;border-radius:8px;margin-top:8px">`;
+    // Gateway supplies a PNG data URL. Never send pairing material to external QR services.
+    if (d.is_expired) { box.textContent = 'QR sudah kedaluwarsa. Tekan QR Pairing untuk mengambil ulang.'; return; }
+    const src = /^data:image\/png;base64,[A-Za-z0-9+/=\r\n]+$/.test(qr) ? qr : '';
+    if (!src) { box.textContent = 'Format QR tidak didukung. Gateway harus mengirim gambar PNG data URL.'; return; }
+    box.replaceChildren();
+    const label = document.createElement('div'); label.className = 'tag'; label.textContent = 'Scan dengan WhatsApp → Perangkat Tertaut';
+    const image = document.createElement('img'); image.src = src; image.alt = 'QR pairing WhatsApp'; image.width = 220; image.height = 220;
+    box.append(label, image);
+    if (Number.isFinite(d.expires_in)) setTimeout(() => { if (box.contains(image)) box.textContent = 'QR kedaluwarsa. Tekan QR Pairing untuk mengambil ulang.'; }, Math.max(0, d.expires_in) * 1000);
   } catch(e) { box.innerHTML = '<span class="hint">Gagal ambil QR: '+esc(e.message)+'</span>'; }
 }
 
 async function waSend() {
   const to = $('waTo').value.trim();
   if (!to) { $('waTo').focus(); return; }
-  const msg = $('waMsg').value.trim() || sampleReport();
+  const msg = $('waMsg').value.trim();
+  if (!msg) { setWAMsg('Isi pesan uji coba terlebih dahulu. Tidak ada pesan otomatis.'); $('waMsg').focus(); return; }
+  if (!confirm('Kirim pesan WhatsApp ke ' + to + '?')) return;
   setWAMsg('mengirim…');
   try {
     const d = await api('/api/wa/send', {method:'POST', body: JSON.stringify({to, message: msg})});
@@ -579,28 +611,26 @@ async function waSend() {
   } catch(e) { setWAMsg('Gagal kirim: ' + e.message); }
 }
 
-function sampleReport() {
-  return "*NOC Sentinel* — Mohon maaf atas gangguannya. Dari pengecekan kami, jalur dari server ke internet normal, jadi kendalanya kemungkinan di perangkat/alat di rumah. Coba cabut kabel power ONT ±30 detik lalu pasang lagi ya. Kalau masih kendala, kabari saya biar saya jadwalkan teknisi.\n\n———\n⚠️ DEGRADASI · 78%\nPenyebab: packet loss di uplink";
-}
-
 function esc(s){return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
 function setDot(which, ok, text) {
-  $('dot'+which).className = 'dot ' + (ok ? 'on' : 'off');
+  $('dot'+which).className = 'dot ' + (ok === null ? '' : ok ? 'on' : 'off');
   $('txt'+which).textContent = text;
 }
 
-async function loadModels() {
+async function loadTools() {
   try {
-    const d = await api('/api/models');
-    const cur = $('mdl').value;
-    const nice = ['ag/gemini','cx/gpt','grip/gpt','grip/deepseek','grip/glm','grip/qwen'];
-    const sorted = d.models.slice().sort((a,b)=>{
-      const ra = nice.findIndex(p=>a.startsWith(p)), rb = nice.findIndex(p=>b.startsWith(p));
-      return (ra<0?99:ra)-(rb<0?99:rb) || a.localeCompare(b);
-    });
-    $('mdl').innerHTML = sorted.map(m=>`<option${m===cur?' selected':''}>${m}</option>`).join('');
-  } catch(e) { $('mdl').innerHTML = '<option>gagal memuat model</option>'; }
+    const data = await api('/api/tools');
+    if (!Array.isArray(data)) throw new Error('Format daftar tool tidak valid');
+    tools = data;
+    $('toolBtns').replaceChildren(...tools.map(t => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.textContent = t.name; btn.title = t.description || t.name;
+      btn.dataset.tool = t.name; btn.setAttribute('aria-pressed', 'false');
+      btn.addEventListener('click', () => pickTool(t.name)); return btn;
+    }));
+    if (!tools.length) $('probeHint').textContent = 'Belum ada tool tersedia dari server.';
+  } catch(e) { $('probeHint').textContent = 'Gagal memuat tool: ' + e.message; }
 }
 
 function addStep(s) {
@@ -608,7 +638,7 @@ function addStep(s) {
   if (ul.children.length===1 && /Menunggu/.test(ul.children[0].textContent)) ul.innerHTML='';
   const li = document.createElement('li');
   li.className = s.kind;
-  let head = s.kind.toUpperCase();
+  let head = esc(String(s.kind || 'info').toUpperCase());
   if (s.kind==='tool') head = `TOOL · ${esc(s.tool)} ${esc(s.target||'')} ${s.ok?'✔':'✘'} ${s.duration_ms||0}ms`;
   if (s.kind==='escalate') head = 'ESKALASI KE CODEX';
   li.innerHTML = `<div class="tag">${head}</div>`;
@@ -618,63 +648,74 @@ function addStep(s) {
   ul.scrollTop = ul.scrollHeight;
 }
 
-function pickTool(name){ $('probeTarget').focus(); window._tool = name; }
+function pickTool(name){ $('probeTarget').focus(); window._tool = name; $('probeHint').textContent = 'Tool terpilih: ' + name; document.querySelectorAll('[data-tool]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === name))); }
 
 async function runProbe() {
-  const tool = window._tool || (tools[0] && tools[0].name) || 'ping';
+  const tool = window._tool;
+  if (!tool) { $('probeHint').textContent = 'Pilih tool terlebih dahulu.'; return; }
   const target = $('probeTarget').value.trim() || $('tgt').value.trim();
+  if (!target) { $('probeHint').textContent = 'Isi target probe terlebih dahulu.'; $('probeTarget').focus(); return; }
+  $('probeRun').disabled = true;
   addStep({kind:'thought', text:`probe manual: ${tool} ${target}`});
   try {
     const r = await api('/api/diag', {method:'POST', body: JSON.stringify({tool, target})});
     addStep({kind:'tool', tool:r.tool, target:r.target, output:r.output||r.err, ok:r.ok, duration_ms:r.duration_ms});
   } catch(e) { addStep({kind:'error', text:e.message}); }
+  finally { $('probeRun').disabled = false; }
 }
 
 async function runDiag() {
   const query = $('q').value.trim();
   if (!query) { $('q').focus(); return; }
+  if ($('run').disabled) return;
   $('run').disabled = true;
+  $('diagState').textContent = 'BERJALAN';
   $('steps').innerHTML = '';
   $('answer').textContent = '';
   $('vText').textContent = '…';
   $('vMeta').textContent = 'sedang berjalan';
   try {
-    const resp = await fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+    const resp = await fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'}, signal: AbortSignal.timeout(180000),
       body: JSON.stringify({query, target: $('tgt').value.trim(), stream:true})});
+    if (resp.status === 401) { location.href = '/login.html'; throw new Error('Sesi berakhir'); }
     if (!resp.ok || !resp.body) throw new Error('HTTP '+resp.status);
     const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = '';
+    const processEvent = part => {
+      const lines = part.split(/\r?\n/);
+      const ev = lines.find(line => line.startsWith('event:'))?.slice(6).trim();
+      const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
+      if (!ev || !data) return;
+      const obj = JSON.parse(data);
+      if (ev === 'step') addStep(obj);
+      if (ev === 'report') showReport(obj);
+      if (ev === 'error') throw new Error(obj.error || obj.message || 'Diagnosis gagal');
+    };
     while (true) {
-      const {value, done} = await reader.read(); if (done) break;
-      buf += dec.decode(value, {stream:true});
-      const parts = buf.split('\n\n'); buf = parts.pop();
-      for (const p of parts) {
-        const ev = (p.match(/^event: (.+)$/m)||[])[1];
-        const data = (p.match(/^data: ([\s\S]*)$/m)||[])[1];
-        if (!ev || !data) continue;
-        const obj = JSON.parse(data);
-        if (ev==='step') addStep(obj);
-        if (ev==='report') showReport(obj);
-      }
+      const {value, done} = await reader.read();
+      buf += dec.decode(value || new Uint8Array(), {stream:!done});
+      const parts = buf.split(/\r?\n\r?\n/); buf = parts.pop();
+      parts.forEach(processEvent);
+      if (done) { if (buf.trim()) processEvent(buf); break; }
     }
-  } catch(e) { addStep({kind:'error', text:e.message}); }
+  } catch(e) { addStep({kind:'error', text:e.message}); $('vText').textContent = 'GAGAL'; $('vMeta').textContent = e.message; }
+  if ($('vText').textContent === '…') { $('vText').textContent = 'TIDAK LENGKAP'; $('vMeta').textContent = 'Stream berakhir tanpa laporan. Coba kembali.'; }
+  $('diagState').textContent = 'SELESAI';
   $('run').disabled = false;
   refreshHistory();
 }
 
 function showReport(r) {
   const v = $('vText');
-  // Tanpa pengecekan (sapaan/pertanyaan umum/minta perjelas) bukan diagnosis —
-  // tampilkan sebagai obrolan biasa, jangan seolah gagal mendiagnosis.
   const tanpaCek = /tanpa pengecekan/.test(r.engine || '');
   const label = tanpaCek ? 'CHAT' : (r.verdict || 'TIDAK DIKETAHUI');
   v.textContent = label;
   v.className = 'v ' + label.replace(/ /g, '.');
-  const conf = r.confidence ? `${Math.round(r.confidence)}%` : '—';
+  const conf = Number.isFinite(r.confidence) ? `${Math.round(r.confidence)}%` : '—';
   $('vMeta').innerHTML = `target: <b>${esc(r.target||'—')}</b>` +
     (tanpaCek ? '' : ` · keyakinan: <b>${conf}</b>`) +
     ` · engine: <b>${esc(r.engine)}</b>` +
     (r.escalated?' · <span style="color:#a855f7">dieskalasi ke Codex</span>':'') +
-    ` · ${r.elapsed_ms}ms` + (r.error?` · <span style="color:var(--bad)">${esc(r.error)}</span>`:'');
+    ` · ${r.elapsed_ms}ms` + (r.error?` · <span style="color:var(--status-bad)">${esc(r.error)}</span>`:'');
   $('answer').textContent = r.answer || r.escalation || '';
   $('pillModel').textContent = 'model: ' + (window._model || '—');
 }
@@ -682,78 +723,146 @@ function showReport(r) {
 async function refreshHistory() {
   try {
     const rs = await api('/api/reports');
-    if (!rs.length) return;
+    if (!Array.isArray(rs)) throw new Error('Format riwayat tidak valid');
+    if (!rs.length) { $('hist').innerHTML = '<tr><td colspan="5" class="empty-state">Belum ada riwayat investigasi.</td></tr>'; return; }
     $('hist').innerHTML = rs.slice(0,15).map(r=>`<tr>
       <td>${new Date(r.started_at).toLocaleTimeString('id-ID')}</td>
       <td>${esc(r.target||'—')}</td>
-      <td style="color:${/tanpa pengecekan/.test(r.engine||'')?'var(--acc)':r.verdict==='SEHAT'?'var(--ok)':r.verdict==='GANGGUAN'?'var(--bad)':'var(--warn)'}">${/tanpa pengecekan/.test(r.engine||'')?'CHAT':esc(r.verdict)}</td>
+      <td style="color:${/tanpa pengecekan/.test(r.engine||'')?'var(--accent-cyan)':r.verdict==='SEHAT'?'var(--status-ok)':r.verdict==='GANGGUAN'?'var(--status-bad)':'var(--status-warn)'}">${/tanpa pengecekan/.test(r.engine||'')?'CHAT':esc(r.verdict)}</td>
       <td>${esc(r.engine)}</td><td>${r.elapsed_ms}</td></tr>`).join('');
-  } catch(e) {}
+  } catch(e) { $('hist').innerHTML = '<tr><td colspan="5" class="empty-state">Gagal memuat riwayat: '+esc(e.message)+'</td></tr>'; }
 }
 
 // ---------- Observabilitas ----------
 async function refreshObservability() {
+  if (observationPending) return;
+  observationPending = true;
   try {
-    const [kpi, alerts] = await Promise.all([api('/api/kpi'), api('/api/alerts')]);
-    const active = kpi.active_cases || 0;
-    const escalated = kpi.escalated || 0;
-    const resolved = kpi.verified_resolved || kpi.resolved || 0;
-    const alertCount = (alerts || []).length;
-    $('kpiActive').textContent = active;
-    $('kpiEscalated').textContent = escalated;
-    $('kpiResolved').textContent = resolved;
-    $('kpiEscalationRate').textContent = `${kpi.escalation_rate_percent || 0}% rate`;
-    $('kpiHealth').textContent = alertCount ? `${alertCount} alert` : 'Normal';
-    $('obsAlertTag').textContent = alertCount ? `${alertCount} alert` : 'tanpa alert';
-    $('obsStat').innerHTML =
-      `kasus diproses: <b>${kpi.total_cases||kpi.cases_processed||0}</b> · ` +
-      `aktif: <b>${active}</b> · terverifikasi selesai: <b>${resolved}</b> · ` +
-      `eskalasi: <b>${escalated}</b> (${kpi.escalation_rate_percent||0}%)` +
-      (alertCount ? `<br><span style="color:var(--warn)">${esc(alerts.slice(0,3).map(a=>`${a.subject}: ${a.message||a.severity}`).join(' · '))}</span>` : '');
+    const results = await Promise.allSettled([api('/api/kpi'), api('/api/alerts')]);
+    const [metrics, notifications] = results;
+    if (metrics.status === 'fulfilled') {
+      const k = metrics.value;
+      ['active_cases','escalated','verified_resolved','escalation_rate_percent','total_cases'].forEach(key => {
+        if (!Number.isFinite(k[key])) throw new Error('KPI tidak lengkap: ' + key);
+      });
+      $('kpiActive').textContent = k.active_cases;
+      $('kpiEscalated').textContent = k.escalated;
+      $('kpiResolved').textContent = k.verified_resolved;
+      $('kpiEscalationRate').textContent = `${k.escalation_rate_percent}% dari ${k.total_cases} kasus`;
+      $('obsStat').textContent = `${k.total_cases} kasus tercatat · ${k.human_handling ?? '—'} ditangani manusia · ${k.failed ?? '—'} pernah gagal. KPI kumulatif tracker, bukan periode harian.`;
+    } else {
+      ['kpiActive','kpiEscalated','kpiResolved'].forEach(id => $(id).textContent = '—');
+      $('kpiEscalationRate').textContent = 'Data tidak tersedia';
+      $('obsStat').textContent = 'KPI gagal dimuat: ' + metrics.reason.message;
+    }
+    if (notifications.status === 'fulfilled' && Array.isArray(notifications.value)) {
+      const alerts = notifications.value;
+      $('kpiHealth').textContent = alerts.length;
+      $('obsAlertTag').textContent = alerts.length ? 'Perlu ditinjau operator' : 'Tidak ada alert dilaporkan';
+      $('alertBanner').classList.toggle('hidden', !alerts.length);
+      $('alertBanner').innerHTML = alerts.length ? `<details><summary>${alerts.length} alert dilaporkan <span>Tinjau detail ↓</span></summary><ul>${alerts.map(a => `<li><strong>${esc(a.subject || a.type || 'Alert')}</strong><span>${esc(a.message || a.severity || '—')}</span></li>`).join('')}</ul></details>` : '';
+    } else {
+      $('kpiHealth').textContent = '—';
+      $('obsAlertTag').textContent = 'Alert tidak tersedia';
+      $('alertBanner').classList.remove('hidden');
+      $('alertBanner').textContent = 'Daftar alert gagal dimuat. Status dependensi belum diketahui.';
+    }
+    const complete = results.every(r => r.status === 'fulfilled') && Array.isArray(notifications.value);
+    $('lastRefresh').textContent = complete ? 'KPI & alert · ' + new Date().toLocaleTimeString('id-ID') : 'Sinkronisasi parsial · periksa status';
   } catch(e) {
-    $('obsAlertTag').textContent = 'tidak tersedia';
+    ['kpiActive','kpiEscalated','kpiResolved','kpiHealth'].forEach(id => $(id).textContent = '—');
+    $('obsAlertTag').textContent = 'Data tidak tersedia';
     $('obsStat').textContent = 'Gagal memuat observabilitas: ' + e.message;
-  }
+    $('lastRefresh').textContent = 'Sinkronisasi gagal';
+  } finally { observationPending = false; }
 }
 
-// ---------- Case lifecycle (FASE 5) ----------
+// ---------- Case Lifecycle ----------
 function stateColor(s) {
   switch (s) {
-    case 'RESOLVED': return 'var(--ok)';
-    case 'ESCALATION': case 'HUMAN_HANDLING': return '#a855f7';
-    case 'FAILED': return 'var(--bad)';
-    case 'VERIFYING': case 'EXECUTING': case 'POLICY_CHECK': case 'ACTION_PROPOSED': return 'var(--warn)';
-    default: return 'var(--acc)';
+    case 'RESOLVED': return 'var(--status-ok)';
+    case 'ESCALATION': case 'HUMAN_HANDLING': return 'var(--status-purple)';
+    case 'FAILED': return 'var(--status-bad)';
+    case 'VERIFYING': case 'EXECUTING': case 'POLICY_CHECK': case 'ACTION_PROPOSED': return 'var(--status-warn)';
+    default: return 'var(--accent-cyan)';
   }
 }
 
 async function refreshCases() {
+  if (casesPending) return;
+  casesPending = true;
   try {
     const d = await api('/api/cases');
-    const cases = d.cases || [];
-    $('caseCount').textContent = (d.count != null ? d.count : cases.length) + ' case';
-    if (!cases.length) {
-      $('caseRows').innerHTML = '<tr><td colspan="5" style="color:var(--dim)">Belum ada case.</td></tr>';
-      $('caseStat').textContent = 'Belum ada case di tracker.';
-      return;
-    }
-    $('caseStat').textContent = `Menampilkan ${cases.length} case lifecycle (state, events, escalation target, verification).`;
-    $('caseRows').innerHTML = cases.map(c => {
-      const escTxt = c.escalation
-        ? `${esc(c.escalation.role||'—')} · ${esc(c.escalation.phone||'—')}${c.escalation.sent ? ' · terkirim' : ' · belum terkirim'}`
-        : '—';
-      const ver = (c.verifications||[]).map(v => `${v.passed ? '✔' : '✘'} ${esc(v.source||'')}`).join('; ') || '—';
-      const evs = (c.events||[]).map(e => `<span class="event-step"><span>${esc(e.from)}</span><i>→</i><span>${esc(e.to)}</span></span>`).join('');
-      return `<tr>
-        <td><span class="tag">${esc(c.case_id)}</span></td>
-        <td style="color:${stateColor(c.state)}"><b>${esc(c.state)}</b></td>
-        <td class="case-events">${evs || '<span class="tag">Belum ada event</span>'}</td>
-        <td>${escTxt}</td>
-        <td style="font-family:var(--mono);font-size:11px">${ver}</td></tr>`;
-    }).join('');
+    if (!Array.isArray(d.cases)) throw new Error('Format kasus tidak valid');
+    caseData = d.cases;
+    caseLoaded = true;
+    renderCases();
   } catch(e) {
+    caseLoaded = false;
+    $('caseCount').textContent = 'Tidak tersedia';
+    $('caseRows').innerHTML = '<tr><td colspan="5" class="empty-state">Data kasus tidak tersedia. Gunakan Refresh untuk mencoba lagi.</td></tr>';
     $('caseStat').textContent = 'Gagal memuat case: ' + e.message;
-  }
+  } finally { casesPending = false; }
+}
+
+function formatTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+}
+
+function renderCases() {
+  if (!caseLoaded) return;
+  const query = $('caseSearch').value.toLowerCase().trim();
+  const filter = $('caseFilter').value;
+  const terminal = ['RESOLVED','FAILED','ESCALATION','HUMAN_HANDLING'];
+  const filtered = caseData.filter(c => {
+    const matches = [c.case_id,c.identity,c.channel,c.state].some(v => String(v || '').toLowerCase().includes(query));
+    const state = filter === 'all' || (filter === 'active' && !terminal.includes(c.state)) || (filter === 'attention' && ['FAILED','ESCALATION','HUMAN_HANDLING'].includes(c.state)) || (filter === 'resolved' && c.state === 'RESOLVED');
+    return matches && state;
+  });
+  $('caseCount').textContent = caseData.length + ' kasus';
+  $('caseStat').textContent = `${filtered.length} dari ${caseData.length} kasus · sinkronisasi ${new Date().toLocaleTimeString('id-ID')}`;
+  $('caseRows').innerHTML = filtered.length ? filtered.map(c => `<tr>
+    <td><button class="case-link" data-case-id="${esc(c.case_id)}">${esc(c.case_id)}</button></td>
+    <td><span class="state-badge" style="color:${stateColor(c.state)}">${esc(c.state)}</span></td>
+    <td><span>${esc(c.identity || '—')}</span><small class="cell-sub">${esc(c.channel || 'Kanal tidak tersedia')}</small></td>
+    <td>${c.escalation ? `<span>${esc(c.escalation.role || '—')}</span><small class="cell-sub">${esc(c.escalation.phone || '—')} · ${c.escalation.sent ? 'Terkirim' : 'Belum terkirim'}</small>` : '<span class="muted">Belum ada handoff</span>'}</td>
+    <td class="time-cell">${esc(formatTime(c.updated_at))}</td></tr>`).join('') : '<tr><td colspan="5" class="empty-state">'+(caseData.length ? 'Tidak ada kasus sesuai pencarian/filter.' : 'Belum ada kasus tercatat. Kasus baru akan muncul dari case engine.')+'</td></tr>';
+}
+
+$('caseRows').addEventListener('click', e => {
+  const button = e.target.closest('[data-case-id]');
+  if (!button) return;
+  const c = caseData.find(row => row.case_id === button.dataset.caseId);
+  if (!c) return;
+  $('caseDetailTitle').textContent = c.case_id;
+  $('caseDetailBody').innerHTML = `<div class="detail-summary"><span class="state-badge" style="color:${stateColor(c.state)}">${esc(c.state)}</span><p>${esc(c.identity || 'Identitas tidak tersedia')} · ${esc(c.channel || '—')}</p><small>Dibuat ${esc(formatTime(c.created_at))} · update ${esc(formatTime(c.updated_at))}</small></div>
+    <h3>Timeline lifecycle</h3><ol class="case-timeline">${(c.events || []).map(ev => `<li><div><strong>${esc(ev.from)} → ${esc(ev.to)}</strong><time>${esc(formatTime(ev.at))}</time></div><p>${esc(ev.reason || 'Tidak ada catatan')}<small>Actor: ${esc(ev.actor || '—')}</small></p></li>`).join('') || '<li>Belum ada transisi tercatat.</li>'}</ol>
+    <h3>Bukti verifikasi</h3><div class="verification-list">${(c.verifications || []).map(v => `<div><span class="${v.passed ? 'ok' : 'bad'}">${v.passed ? '✓ Lulus' : '✕ Tidak lulus'}</span><strong>${esc(v.source || '—')}</strong><p>${esc(v.summary || 'Tidak ada ringkasan')}</p><small>${esc(formatTime(v.at))}</small></div>`).join('') || '<p class="muted">Belum ada bukti verifikasi dari backend.</p>'}</div>
+    <h3>Eskalasi / handoff</h3><p>${c.escalation ? `${esc(c.escalation.role || '—')} · ${esc(c.escalation.phone || '—')} · ${esc(c.escalation.domain || '—')} · ${c.escalation.sent ? 'Terkirim' : 'Belum terkirim'}` : 'Belum ada eskalasi tercatat.'}</p><p class="hint">Snapshot data saat detail dibuka. Diagnosis manual tersedia di AI Diagnostics.</p>`;
+  $('caseDetail').showModal();
+});
+function closeCaseDetail() { $('caseDetail').close(); }
+$('caseDetail').addEventListener('click', e => { if (e.target === $('caseDetail') && e.offsetX < 0) closeCaseDetail(); });
+
+function toggleDiagnosis() {
+  const opened = $('diagnosisPanel').classList.toggle('hidden') === false;
+  document.querySelector('.cockpit-grid').classList.toggle('with-diagnosis', opened);
+  $('toggleDiagnosis').setAttribute('aria-expanded', String(opened));
+  $('toggleDiagnosis').textContent = opened ? 'Tutup AI Diagnostics' : '✧ AI Diagnostics';
+  if (opened) $('q').focus();
+}
+function clearDiagnosis() {
+  if ($('run').disabled || $('probeRun').disabled) return;
+  $('steps').replaceChildren(); $('answer').textContent = ''; $('vText').textContent = '—';
+  $('vMeta').textContent = 'Siap untuk menerima perintah diagnosis.'; $('diagState').textContent = 'SIAP';
+}
+async function refreshDashboard() {
+  const button = $('refreshDashboard');
+  button.disabled = true;
+  try { await Promise.all([refreshCases(),refreshObservability(),refreshBlueprint(),refreshHistory(),muatSesi(),waStatus(),waGateway()]); }
+  finally { button.disabled = false; }
 }
 
 // Muat ringkasan blueprint (policy mode + registry + workflow).
@@ -772,6 +881,32 @@ async function refreshBlueprint() {
   }
 }
 
+// Prevent duplicate browser mutations while a request is in flight.
+for (const name of ['waCtl','saveWASettings','addBlocked','removeBlocked','waSend','waReconnect','waLogout','waQR','hapusCache']) {
+  const original = window[name];
+  let pending = false;
+  window[name] = async function(...args) {
+    if (pending) return;
+    pending = true;
+    const buttons = [...document.querySelectorAll('button[onclick]')].filter(b => b.getAttribute('onclick').includes(name + '('));
+    const previous = buttons.map(b => b.disabled);
+    buttons.forEach(b => { b.disabled = true; b.setAttribute('aria-busy','true'); });
+    try { return await original(...args); }
+    finally { pending = false; buttons.forEach((b,i) => { b.disabled = previous[i]; b.removeAttribute('aria-busy'); }); }
+  };
+}
+$('blModal').addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); closeBlocklist(); }
+  if (event.key === 'Tab') {
+    const elements = [...$('blModal').querySelectorAll('input,button')].filter(el => !el.disabled);
+    const first = elements[0], last = elements[elements.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+});
+$('blModal').addEventListener('click', event => { if (event.target === $('blModal')) closeBlocklist(); });
+$('blInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addBlocked(); } });
+
 boot();
 setInterval(refreshHistory, 15000);
 setInterval(refreshBlueprint, 15000);
@@ -781,13 +916,13 @@ refreshBlueprint();
 refreshObservability();
 refreshCases();
 
-// Tombol logout: POST /api/auth/logout lalu arahkan ke halaman login.
+// Tombol logout
 $('btnLogout').addEventListener('click', async (e) => {
   e.preventDefault();
   try {
-    await fetch('/api/auth/logout', {method:'POST'});
-  } catch {}
-  location.href = '/login.html';
+    await api('/api/auth/logout', {method:'POST'});
+    location.href = '/login.html';
+  } catch (error) { alert('Gagal keluar: ' + error.message); }
 });
 </script>
 </body>

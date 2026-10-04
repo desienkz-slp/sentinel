@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"ainoc/internal/auth"
 	"ainoc/internal/audit"
+	"ainoc/internal/auth"
 	"ainoc/internal/directory"
 )
 
@@ -137,6 +137,9 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			writeJSON(w, 405, map[string]any{"ok": false, "error": "pakai POST"})
 			return
 		}
+		if s.auth != nil {
+			s.auth.RevokeSession(auth.FromRequest(r))
+		}
 		auth.ClearCookie(w)
 		writeJSON(w, 200, map[string]any{"ok": true})
 	})
@@ -158,6 +161,9 @@ func (s *Server) resetLoginViaWA(caller directory.Caller, msg string) (string, b
 	fields := strings.Fields(strings.TrimSpace(msg))
 	if len(fields) < 4 || !strings.EqualFold(fields[0], "reset") || !strings.EqualFold(fields[1], "login") {
 		return "", false
+	}
+	if !caller.IsStaff || caller.Role != directory.RoleSuperAdmin {
+		return "Reset password login hanya diizinkan untuk superadmin.", true
 	}
 	username := fields[2]
 	newPass := fields[3]

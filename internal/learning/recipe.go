@@ -72,16 +72,21 @@ func (s *RecipeStore) Load() {
 }
 
 func (s *RecipeStore) Save() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveLocked()
+}
+
+// saveLocked serializes both the snapshot and the temporary-file rename with
+// mutations and other saves. Keep dirty set until persistence succeeds.
+func (s *RecipeStore) saveLocked() error {
 	if s.path == "" {
 		return nil
 	}
-	s.mu.Lock()
 	doc := struct {
 		Recipes map[Signature][]Recipe `json:"recipes"`
 		SavedAt time.Time              `json:"saved_at"`
 	}{Recipes: s.items, SavedAt: time.Now()}
-	s.dirty = false
-	s.mu.Unlock()
 
 	b, err := json.MarshalIndent(doc, "", " ")
 	if err != nil {
@@ -94,17 +99,20 @@ func (s *RecipeStore) Save() error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	if err := os.Rename(tmp, s.path); err != nil {
+		return err
+	}
+	s.dirty = false
+	return nil
 }
 
 func (s *RecipeStore) SaveIfDirty() error {
 	s.mu.Lock()
-	d := s.dirty
-	s.mu.Unlock()
-	if !d {
+	defer s.mu.Unlock()
+	if !s.dirty {
 		return nil
 	}
-	return s.Save()
+	return s.saveLocked()
 }
 
 // ---- tulis ----
@@ -158,7 +166,7 @@ func (s *RecipeStore) Remove(sig Signature, tools []string) error {
 				s.items[sig] = list
 			}
 			s.dirty = true
-			if err := s.Save(); err != nil {
+			if err := s.saveLocked(); err != nil {
 				return err
 			}
 			return nil
@@ -197,7 +205,7 @@ func (s *RecipeStore) Semua() []map[string]any {
 		for _, r := range list {
 			out = append(out, map[string]any{
 				"signature":  sig,
-				"tools":      r.Tools,
+				"tools":      append([]string(nil), r.Tools...),
 				"verdict":    r.Verdict,
 				"hits":       r.Hits,
 				"last_used":  r.LastUsed,

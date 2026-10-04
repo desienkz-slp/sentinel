@@ -3,52 +3,56 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Login — NOC Sentinel</title>
+<title>Masuk — NOC Sentinel</title>
 <link rel="icon" href="/favicon.ico" sizes="any">
-<style>
-  :root{
-    --bg:#0b0f14; --panel:#121922; --line:#1f2a37;
-    --txt:#dbe4ee; --dim:#8296ab; --acc:#22d3ee; --bad:#ef4444;
-    --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif;
-    min-height:100vh;display:flex;align-items:center;justify-content:center}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:32px;width:340px}
-  .logo{font-weight:700;font-size:20px;text-align:center;margin-bottom:4px}
-  .logo span{color:var(--acc)}
-  .sub{text-align:center;color:var(--dim);font-size:12px;margin-bottom:20px}
-  label{display:block;font-size:12px;color:var(--dim);margin:12px 0 4px}
-  input{font:inherit;color:var(--txt);background:#0f151d;border:1px solid var(--line);border-radius:8px;
-    padding:10px 12px;width:100%}
-  button{font:inherit;cursor:pointer;background:#16323d;border:1px solid #1e4a58;color:#c9f5ff;font-weight:600;
-    border-radius:8px;padding:11px;width:100%;margin-top:18px}
-  button:hover{background:#1b3d4a}
-  .err{color:var(--bad);font-size:12px;margin-top:10px;display:none}
-  .err.show{display:block}
-</style>
+<link rel="icon" type="image/png" sizes="64x64" href="/favicon.png">
 <link rel="stylesheet" href="/noc-ui.css">
 </head>
-<body>
-<div class="card">
+<body class="auth-body">
+<section class="auth-intro" aria-label="NOC Sentinel"><span class="eyebrow">NOC SENTINEL / OPERATIONS CONSOLE</span><h1>Clarity in every<br><span>connection.</span></h1><p>Satu workspace untuk memantau kasus, menelusuri bukti, dan mengelola operasi jaringan Anda.</p><div class="auth-features"><span>CASE LIFECYCLE</span><span>AI DIAGNOSTICS</span><span>POLICY CONTROL</span></div></section>
+<div class="card auth-card" role="main">
+  <div style="text-align:center;margin-bottom:14px">
+    <img src="/logo.png" alt="NOC Sentinel" width="48" height="48" style="border-radius:10px;box-shadow:0 0 16px rgba(56,189,248,.25)">
+  </div>
   <div class="logo">NOC <span>Sentinel</span></div>
-  <div class="sub">Login untuk mengakses konsol</div>
-  <form id="f">
-    <label for="u">Username</label>
-    <input id="u" name="username" autocomplete="username" required>
-    <label for="p">Password</label>
-    <input id="p" name="password" type="password" autocomplete="current-password" required>
-    <button type="submit">Masuk</button>
-    <div class="err" id="err">Username atau password salah.</div>
+  <h1 class="auth-heading">Selamat datang kembali</h1>
+  <div class="sub">Masuk untuk melanjutkan ke workspace operasi.</div>
+
+  <form id="f" method="POST" action="/api/auth/login">
+    <div style="margin-bottom:12px">
+      <label for="u">Username Operator</label>
+      <input id="u" name="username" autocomplete="username" placeholder="Masukkan username" required autofocus>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <label for="p">Kata Sandi</label>
+      <div class="password-field"><input id="p" name="password" type="password" autocomplete="current-password" placeholder="Masukkan kata sandi" required><button type="button" class="ghost password-toggle" id="togglePassword" aria-controls="p" aria-pressed="false">Tampilkan</button></div>
+    </div>
+
+    <button id="submitBtn" type="submit">Masuk ke Konsol</button>
+    <div class="err" id="err" role="alert">Username atau password salah.</div>
+    <p class="auth-note">Akses khusus operator berwenang. Gunakan akun yang dikonfigurasi oleh administrator.</p>
   </form>
 </div>
+
 <script>
+document.getElementById('togglePassword').addEventListener('click', () => {
+  const input = document.getElementById('p');
+  const button = document.getElementById('togglePassword');
+  const visible = input.type === 'password';
+  input.type = visible ? 'text' : 'password';
+  button.textContent = visible ? 'Sembunyikan' : 'Tampilkan';
+  button.setAttribute('aria-pressed', String(visible));
+});
 document.getElementById('f').addEventListener('submit', async (e) => {
   e.preventDefault();
   const u = document.getElementById('u').value.trim();
   const p = document.getElementById('p').value;
   const err = document.getElementById('err');
+  const btn = document.getElementById('submitBtn');
   err.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = 'Memverifikasi…';
   try {
     const r = await fetch('/api/auth/login', {
       method: 'POST',
@@ -56,12 +60,19 @@ document.getElementById('f').addEventListener('submit', async (e) => {
       body: JSON.stringify({username: u, password: p})
     });
     if (r.ok) {
+      btn.textContent = 'Berhasil, mengalihkan…';
       location.href = '/';
     } else {
+      err.textContent = r.status === 401 || r.status === 403 ? 'Username atau password salah.' : r.status === 429 ? 'Terlalu banyak percobaan. Tunggu sebelum mencoba lagi.' : 'Server tidak dapat memproses login (HTTP ' + r.status + ').';
       err.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Masuk ke Konsol';
     }
   } catch {
+    err.textContent = 'Tidak dapat menghubungi server. Periksa koneksi lalu coba lagi.';
     err.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Masuk ke Konsol';
   }
 });
 </script>

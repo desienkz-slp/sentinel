@@ -502,31 +502,61 @@ func (s *Server) routes() http.Handler {
 	})
 
 	// Verifikasi kredensial + model lewat completion nyata (bukan sekadar daftar model).
-	// Menerima body opsional {base_url,api_key,model,wire_api} untuk menguji nilai
-	// yang baru diketik di kolom UI SEBELUM disimpan (agar kolom langsung berpengaruh).
+	// Menerima body opsional {endpoint,base_url,api_key,model,wire_api} untuk menguji
+	// nilai UI sebelum disimpan. endpoint mengikuti alias /api/models; default A.
 	mux.HandleFunc("/api/llm/ping", func(w http.ResponseWriter, r *http.Request) {
-		base, key, model, wire := s.cfg.LLMBaseURL, s.cfg.LLMAPIKey, s.cfg.LLMModel, s.cfg.LLMWireAPI
+		var body struct {
+			Endpoint string  `json:"endpoint"`
+			BaseURL  *string `json:"base_url"`
+			APIKey   *string `json:"api_key"`
+			Model    *string `json:"model"`
+			WireAPI  *string `json:"wire_api"`
+		}
+		ep := r.URL.Query().Get("endpoint")
 		if r.Method == http.MethodPost && r.Body != nil {
-			var body struct {
-				BaseURL *string `json:"base_url"`
-				APIKey  *string `json:"api_key"`
-				Model   *string `json:"model"`
-				WireAPI *string `json:"wire_api"`
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+				writeJSON(w, 400, map[string]any{"ok": false, "error": "body JSON tidak valid"})
+				return
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
-				if body.BaseURL != nil && *body.BaseURL != "" {
-					base = strings.TrimRight(*body.BaseURL, "/")
-				}
-				if body.APIKey != nil {
-					key = *body.APIKey
-				}
-				if body.Model != nil && *body.Model != "" {
-					model = *body.Model
-				}
-				if body.WireAPI != nil && *body.WireAPI != "" {
-					wire = strings.TrimSpace(*body.WireAPI)
-				}
+			if body.Endpoint != "" {
+				ep = body.Endpoint
 			}
+		}
+		ep = strings.ToLower(strings.TrimSpace(ep))
+		isB := ep == "b" || ep == "reasoning" || ep == "codex"
+		base, key, model, wire := s.cfg.LLMBaseURL, s.cfg.LLMAPIKey, s.cfg.LLMModel, s.cfg.LLMWireAPI
+		if isB {
+			base, key = s.cfg.CodexBaseURL, s.cfg.CodexAPIKey
+			if base == "" {
+				base = s.cfg.LLMBaseURL
+			}
+			if s.cfg.CodexModel != "" {
+				model = s.cfg.CodexModel
+			}
+			if s.cfg.CodexWireAPI != "" {
+				wire = s.cfg.CodexWireAPI
+			}
+			// Only share A's credential when B actually uses the same endpoint.
+			if key == "" && strings.TrimRight(base, "/") == strings.TrimRight(s.cfg.LLMBaseURL, "/") {
+				key = s.cfg.LLMAPIKey
+			}
+		}
+		if body.BaseURL != nil && *body.BaseURL != "" {
+			override := strings.TrimRight(*body.BaseURL, "/")
+			// A changed B URL must not receive any saved provider credential.
+			if isB && override != strings.TrimRight(base, "/") {
+				key = ""
+			}
+			base = override
+		}
+		if body.APIKey != nil {
+			key = *body.APIKey // Explicit empty string also overrides saved keys.
+		}
+		if body.Model != nil && *body.Model != "" {
+			model = *body.Model
+		}
+		if body.WireAPI != nil && *body.WireAPI != "" {
+			wire = strings.TrimSpace(*body.WireAPI)
 		}
 		c := llm.New(base, key, model, s.cfg.LLMTimeout)
 		c.WireAPI = wire
@@ -1770,6 +1800,14 @@ type observabilityResponseWriter struct {
 }
 
 func (w *observabilityResponseWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	// Informational responses do not commit the final response status.
+	if status >= 100 && status < 200 && status != http.StatusSwitchingProtocols {
+		w.ResponseWriter.WriteHeader(status)
+		return
+	}
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
 }
@@ -1781,11 +1819,32 @@ func (w *observabilityResponseWriter) Write(body []byte) (int, error) {
 	return w.ResponseWriter.Write(body)
 }
 
+func (w *observabilityResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+// Expose Flusher only when the underlying writer supports streaming.
+type observabilityFlushingResponseWriter struct {
+	*observabilityResponseWriter
+	flusher http.Flusher
+}
+
+func (w *observabilityFlushingResponseWriter) Flush() {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	w.flusher.Flush()
+}
+
 func withObservability(h http.Handler, collector *observability.Collector, aud *audit.Store) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		wrapped := &observabilityResponseWriter{ResponseWriter: w}
-		h.ServeHTTP(wrapped, r)
+		var response http.ResponseWriter = wrapped
+		if flusher, ok := w.(http.Flusher); ok {
+			response = &observabilityFlushingResponseWriter{wrapped, flusher}
+		}
+		h.ServeHTTP(response, r)
 		status := wrapped.status
 		if status == 0 {
 			status = http.StatusOK
