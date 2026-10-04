@@ -101,7 +101,7 @@ Sumber aktual: `internal/mikrotik`; referensi konflik: `docs/mikrotik-api.md`.
 | Transport | API native RouterOS (protokol sentence biner) TCP |
 | Port | 8728 plaintext, 8729 TLS, atau custom |
 | Auth | `/login` plaintext RouterOS 6.43+ dan fallback challenge MD5 legacy |
-| Read yang dipakai | `/system/resource/print`, `/system/identity/print`, `/ppp/active/print`, `/interface/print`, `/interface/monitor-traffic`, `/queue/simple/print` |
+| Read yang dipakai | `/system/resource/print`, `/system/identity/print`, `/ppp/active/print`, `/interface/print`, `/interface/monitor-traffic` |
 | Tool | `mikrotik.get_pppoe_status`, `mikrotik.get_interface_stats`, `mikrotik.get_interface_live`, `mikrotik.get_customer_traffic` |
 | Multi-router | Didukung melalui `mikrotik_routers` dan pool adapter |
 | Registry | Semua read NONAKTIF; deklarasi write `mikrotik.disconnect_pppoe` juga NONAKTIF dan belum punya adapter |

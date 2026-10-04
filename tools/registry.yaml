@@ -187,14 +187,14 @@ tools:
     timeout_seconds: 8
     retry: safe_get
     verification: response_contract
-    description: Traffic per pelanggan (total + live) dari simple queue.
+    description: Traffic live satu pelanggan dari interface PPPoE aktif yang di-resolve tepat oleh identity.
     parameters:
       type: object
       properties:
         identity:
           type: string
-          description: Username PPPoE / nama queue (opsional; kosong = semua).
-      required: []
+          description: Username PPPoE tepat untuk resolusi satu sesi dan interface aktif.
+      required: [identity]
 
   - name: genieacs.get_device_state
     domain: genieacs

@@ -319,52 +319,39 @@ func (a *Adapter) getInterfaceLive(ctx context.Context, args map[string]any) (to
 	return tool.Output{Data: rows, Text: text}, nil
 }
 
-// getCustomerTraffic membaca traffic per pelanggan dari /queue/simple (name
-// berformat <pppoe-USER>). Field terkonfirmasi: bytes, rate, dropped, max-limit.
+// getCustomerTraffic reads one PPPoE customer's live interface traffic. It never
+// reads queues: RouterOS filters the active-session lookup by the exact identity,
+// then monitor-traffic samples only the resolved interface once.
 func (a *Adapter) getCustomerTraffic(ctx context.Context, args map[string]any) (tool.Output, error) {
 	identity := firstString(args, "identity", "username", "name", "customer")
-	rows, err := a.query(ctx, "/queue/simple/print", nil)
+	if identity == "" {
+		return tool.Output{Text: "UNKNOWN: identity pelanggan wajib untuk traffic PPPoE."}, nil
+	}
+
+	sessions, err := a.query(ctx, "/ppp/active/print", map[string]string{"?name": identity})
 	if err != nil {
 		return tool.Output{}, err
 	}
-
-	var match []map[string]string
-	for _, q := range rows {
-		name := trimQueueName(q["name"])
-		if identity == "" || name == identity || strings.Contains(name, identity) {
-			match = append(match, q)
-		}
+	if len(sessions) != 1 || sessions[0]["name"] != identity || sessions[0]["interface"] == "" {
+		return tool.Output{Text: fmt.Sprintf("UNKNOWN: sesi PPPoE untuk %q tidak dapat di-resolve secara unik.", identity)}, nil
 	}
 
-	if len(match) == 0 {
-		msg := "Tidak ada simple queue yang cocok."
-		if identity != "" {
-			msg = fmt.Sprintf("Tidak ada queue untuk pelanggan %q.", identity)
-		}
-		return tool.Output{Text: msg}, nil
+	iface := sessions[0]["interface"]
+	rows, err := a.query(ctx, "/interface/monitor-traffic", map[string]string{
+		"interface": iface,
+		"once":      "",
+	})
+	if err != nil {
+		return tool.Output{}, err
+	}
+	if len(rows) != 1 || rows[0]["name"] != iface {
+		return tool.Output{Text: fmt.Sprintf("UNKNOWN: traffic interface PPPoE untuk %q tidak tersedia.", identity)}, nil
 	}
 
-	var b strings.Builder
-	if identity != "" {
-		fmt.Fprintf(&b, "Traffic pelanggan %q: %d queue\n", identity, len(match))
-	} else {
-		fmt.Fprintf(&b, "Semua simple queue: %d\n", len(match))
-	}
-	for _, q := range match {
-		user := trimQueueName(q["name"])
-		rx, tx := splitPair(q["bytes"])
-		rrx, rtx := splitPair(q["rate"])
-		fmt.Fprintf(&b, "- %s: total rx=%s tx=%s", user, humanBytes(rx), humanBytes(tx))
-		fmt.Fprintf(&b, ", live rx=%s tx=%s", humanBps(rrx), humanBps(rtx))
-		if q["max-limit"] != "" {
-			fmt.Fprintf(&b, ", max-limit=%s", q["max-limit"])
-		}
-		if q["dropped"] != "" && q["dropped"] != "0/0" {
-			fmt.Fprintf(&b, ", dropped=%s", q["dropped"])
-		}
-		b.WriteString("\n")
-	}
-	return tool.Output{Data: match, Text: strings.TrimSpace(b.String())}, nil
+	s := rows[0]
+	text := fmt.Sprintf("Traffic PPPoE %q (%s): rx=%s, tx=%s", identity, iface,
+		humanBps(parseUint(s["rx-bits-per-second"])), humanBps(parseUint(s["tx-bits-per-second"])))
+	return tool.Output{Data: []map[string]string{s}, Text: text}, nil
 }
 
 // ---- Protokol biner RouterOS ----
@@ -636,19 +623,6 @@ func humanBps(n uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cbps", float64(n)/float64(div), "kMGTPE"[exp])
-}
-
-// splitPair memecah "rx/tx" menjadi dua uint64 (default 0 bila kosong).
-func splitPair(s string) (uint64, uint64) {
-	a, b, _ := strings.Cut(s, "/")
-	return parseUint(a), parseUint(b)
-}
-
-// trimQueueName membersihkan nama simple queue "<pppoe-USER>" -> "USER".
-func trimQueueName(name string) string {
-	name = strings.Trim(name, "<>")
-	name = strings.TrimPrefix(name, "pppoe-")
-	return name
 }
 
 func firstString(m map[string]any, keys ...string) string {

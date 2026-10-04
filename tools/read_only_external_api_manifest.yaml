@@ -26,3 +26,17 @@ capabilities:
     schema_notes: >-
       One RouterOS /interface/monitor-traffic sentence with once for the
       required interface name. Output is one interface's traffic counters.
+
+  - tool: mikrotik.get_customer_traffic
+    domain: mikrotik
+    transport: routeros_sentence_pppoe_active_exact_then_monitor_traffic_once
+    operation: read
+    required_bounded_argument: identity
+    sensitivity: none
+    max_rows: 1
+    max_bytes: 8192
+    schema_notes: >-
+      RouterOS filters /ppp/active/print server-side with exact ?name=<identity>.
+      Exactly one resolved PPPoE interface is sampled by one
+      /interface/monitor-traffic once sentence; ambiguity or missing data is UNKNOWN.
+      No queue read or customer-list output is allowed.

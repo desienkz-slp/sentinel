@@ -184,13 +184,26 @@ func TestEveryEnabledReadToolRequiresExactlyOneAdapterAndManifestEntry(t *testin
 	}
 }
 
-func TestManifestExcludesUnboundedAndQueueBasedCapabilities(t *testing.T) {
+func TestManifestIncludesOnlyBoundedPPPoETrafficCapability(t *testing.T) {
 	reg := registry.Load(filepath.Join("..", "..", "tools", "registry.yaml"))
 	manifest := canonicalManifest(t)
 	for _, entry := range reg.All() {
 		if entry.Permission != registry.PermRead && manifest.Has(entry.Name) {
 			t.Errorf("non-READ tool %q must not be manifest-enabled", entry.Name)
 		}
+	}
+	traffic, ok := reg.Get("mikrotik.get_customer_traffic")
+	if !ok {
+		t.Fatal("customer traffic must remain a registry tool")
+	}
+	if !manifest.Has(traffic.Name) {
+		t.Fatal("bounded PPPoE interface traffic must be manifest-enabled")
+	}
+	if err := manifest.Allows(traffic, map[string]any{"identity": "pelanggan-satu"}); err != nil {
+		t.Fatalf("bounded PPPoE traffic must pass manifest gate: %v", err)
+	}
+	if err := manifest.Allows(traffic, map[string]any{}); err == nil {
+		t.Fatal("PPPoE traffic without identity must be denied")
 	}
 	for _, name := range []string{
 		"billing.get_customer",
@@ -200,7 +213,6 @@ func TestManifestExcludesUnboundedAndQueueBasedCapabilities(t *testing.T) {
 		"radius.get_user",
 		"mikrotik.get_pppoe_status",
 		"mikrotik.get_interface_stats",
-		"mikrotik.get_customer_traffic",
 		"genieacs.get_device_state",
 		"genieacs.get_devices",
 	} {

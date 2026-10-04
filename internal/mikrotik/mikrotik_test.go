@@ -11,6 +11,12 @@ import (
 // mockRouterOS menjalankan server API native RouterOS di port acak untuk tes.
 // Menangani login plaintext (6.43+) dan satu command.
 func mockRouterOS(t *testing.T, user, pass string, respond func(cmd string) [][]string) (addr string, stop func()) {
+	return mockRouterOSWithSentence(t, user, pass, func(sentence []string) [][]string {
+		return respond(sentence[0])
+	})
+}
+
+func mockRouterOSWithSentence(t *testing.T, user, pass string, respond func(sentence []string) [][]string) (addr string, stop func()) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +33,7 @@ func mockRouterOS(t *testing.T, user, pass string, respond func(cmd string) [][]
 	return ln.Addr().String(), func() { ln.Close() }
 }
 
-func handleMockConn(t *testing.T, conn net.Conn, user, pass string, respond func(cmd string) [][]string) {
+func handleMockConn(t *testing.T, conn net.Conn, user, pass string, respond func(sentence []string) [][]string) {
 	defer conn.Close()
 	r := bufio.NewReader(conn)
 	w := bufio.NewWriter(conn)
@@ -57,8 +63,7 @@ func handleMockConn(t *testing.T, conn net.Conn, user, pass string, respond func
 	if err != nil {
 		return
 	}
-	cmd := sentence[0]
-	for _, row := range respond(cmd) {
+	for _, row := range respond(sentence) {
 		words := []string{"!re"}
 		words = append(words, row...)
 		_ = writeSentence(w, words)
@@ -258,13 +263,65 @@ func TestGetInterfaceLive(t *testing.T) {
 	}
 }
 
-// TestGetCustomerTraffic: parse simple queue name <pppoe-USER> + bytes/rate.
-func TestGetCustomerTraffic(t *testing.T) {
-	addr, stop := mockRouterOS(t, "staff", "rahasia", func(cmd string) [][]string {
-		if cmd == "/queue/simple/print" {
+// TestGetCustomerTrafficUsesBoundedPPPoEInterfaceTraffic proves customer traffic
+// never reads queues: it resolves one exact PPPoE active session, then samples
+// only that session's interface once.
+func TestGetCustomerTrafficUsesBoundedPPPoEInterfaceTraffic(t *testing.T) {
+	var commands [][]string
+	addr, stop := mockRouterOSWithSentence(t, "staff", "rahasia", func(sentence []string) [][]string {
+		commands = append(commands, append([]string(nil), sentence...))
+		switch sentence[0] {
+		case "/ppp/active/print":
+			return [][]string{{"=name=pelanggan-satu", "=interface=pppoe-pelanggan-satu"}}
+		case "/interface/monitor-traffic":
+			return [][]string{{"=name=pppoe-pelanggan-satu", "=rx-bits-per-second=280200", "=tx-bits-per-second=7115056"}}
+		default:
+			return nil
+		}
+	})
+	defer stop()
+
+	a := New(Config{Host: hostOf(addr), Port: portOf(addr), User: "staff", Pass: "rahasia"})
+	out, err := a.Invoke(context.Background(), "mikrotik.get_customer_traffic", map[string]any{"identity": "pelanggan-satu"})
+	if err != nil {
+		t.Fatalf("Invoke error: %v", err)
+	}
+	if !strings.Contains(out.Text, "pppoe-pelanggan-satu") || !strings.Contains(out.Text, "7.1 Mbps") {
+		t.Errorf("Text = %q, mau traffic interface PPPoE", out.Text)
+	}
+	if len(commands) != 2 || commands[0][0] != "/ppp/active/print" || commands[1][0] != "/interface/monitor-traffic" {
+		t.Errorf("commands = %v, mau /ppp/active/print lalu /interface/monitor-traffic; queue dilarang", commands)
+		return
+	}
+	if !sentenceHas(commands[0], "=?name=pelanggan-satu") {
+		t.Errorf("PPPoE lookup = %v, mau filter server-side tepat ?name=pelanggan-satu", commands[0])
+	}
+	if !sentenceHas(commands[1], "=interface=pppoe-pelanggan-satu") || !sentenceHas(commands[1], "=once=") {
+		t.Errorf("traffic read = %v, mau satu monitor untuk interface resolved dengan once", commands[1])
+	}
+}
+
+func TestGetCustomerTrafficRequiresIdentity(t *testing.T) {
+	a := New(Config{Host: "127.0.0.1", Port: 1, User: "staff", Pass: "rahasia"})
+	out, err := a.Invoke(context.Background(), "mikrotik.get_customer_traffic", map[string]any{})
+	if err != nil {
+		t.Fatalf("Invoke error: %v", err)
+	}
+	if !strings.Contains(out.Text, "UNKNOWN") || out.Data != nil {
+		t.Errorf("traffic without identity = %+v, mau UNKNOWN tanpa data", out)
+	}
+}
+
+// TestGetCustomerTrafficRejectsAmbiguousSession ensures an unexpected non-unique
+// response cannot cause an interface sample or expose either returned session.
+func TestGetCustomerTrafficRejectsAmbiguousSession(t *testing.T) {
+	var commands [][]string
+	addr, stop := mockRouterOSWithSentence(t, "staff", "rahasia", func(sentence []string) [][]string {
+		commands = append(commands, append([]string(nil), sentence...))
+		if sentence[0] == "/ppp/active/print" {
 			return [][]string{
-				{"=name=<pppoe-pelanggan-satu>", "=bytes=43793175530/416066955503", "=rate=280200/7115056", "=max-limit=50000000/50000000"},
-				{"=name=<pppoe-pelanggan-dua>", "=bytes=8958194383/59929609759", "=rate=0/0", "=max-limit=16000000/16000000"},
+				{"=name=pelanggan-satu", "=interface=pppoe-pelanggan-satu"},
+				{"=name=pelanggan-satu", "=interface=pppoe-pelanggan-satu-dua"},
 			}
 		}
 		return nil
@@ -276,12 +333,21 @@ func TestGetCustomerTraffic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Invoke error: %v", err)
 	}
-	if !strings.Contains(out.Text, "pelanggan-satu") {
-		t.Errorf("Text = %q, mau memuat pelanggan-satu", out.Text)
+	if !strings.Contains(out.Text, "UNKNOWN") || out.Data != nil {
+		t.Errorf("ambiguous traffic = %+v, mau UNKNOWN tanpa data", out)
 	}
-	if strings.Contains(out.Text, "pelanggan-dua") {
-		t.Errorf("Text = %q, tidak boleh memuat pelanggan-dua (filter pelanggan-satu)", out.Text)
+	if len(commands) != 1 || commands[0][0] != "/ppp/active/print" || !sentenceHas(commands[0], "=?name=pelanggan-satu") {
+		t.Errorf("commands = %v, mau hanya PPPoE lookup exact tanpa monitor", commands)
 	}
+}
+
+func sentenceHas(sentence []string, want string) bool {
+	for _, word := range sentence {
+		if word == want {
+			return true
+		}
+	}
+	return false
 }
 
 // TestHumanBytesAndBps: verifikasi format helper.
@@ -297,8 +363,5 @@ func TestHumanBytesAndBps(t *testing.T) {
 	}
 	if got := humanBps(50000000); got != "50.0 Mbps" {
 		t.Errorf("humanBps(50e6) = %q, mau 50.0 Mbps", got)
-	}
-	if rx, tx := splitPair("280200/7115056"); rx != 280200 || tx != 7115056 {
-		t.Errorf("splitPair = %d/%d, mau 280200/7115056", rx, tx)
 	}
 }
