@@ -14,13 +14,17 @@ Aturan final:
 - `Passed=false` yang konklusif harus berakhir `FAILED → ESCALATION`, bukan loop tanpa batas;
 - `RESOLVED` tetap wajib memiliki bukti `Passed=true`.
 
-## Keputusan operator yang dibutuhkan sebelum implementasi
+## Keputusan operator yang disetujui
+
+- **Severity:** PON terverifikasi dengan minimal tiga pelanggan = P3; OLT/area = P2; upstream = P1.
+- **Recovery massal:** threshold 90% hanya menjadi gate penutupan **insiden induk**; case pelanggan individual tetap memerlukan verification record sendiri.
+- **Flapping uplink:** hanya alert dan eskalasi read-only; tidak ada tindakan jaringan otomatis.
 
 ### Q211 — severity PON
 
-Tidak boleh mengarang threshold P1–P4. Konfigurasi runtime saat ini belum memiliki `severity_policy`; hasil aman adalah severity kosong/`UNRATED`, bukan P2 atau P3.
+Konfigurasi runtime saat ini belum memiliki `severity_policy`; sebelum policy dan wiring scope diterapkan, hasil aman tetap severity kosong/`UNRATED`.
 
-Jika aturan bisnis yang disetujui adalah "minimal tiga pelanggan pada PON terverifikasi = P3", maka policy minimum yang dapat diset adalah:
+Policy minimum yang disetujui adalah:
 
 ```json
 {

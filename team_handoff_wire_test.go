@@ -412,8 +412,27 @@ func eskalasiBaru(s *Server, id string, n int) agent.Report {
 	return agent.Report{CaseID: id, CaseState: escalationState, Query: "mati", Intent: "no_internet"}
 }
 
-// Fixture uji, bukan rekomendasi: ambang sengaja kecil agar mudah dibuktikan.
-var kebijakanUji = severity.Policy{P1Customers: 5, P2Customers: 3, P3Customers: 2, Floor: "P4"}
+// Fixture uji, bukan rekomendasi: mencerminkan kebijakan operator yang disetujui.
+var kebijakanUji = severity.Policy{
+	P3Customers: 3,
+	Floor:       "P4",
+	ScopeFloor:  map[string]string{"area": "P2", "olt": "P2", "upstream": "P1"},
+}
+
+func rekamGrupMassTerverifikasi(s *Server, incidentID string, topology incident.Topology) {
+	s.inc = incident.New("", 100)
+	now := time.Now().UTC()
+	for i, identity := range []string{"628111000001", "628111000002", "628111000003"} {
+		id := fmt.Sprintf("INC-MASS-%d", i)
+		if i == 2 {
+			id = incidentID
+		}
+		s.inc.Record(incident.Incident{
+			ID: id, Identity: identity, Intent: "no_internet", Status: incident.StatusInvestigating,
+			Topology: topology, StartedAt: now.Add(time.Duration(i) * time.Minute),
+		}, incident.CorrelationPolicy{Window: 15 * time.Minute, MassThreshold: 3})
+	}
+}
 
 func TestSeverityOffTidakMengisi(t *testing.T) {
 	s, _ := handoffServer(t, "shadow")
@@ -434,28 +453,49 @@ func TestSeverityTanpaKebijakanUnrated(t *testing.T) {
 	}
 }
 
-func TestSeverityDariFungsiBukanTeksBebas(t *testing.T) {
+func TestSeverityDariGrupMassTerverifikasi(t *testing.T) {
 	for _, tc := range []struct {
-		n    int
-		want string
-	}{{1, "P4"}, {2, "P3"}, {3, "P2"}, {5, "P1"}} {
-		s, _ := handoffServer(t, "shadow")
-		s.cfg.TeamSeverity = "on"
-		s.cfg.SeverityPolicy = kebijakanUji
-		id := fmt.Sprintf("CASE-20261003-SV%d234", tc.n+2)
-		s.openHandoff(eskalasiBaru(s, id, tc.n), nomorPel, "network")
-		if h, _ := s.ho.Get(id); h.Severity != tc.want {
-			t.Errorf("affected=%d: %q, mau %s", tc.n, h.Severity, tc.want)
-		}
-		found := false
-		for _, e := range s.aud.Recent(50) {
-			if e.EventType == "handoff_severity" && strings.Contains(e.Note, "level="+tc.want) {
-				found = true
+		name     string
+		topology incident.Topology
+		want     string
+	}{
+		{name: "pon tiga pelanggan", topology: incident.Topology{Area: "Cimahi", OLT: "OLT-1", PON: "PON-7"}, want: "P3"},
+		{name: "olt", topology: incident.Topology{Area: "Cimahi", OLT: "OLT-1"}, want: "P2"},
+		{name: "area", topology: incident.Topology{Area: "Cimahi"}, want: "P2"},
+		{name: "upstream", topology: incident.Topology{Upstream: "Transit-A"}, want: "P1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := handoffServer(t, "shadow")
+			s.cfg.TeamSeverity = "on"
+			s.cfg.SeverityPolicy = kebijakanUji
+			incidentID := "INC-" + strings.ReplaceAll(tc.name, " ", "-")
+			caseID := "CASE-20261003-" + strings.ToUpper(strings.ReplaceAll(tc.name, " ", ""))
+			rekamGrupMassTerverifikasi(s, incidentID, tc.topology)
+
+			// Teks LLM dan hitungan intent-global tidak boleh menentukan severity.
+			s.openHandoff(agent.Report{ID: incidentID, CaseID: caseID, CaseState: escalationState,
+				Intent: "no_internet", Query: "LLM mengklaim P1", Answer: "P1"}, nomorPel, "network")
+			if h, _ := s.ho.Get(caseID); h.Severity != tc.want {
+				t.Fatalf("severity = %q, mau %s", h.Severity, tc.want)
 			}
-		}
-		if !found {
-			t.Errorf("affected=%d: audit alasan tidak ada", tc.n)
-		}
+		})
+	}
+}
+
+func TestSeverityTanpaGrupMassTerverifikasiUnrated(t *testing.T) {
+	s, _ := handoffServer(t, "shadow")
+	s.cfg.TeamSeverity = "on"
+	s.cfg.SeverityPolicy = kebijakanUji
+	s.inc = incident.New("", 100)
+	for i := 0; i < 10; i++ {
+		s.inc.Add(incident.Incident{ID: fmt.Sprintf("INC-GLOBAL-%d", i), Identity: fmt.Sprintf("6281119%03d", i),
+			Intent: "no_internet", Status: incident.StatusInvestigating, StartedAt: time.Now()})
+	}
+
+	s.openHandoff(agent.Report{ID: "INC-NO-GROUP", CaseID: "CASE-20261003-NOGROUP", CaseState: escalationState,
+		Intent: "no_internet", Query: "LLM mengklaim P1", Answer: "P1"}, nomorPel, "network")
+	if h, _ := s.ho.Get("CASE-20261003-NOGROUP"); h.Severity != "UNRATED" {
+		t.Fatalf("tanpa grup/scope terverifikasi severity harus UNRATED, dapat %q", h.Severity)
 	}
 }
 

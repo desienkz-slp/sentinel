@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ainoc/internal/incident"
 	"ainoc/internal/severity"
 	"context"
 	"errors"
@@ -161,22 +162,66 @@ func (s *Server) notifyCustomer(ctx context.Context, h handoff.Handoff, idx int,
 }
 
 // rateSeverity: level dari fungsi murni, bukan teks bebas. Mode off -> kosong.
-// Cakupan topologi belum tersedia dari sistem, jadi tidak diisi (tidak ditebak).
+// Hanya grup mass yang sudah dikorelasikan yang menjadi bukti severity.
 func (s *Server) rateSeverity(rep agent.Report) string {
 	if s.cfg == nil || s.cfg.Teams().Severity == config.TeamOff {
 		return ""
 	}
-	affected := 0
-	if s.inc != nil {
-		affected = s.inc.AffectedCustomers(rep.Intent, 15*time.Minute, time.Now())
+	in, verified := s.verifiedSeverityInput(rep.ID)
+	res := severity.Result{Level: severity.Unrated, Reasons: []string{"grup mass/topologi terverifikasi tidak ditemukan"}}
+	if verified {
+		res = severity.Rate(s.cfg.SeverityPolicy, in)
 	}
-	res := severity.Rate(s.cfg.SeverityPolicy, severity.Input{Affected: affected})
 	if s.teams != nil {
 		s.teams.RecordHandoff("severity_" + string(res.Level))
 	}
 	s.auditHandoff("handoff_severity", "system", rep.CaseID,
-		fmt.Sprintf("level=%s affected=%d alasan=%s mode=%s", res.Level, affected, strings.Join(res.Reasons, ";"), s.cfg.Teams().Severity))
+		fmt.Sprintf("level=%s affected=%d alasan=%s mode=%s", res.Level, in.Affected, strings.Join(res.Reasons, ";"), s.cfg.Teams().Severity))
 	return string(res.Level)
+}
+
+func (s *Server) verifiedSeverityInput(incidentID string) (severity.Input, bool) {
+	if s.inc == nil || incidentID == "" {
+		return severity.Input{}, false
+	}
+	for _, group := range s.inc.MassIncidents() {
+		if !containsIncidentID(group.IncidentIDs, incidentID) {
+			continue
+		}
+		if scope := verifiedTopologyScope(group.Topology); scope != "" {
+			return severity.Input{Affected: group.AffectedCustomers, Scopes: []string{scope}}, true
+		}
+	}
+	return severity.Input{}, false
+}
+
+func containsIncidentID(ids []string, id string) bool {
+	for _, candidate := range ids {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
+}
+
+// verifiedTopologyScope matches the correlation precedence: only the scope that
+// formed the group is supplied to the policy, so a PON group is not also rated
+// as its parent OLT or area.
+func verifiedTopologyScope(topology incident.Topology) string {
+	switch {
+	case topology.Upstream != "":
+		return "upstream"
+	case topology.PON != "":
+		return "pon"
+	case topology.OLT != "":
+		return "olt"
+	case topology.Router != "":
+		return "router"
+	case topology.Area != "":
+		return "area"
+	default:
+		return ""
+	}
 }
 
 // nonStaffCmdReply: jawaban tetap untuk non-staf yang mengirim perintah staf.
