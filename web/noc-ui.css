@@ -121,6 +121,27 @@ th, td { padding: 8px 9px; border-bottom-color: var(--line-soft); }
 th { background: #0d1620; color: #91a5b9; font-size: 10px; }
 tr:hover td { background: rgba(94,231,242,.028); }
 #waQRBox img { max-width: 100%; height: auto !important; }
+
+/* Case lifecycle can grow continuously: keep the operational viewport compact. */
+.case-scroll {
+  max-height: min(460px, 52vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.case-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: 0 1px 0 #304052, 0 8px 12px rgba(0,0,0,.18);
+}
+.case-scroll:focus-visible { outline-offset: 3px; }
+
+/* Generated configuration blocks keep their hierarchy without spilling columns. */
+#mkList, #staffList, #rulesList, #recipesList { min-width: 0; }
+#rulesList .rule-row, #recipesList .rule-row { padding: 9px; border: 1px solid var(--line-soft); border-radius: 6px; background: #09111a; }
+#rulesList .rule-row + .rule-row, #recipesList .rule-row + .rule-row { margin-top: 8px; }
+#rulesList input, #rulesList select { min-width: 0; }
 .modal-mask { background: rgba(2, 5, 9, .82); }
 .modal { background: #101924; border-color: #334659; border-radius: 8px; }
 
@@ -206,6 +227,7 @@ body > .card button { width: 100%; min-height: 42px; margin-top: 18px; }
   .grid-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid-tools button { width: 100%; min-height: 42px; }
   .table-wrap, #staffList { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .case-scroll { max-height: min(360px, 48vh); overflow: auto; }
   table { min-width: 600px; }
   #steps { max-height: 360px; }
   .modal-mask { align-items: flex-end; padding: 12px; }
