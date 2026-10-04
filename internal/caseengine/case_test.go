@@ -70,3 +70,29 @@ func TestRecordVerificationRejectsOutsideVerifying(t *testing.T) {
 		t.Fatal("verification sebelum state VERIFYING harus ditolak")
 	}
 }
+
+func TestRecordVerificationAllowsRepeatedAttemptsWhileVerifying(t *testing.T) {
+	c := New("whatsapp", "628111222333", time.Now())
+	for _, next := range []State{StateIdentifying, StateConversation, StateReadyForDiagnosis, StateReasoning, StateInvestigation, StateVerifying} {
+		if err := c.Transition(next, "system", "uji retry verification"); err != nil {
+			t.Fatalf("transisi ke %s gagal: %v", next, err)
+		}
+	}
+
+	if err := c.RecordVerification(Verification{Passed: false, Source: "radius", Summary: "pembacaan pertama belum pulih"}); err != nil {
+		t.Fatalf("attempt verifikasi pertama pada VERIFYING ditolak: %v", err)
+	}
+	if c.State() != StateVerifying {
+		t.Fatalf("state setelah attempt pertama = %s, ingin VERIFYING", c.State())
+	}
+	if err := c.RecordVerification(Verification{Passed: true, Source: "radius", Summary: "pembacaan ulang pulih"}); err != nil {
+		t.Fatalf("attempt verifikasi kedua pada VERIFYING ditolak: %v", err)
+	}
+	got := c.Verifications()
+	if len(got) != 2 || got[0].Passed || !got[1].Passed {
+		t.Fatalf("riwayat attempt verifikasi = %#v, ingin gagal lalu lulus", got)
+	}
+	if err := c.Transition(StateResolved, "system", "pembacaan ulang terverifikasi"); err != nil {
+		t.Fatalf("RESOLVED setelah attempt ulang lulus ditolak: %v", err)
+	}
+}
