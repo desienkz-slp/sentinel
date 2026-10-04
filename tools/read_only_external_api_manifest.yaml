@@ -1,0 +1,28 @@
+version: 1.0.0
+# Deny by default: a capability not listed here must not be invoked, even when
+# an operator enables its registry declaration locally. This is a static
+# contract only; it does not add, configure, or probe any external endpoint.
+capabilities:
+  - tool: radius.get_system_stats
+    domain: radius
+    transport: http_get_fixed_aggregate
+    operation: read
+    required_bounded_argument: none_fixed_aggregate
+    sensitivity: none
+    max_rows: 1
+    max_bytes: 8192
+    schema_notes: >-
+      Fixed GET /api/system/stats. Aggregate CPU, memory, user-count, and DB
+      size only; no customer, credential, session, or list payload.
+
+  - tool: mikrotik.get_interface_live
+    domain: mikrotik
+    transport: routeros_sentence_monitor_traffic_once
+    operation: read
+    required_bounded_argument: interface
+    sensitivity: none
+    max_rows: 1
+    max_bytes: 8192
+    schema_notes: >-
+      One RouterOS /interface/monitor-traffic sentence with once for the
+      required interface name. Output is one interface's traffic counters.

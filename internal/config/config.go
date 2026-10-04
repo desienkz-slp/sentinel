@@ -350,6 +350,12 @@ func defaultRegistryPath() string {
 	return filepath.Join(projectRoot(), "tools", "registry.yaml")
 }
 
+// ReadOnlyCapabilityManifestPath is the release-controlled static allowlist.
+// It intentionally has no config or environment override.
+func ReadOnlyCapabilityManifestPath() string {
+	return filepath.Join(projectRoot(), "tools", "read_only_external_api_manifest.yaml")
+}
+
 // RegistryOverlayPath mengembalikan overlay lokal (`tools/registry.local.yaml`,
 // gitignored) bila ada; kosong bila tidak ada.
 func RegistryOverlayPath() string {

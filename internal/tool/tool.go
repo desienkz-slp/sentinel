@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"ainoc/internal/capability"
 	"ainoc/internal/policy"
 	"ainoc/internal/registry"
 )
@@ -61,10 +62,13 @@ type Result struct {
 
 // Dispatcher merutekan pemanggilan tool lewat gerbang registry + policy.
 type Dispatcher struct {
-	Reg      *registry.Registry
-	Pol      *policy.Engine
-	Timeout  time.Duration
-	adapters map[string]Adapter // key = nama tool
+	Reg     *registry.Registry
+	Pol     *policy.Engine
+	Timeout time.Duration
+	// CapabilityManifest is an explicit allowlist for external READ calls.
+	// Production wiring always sets it; nil preserves isolated dispatcher tests.
+	CapabilityManifest *capability.Manifest
+	adapters           map[string]Adapter // key = nama tool
 }
 
 // New membuat dispatcher. Registry dan policy wajib tersedia saat Invoke;
@@ -82,6 +86,12 @@ func New(reg *registry.Registry, pol *policy.Engine, timeout time.Duration) *Dis
 }
 
 // Register mendaftarkan adapter dan seluruh tool-nya.
+// SetCapabilityManifest installs the reviewed static external-read allowlist.
+// Passing nil intentionally fail-closes every external invocation.
+func (d *Dispatcher) SetCapabilityManifest(manifest *capability.Manifest) {
+	d.CapabilityManifest = manifest
+}
+
 func (d *Dispatcher) Register(a Adapter) {
 	for _, name := range a.ToolNames() {
 		d.adapters[name] = a
@@ -152,21 +162,30 @@ func (d *Dispatcher) Invoke(ctx context.Context, toolName string, args map[strin
 	}
 
 	// Gerbang 1: registry — terdaftar & aktif.
-	if _, err := d.Reg.CanInvoke(toolName); err != nil {
+	entry, err := d.Reg.CanInvoke(toolName)
+	if err != nil {
 		res.Decision = policy.Deny
 		res.Error = err.Error()
 		return res
 	}
 
-	// Meta tool dari registry (permission, risk, scope) untuk policy.
-	perm := registry.PermRead
-	risk := registry.RiskLow
-	scope := "single_customer"
-	if t, ok := d.Reg.Get(toolName); ok {
-		perm, risk = t.Permission, t.Risk
-		if t.Scope != "" {
-			scope = t.Scope
+	// Gerbang 1b: static manifest — when production wiring supplies the
+	// release-controlled manifest, capability must be reviewed, non-sensitive,
+	// READ-only, and bounded before policy or adapter execution.
+	if d.CapabilityManifest != nil {
+		if err := d.CapabilityManifest.Allows(entry, args); err != nil {
+			res.Decision = policy.Deny
+			res.Error = err.Error()
+			return res
 		}
+	}
+
+	// Meta tool dari registry (permission, risk, scope) untuk policy.
+	perm := entry.Permission
+	risk := entry.Risk
+	scope := "single_customer"
+	if entry.Scope != "" {
+		scope = entry.Scope
 	}
 
 	// Gerbang 2: policy.

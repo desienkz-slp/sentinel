@@ -25,6 +25,7 @@ import (
 	"ainoc/internal/audit"
 	"ainoc/internal/billing"
 	"ainoc/internal/cache"
+	"ainoc/internal/capability"
 	"ainoc/internal/codexbridge"
 	"ainoc/internal/config"
 	"ainoc/internal/customtool"
@@ -189,9 +190,16 @@ func main() {
 	engine.Inc = inc
 	engine.Aud = aud
 
-	// Tool dispatcher: registry -> policy -> adapter. Tanpa adapter terdaftar,
-	// tidak ada tool eksternal yang bisa dipanggil (deny-by-default).
+	// Tool dispatcher: registry -> static read-only manifest -> policy -> adapter.
+	// A missing or invalid release-controlled manifest remains fail-closed.
 	disp := tool.New(reg, pol, 8*time.Second)
+	manifest, manifestErr := capability.Load(config.ReadOnlyCapabilityManifestPath())
+	if manifestErr != nil {
+		log.Printf("[capability-manifest] external tools remain blocked: %v", manifestErr)
+		disp.SetCapabilityManifest(capability.DenyAll())
+	} else {
+		disp.SetCapabilityManifest(manifest)
+	}
 
 	// Daftarkan BillingAdapter (read-only) bila endpoint + API key tersedia.
 	// Tool tetap tidak aktif sampai registry.yaml menandai enabled:true.

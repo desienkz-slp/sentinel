@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"ainoc/internal/capability"
 	"ainoc/internal/policy"
 	"ainoc/internal/registry"
 )
@@ -47,6 +48,20 @@ func writeReg(t *testing.T, tools string) *registry.Registry {
 	return registry.Load(p)
 }
 
+func testCapabilityManifest(t *testing.T, tool, domain string) *capability.Manifest {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "manifest.yaml")
+	content := "version: 1.0.0\ncapabilities:\n  - tool: " + tool + "\n    domain: " + domain + "\n    transport: test_fixed_aggregate\n    operation: read\n    required_bounded_argument: none_fixed_aggregate\n    sensitivity: none\n    max_rows: 1\n    max_bytes: 1024\n    schema_notes: synthetic test capability\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := capability.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return manifest
+}
+
 func TestInvokeThroughGates(t *testing.T) {
 	reg := writeReg(t, `  - name: billing.get_status
     domain: billing
@@ -57,6 +72,7 @@ func TestInvokeThroughGates(t *testing.T) {
 `)
 	pol := policy.Load("") // deny-by-default: READ single_customer LOW -> ALLOW
 	d := New(reg, pol, time.Second)
+	d.SetCapabilityManifest(testCapabilityManifest(t, "billing.get_status", "billing"))
 	d.Register(&fakeAdapter{domain: "billing", configured: true})
 
 	res := d.Invoke(context.Background(), "billing.get_status", nil)

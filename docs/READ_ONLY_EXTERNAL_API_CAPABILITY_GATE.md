@@ -38,7 +38,8 @@ Registry produksi memiliki 12 READ aktif dan satu WRITE tetap nonaktif (`mikroti
 ## Status BLOCKED yang benar
 
 - RADIUS `/users` dan `/sessions`: endpoint bulk sampai ada filter upstream atau adapter safe projection yang tidak mendownload seluruh data.
-- MikroTik PPP/queue: bulk read sampai filter RouterOS server-side wajib.
+- MikroTik PPP/queue: bulk read sampai filter RouterOS server-side wajib. `mikrotik.get_customer_traffic` saat ini membaca simple queue, sehingga BLOCKED untuk traffic PPPoE dan tidak boleh diklasifikasikan sebagai traffic pelanggan PPPoE.
+- `mikrotik.get_pppoe_interface_traffic` adalah capability masa depan yang belum diimplementasikan; tetap deny-by-default sampai adapter memakai traffic interface PPPoE yang dibatasi server-side dan kontraknya tervalidasi.
 - GenieACS device-list: bulk output sampai pagination, aggregate mode, dan ID redaction tersedia.
 - Billing history/list: gunakan setelah parity binary+registry dan bounded page/filter terbukti.
 - Semua write dan sensitive-read tetap forbidden.
